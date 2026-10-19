@@ -126,12 +126,12 @@ func subscriberReason(t *testing.T, queries *db.Queries, issueID, userType, user
 // Subscription prevention is opt-in; direct participants remain subscribed.
 func TestDelegatedSubscribe_AgentCreatedSubIssue(t *testing.T) {
 	queries := db.New(testPool)
-	bus := events.New()
-	registerSubscriberListeners(bus, testPool)
+	bus := newNotificationBus(t, queries)
 
 	agentID, runtimeID := firstFixtureAgent(t)
 	parentID := createTestIssue(t, testWorkspaceID, testUserID)
 	t.Cleanup(func() { cleanupTestIssue(t, parentID) })
+	addTestSubscriber(t, parentID, "member", testUserID, "creator")
 
 	task := createAgentTaskWithOriginator(t, agentID, runtimeID, util.MustParseUUID(testUserID))
 	issueID := createAgentOriginIssue(t, agentID, "agent_create", task, util.MustParseUUID(parentID))
@@ -161,7 +161,28 @@ func TestDelegatedSubscribe_AgentCreatedSubIssue(t *testing.T) {
 		if got := isSubscribed(t, queries, child, "member", testUserID); got == enabled {
 			t.Fatalf("inherited subscription = %v, prevention setting = %v", got, enabled)
 		}
+		t.Cleanup(func() { cleanupInboxForIssue(t, child) })
+		notify := func() {
+			notifySubscribers(context.Background(), queries, bus, child, "done", testWorkspaceID,
+				events.Event{ActorType: "agent", ActorID: agentID}, nil,
+				"status_changed", "info", "Child finished", "", emptyDetails)
+		}
+		notify()
+		want := 1
 		if enabled {
+			want = 0
+		}
+		if got := len(inboxItemsForRecipient(t, queries, testUserID)); got != want {
+			t.Fatalf("child completion notifications = %d, want %d with prevention = %v", got, want, enabled)
+		}
+		cleanupInboxForIssue(t, child)
+		if enabled {
+			addTestSubscriber(t, child, "member", testUserID, "manual")
+			notify()
+			if got := len(inboxItemsForRecipient(t, queries, testUserID)); got != 1 {
+				t.Fatalf("explicit child subscriber must receive one notification, got %d", got)
+			}
+			cleanupInboxForIssue(t, child)
 			direct := createAgentOriginIssue(t, agentID, "quick_create", task, util.MustParseUUID(parentID))
 			publishAgentIssueCreated(bus, direct, agentID)
 			if got := subscriberReason(t, queries, direct, "member", testUserID); got != "creator" {
