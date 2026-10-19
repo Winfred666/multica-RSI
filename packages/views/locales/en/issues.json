@@ -1,4 +1,17 @@
 {
+  "tree": {
+    "pan_hint": "Drag the canvas to pan",
+    "loading": "Loading tree…",
+    "load_failed": "Some branches could not load",
+    "hide_statuses": "Collapse statuses",
+    "collapse": "Collapse hidden statuses",
+    "expand": "Expand hidden issues ({{count}})",
+    "report": "Latest agent report",
+    "no_report": "No agent report yet",
+    "helpers": "Collaborating agents",
+    "create_child": "Create sub-issue",
+    "retry_agents": "Reload collaborators"
+  },
   "inline_run": {
     "label": "{{name}} run",
     "stop": "Stop",
@@ -251,7 +264,9 @@
     "list": "List",
     "table": "Table",
     "gantt": "Gantt",
-    "swimlane": "Swimlane"
+    "swimlane": "Swimlane",
+    "tree": "Tree",
+    "tooltip_tree": "Tree view"
   },
   "table": {
     "select_all": "Select all visible issues",

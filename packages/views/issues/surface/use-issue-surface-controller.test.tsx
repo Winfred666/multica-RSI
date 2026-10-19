@@ -1657,6 +1657,28 @@ describe("useIssueSurfaceController", () => {
     expect(result.current.isWorkingFilterError).toBe(false);
   });
 
+  it("loads hidden statuses for tree collapse without expanding the filtered membership", async () => {
+    mockListByStatus({
+      todo: [makeIssue({ id: "parent", status: "todo" })],
+      done: [makeIssue({ id: "child", status: "done", parent_issue_id: "parent" })],
+    });
+    const store = getIssueSurfaceViewStore("project:p1");
+    act(() => {
+      store.getState().setViewMode("tree");
+      store.getState().hideStatus("done");
+    });
+    const { result } = renderHook(() => useIssueSurfaceController({
+      scope: { type: "project", projectId: "p1" },
+      modes: ["board", "list", "tree"],
+    }), { wrapper: makeWrapper(qc, "project:p1") });
+    await waitFor(() => expect(result.current.issues).toHaveLength(2));
+    expect(result.current.viewMode).toBe("tree");
+    expect(result.current.statusPagination?.done?.loaded).toBe(1);
+    act(() => store.getState().toggleStatusFilter("todo"));
+    await waitFor(() => expect(result.current.issues.map((row) => row.id)).toEqual(["parent"]));
+    expect(result.current.tableQuerySpec.filters.statuses).toEqual(["todo"]);
+  });
+
   it("keeps swimlane chrome bounded while descriptors retain hidden-status counts", async () => {
     mockListByStatus({
       todo: [makeIssue({ id: "todo-1", status: "todo" })],

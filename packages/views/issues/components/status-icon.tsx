@@ -167,7 +167,7 @@ const ICON_RENDERERS: Record<IssueStatusIcon, () => React.ReactNode> = {
   cross: CancelledIcon,
 };
 
-const BUILT_IN_ICON_COLOR: Record<BuiltInIssueStatus, string> = {
+export const BUILT_IN_ICON_COLOR: Record<BuiltInIssueStatus, string> = {
   backlog: "text-muted-foreground",
   todo: "text-muted-foreground",
   in_progress: "text-warning",

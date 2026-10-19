@@ -1,4 +1,17 @@
 {
+  "tree": {
+    "pan_hint": "拖动画布以平移",
+    "loading": "正在加载树状图…",
+    "load_failed": "部分分支加载失败",
+    "hide_statuses": "折叠状态",
+    "collapse": "折叠已隐藏的状态",
+    "expand": "展开 {{count}} 个已隐藏任务",
+    "report": "智能体最新报告",
+    "no_report": "暂无智能体报告",
+    "helpers": "协作智能体",
+    "create_child": "新建子任务",
+    "retry_agents": "重新加载协作智能体"
+  },
   "inline_run": {
     "label": "{{name}} 的运行",
     "stop": "停止",
@@ -247,7 +260,9 @@
     "list": "列表",
     "table": "表格",
     "gantt": "甘特图",
-    "swimlane": "泳道"
+    "swimlane": "泳道",
+    "tree": "树状图",
+    "tooltip_tree": "树状图视图"
   },
   "table": {
     "select_all": "选择所有可见任务",
