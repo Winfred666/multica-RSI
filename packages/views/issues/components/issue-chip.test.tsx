@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useQuery } from "@tanstack/react-query";
 import { IssueChip } from "./issue-chip";
+import type { Issue } from "@multica/core/types";
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: vi.fn(),
@@ -103,5 +104,13 @@ describe("IssueChip", () => {
       "data-color",
       "#f97316",
     );
+  });
+
+  it("uses an already loaded issue without enabling list or detail requests", () => {
+    const issue = { id: "tree-issue", title: "Loaded tree objective", identifier: "MUL-88", status: "todo" } as Issue;
+    render(<IssueChip issueId={issue.id} issue={issue} />);
+    expect(screen.getByText(issue.title)).toBeInTheDocument();
+    expect(mockUseQuery).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["issues"], enabled: false }));
+    expect(mockUseQuery).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["issue", issue.id], enabled: false }));
   });
 });

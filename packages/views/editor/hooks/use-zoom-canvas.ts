@@ -92,6 +92,7 @@ export interface ZoomCanvasApi {
 
 const IDENTITY: ZoomTransform = { scale: 1, x: 0, y: 0 };
 const EMPTY_SIZE: Size = { width: 0, height: 0 };
+const INTERACTIVE_SELECTOR = "button, a, input, textarea, select, [role=link], [data-slot=hover-card-trigger]";
 
 function nearlyEqual(a: number, b: number): boolean {
   return Math.abs(a - b) < 0.5;
@@ -255,6 +256,7 @@ export function useZoomCanvas({
 
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
+      if ((event.target as Element).closest(INTERACTIVE_SELECTOR)) return;
       if (!stateRef.current.ready) return;
       // Ignore secondary mouse buttons so right-click never starts a pan.
       if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -348,6 +350,7 @@ export function useZoomCanvas({
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLElement>) => {
+      if ((event.target as Element).closest(INTERACTIVE_SELECTOR)) return;
       const { contentSize: c, viewport: v, ready: r } = stateRef.current;
       if (!r) return;
 
@@ -396,6 +399,7 @@ export function useZoomCanvas({
   // gets from "the whole thing" to "readable detail" and back.
   const handleDoubleClick = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
+      if ((event.target as Element).closest(INTERACTIVE_SELECTOR)) return;
       const { transform: t, contentSize: c, viewport: v, ready: r } = stateRef.current;
       if (!r) return;
 

@@ -6,6 +6,7 @@ import { IssueChip } from "./issue-chip";
 import { IssueHoverCard } from "./issue-hover-card";
 import { useT } from "../../i18n";
 import { useCurrentIssueRenderContext } from "../current-issue-render-context";
+import type { Issue } from "@multica/core/types";
 import { useIssuePeekActions } from "../surface/peek-context";
 
 /** Shift+Click with the primary button and no other modifier. */
@@ -21,6 +22,7 @@ function isPeekClick(event: React.MouseEvent) {
 
 interface IssueMentionCardProps {
   issueId: string;
+  issue?: Issue;
   /** Fallback text when issue is not in store (e.g. "MUL-7") */
   fallbackLabel?: string;
 }
@@ -54,7 +56,7 @@ function CurrentIssueChipContent({ identifier }: { identifier: string }) {
  * `fallbackLabel` the chip degrades to names the card when the detail fetch
  * fails.
  */
-export function IssueMentionCard({ issueId, fallbackLabel }: IssueMentionCardProps) {
+export function IssueMentionCard({ issueId, issue, fallbackLabel }: IssueMentionCardProps) {
   const p = useWorkspacePaths();
   const currentIssue = useCurrentIssueRenderContext();
   const peek = useIssuePeekActions();
@@ -88,6 +90,7 @@ export function IssueMentionCard({ issueId, fallbackLabel }: IssueMentionCardPro
       >
         <IssueChip
           issueId={issueId}
+          issue={issue}
           fallbackLabel={fallbackLabel}
           className="cursor-pointer hover:bg-accent transition-colors"
         >
