@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -173,6 +174,20 @@ func subscribeDelegatedHuman(bus *events.Bus, pool *pgxpool.Pool, queries *db.Qu
 	}
 	if issue.CreatorType != "agent" || !issue.OriginType.Valid || !issue.OriginID.Valid {
 		return
+	}
+	// Explicit quick-create requesters remain direct participants when inheritance is disabled.
+	if issue.ParentIssueID.Valid && issue.OriginType.String != "quick_create" {
+		workspace, err := queries.GetWorkspace(ctx, issue.WorkspaceID)
+		if err != nil {
+			slog.Error("delegated subscribe: load workspace failed", "issue_id", issueID, "error", err)
+			return
+		}
+		var settings struct {
+			Prevent bool `json:"prevent_inherited_child_subscriptions"`
+		}
+		if json.Unmarshal(workspace.Settings, &settings) == nil && settings.Prevent {
+			return
+		}
 	}
 
 	// The origin run's human, plus how the chain it belongs to acquired that

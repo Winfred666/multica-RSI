@@ -735,6 +735,9 @@
     "usage_help": "使用方法"
   },
   "workspace": {
+    "section_notifications": "通知",
+    "prevent_inherit_label": "阻止子任务继承订阅",
+    "prevent_inherit_description": "不再自动将智能体运行背后的人类订阅到其创建的子任务。直接参与和明确请求仍会产生订阅。",
     "section_general": "工作区信息",
     "logo_label": "工作区图标",
     "change_logo_aria": "更换工作区图标",

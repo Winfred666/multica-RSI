@@ -323,6 +323,11 @@ multica issue status <child-id> todo   # promote when the previous step is truly
 
 Creating every serial step as `todo` enqueues the whole chain at once.
 
+Agent-created sub-issues subscribe their own creator, assignee and mentioned
+participants. Settings → General can prevent inherited human subscriptions.
+Explicit quick-create requesters, manual subscriptions and direct participation
+still apply.
+
 ### Stages: order sub-issues into barrier groups
 
 `--stage <N>` (N >= 1) groups sub-issues under the same parent into ordered

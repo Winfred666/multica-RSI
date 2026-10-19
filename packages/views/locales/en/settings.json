@@ -740,6 +740,9 @@
     "usage_help": "Usage"
   },
   "workspace": {
+    "section_notifications": "Notifications",
+    "prevent_inherit_label": "Prevent inherited sub-issue subscriptions",
+    "prevent_inherit_description": "Keep the human behind an agent run off automatically created sub-issue subscriber lists. Direct participants and explicit requests still subscribe.",
     "section_general": "Workspace details",
     "logo_label": "Workspace logo",
     "change_logo_aria": "Change workspace logo",
