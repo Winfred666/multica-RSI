@@ -331,6 +331,21 @@ func notifySubscribers(
 	if !issue.ParentIssueID.Valid {
 		return
 	}
+	// A parent subscription must not bypass prevention of inherited agent-child subscriptions.
+	// Direct child subscribers have already received their notifications above.
+	if issue.CreatorType == "agent" {
+		workspace, err := queries.GetWorkspace(ctx, issue.WorkspaceID)
+		if err != nil {
+			slog.Error("failed to get workspace for parent notification", "issue_id", issueID, "error", err)
+			return
+		}
+		var settings struct {
+			Prevent bool `json:"prevent_inherited_child_subscriptions"`
+		}
+		if json.Unmarshal(workspace.Settings, &settings) == nil && settings.Prevent {
+			return
+		}
+	}
 
 	// Merge already-notified IDs into exclude set for parent subscribers.
 	parentExclude := make(map[string]bool, len(exclude)+len(notified)+len(tierSuppressed))
