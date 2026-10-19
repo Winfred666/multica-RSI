@@ -735,6 +735,9 @@
     "usage_help": "使い方"
   },
   "workspace": {
+    "section_notifications": "通知",
+    "prevent_inherit_label": "サブタスクへの購読継承を防止",
+    "prevent_inherit_description": "エージェント実行を依頼した人を、作成したサブタスクの購読者に自動追加しません。直接の参加や明示的な依頼による購読は続きます。",
     "section_general": "ワークスペース情報",
     "logo_label": "ワークスペースのアイコン",
     "name_label": "名前",

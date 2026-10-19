@@ -735,6 +735,9 @@
     "usage_help": "사용 방법"
   },
   "workspace": {
+    "section_notifications": "알림",
+    "prevent_inherit_label": "하위 작업 구독 상속 방지",
+    "prevent_inherit_description": "에이전트 실행을 요청한 사람을 생성된 하위 작업의 구독자로 자동 추가하지 않습니다. 직접 참여하거나 명시적으로 요청하면 구독됩니다.",
     "section_general": "워크스페이스 정보",
     "logo_label": "워크스페이스 아이콘",
     "change_logo_aria": "워크스페이스 로고 변경",

@@ -740,6 +740,9 @@
     "usage_help": "Utilisation"
   },
   "workspace": {
+    "section_notifications": "Notifications",
+    "prevent_inherit_label": "Empêcher l’héritage des abonnements dans les sous-tâches",
+    "prevent_inherit_description": "Ne pas abonner automatiquement la personne à l’origine d’une exécution d’agent aux sous-tâches créées. La participation directe et les demandes explicites entraînent toujours un abonnement.",
     "section_general": "Détails de l'espace de travail",
     "logo_label": "Logo de l'espace de travail",
     "change_logo_aria": "Changer le logo de l'espace de travail",

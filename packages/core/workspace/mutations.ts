@@ -10,6 +10,20 @@ import {
   unmarkWorkspaceDeletePending,
 } from "./pending-delete";
 
+export function useUpdateWorkspaceSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ workspace, settings }: { workspace: Workspace; settings: Record<string, unknown> }) =>
+      api.updateWorkspace(workspace.id, { settings: { ...workspace.settings, ...settings } }),
+    onSuccess: (updated) => {
+      qc.setQueryData<Workspace[]>(workspaceKeys.list(), (old) =>
+        old?.map((workspace) => workspace.id === updated.id ? updated : workspace),
+      );
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: workspaceKeys.list() }),
+  });
+}
+
 export function useCreateWorkspace() {
   const qc = useQueryClient();
   return useMutation({
