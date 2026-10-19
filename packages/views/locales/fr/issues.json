@@ -1,4 +1,17 @@
 {
+  "tree": {
+    "pan_hint": "Faites glisser le canevas pour vous déplacer",
+    "loading": "Chargement de l’arbre…",
+    "load_failed": "Certaines branches n’ont pas pu être chargées",
+    "hide_statuses": "Replier les statuts",
+    "collapse": "Replier les statuts masqués",
+    "expand": "Développer {{count}} tickets masqués",
+    "report": "Dernier rapport de l’agent",
+    "no_report": "Aucun rapport d’agent pour le moment",
+    "helpers": "Agents collaborateurs",
+    "create_child": "Créer un sous-ticket",
+    "retry_agents": "Recharger les collaborateurs"
+  },
   "inline_run": {
     "label": "Exécution de {{name}}",
     "stop": "Arrêter",
@@ -253,7 +266,9 @@
     "list": "Liste",
     "table": "Grille",
     "gantt": "Gantt",
-    "swimlane": "Couloirs"
+    "swimlane": "Couloirs",
+    "tree": "Arbre",
+    "tooltip_tree": "Vue en arbre"
   },
   "table": {
     "select_all": "Sélectionner toutes les tâches visibles",

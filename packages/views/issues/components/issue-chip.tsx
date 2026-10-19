@@ -3,6 +3,7 @@
 import { issueStatusCategory } from "@multica/core/issues";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import type { ReactNode } from "react";
+import type { Issue } from "@multica/core/types";
 import { useQuery } from "@tanstack/react-query";
 import { issueListOptions, issueDetailOptions } from "@multica/core/issues/queries";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -39,6 +40,7 @@ import { StatusIcon } from "./status-icon";
  */
 export interface IssueChipProps {
   issueId: string;
+  issue?: Issue;
   /** Shown when the issue can't be resolved (deleted, other workspace, …). */
   fallbackLabel?: string;
   /** Optional content override for callers that need the shared chip shell. */
@@ -53,23 +55,24 @@ const BASE_CLASS =
 
 export function IssueChip({
   issueId,
+  issue: suppliedIssue,
   fallbackLabel,
   children,
   className,
 }: IssueChipProps) {
   const wsId = useWorkspaceId();
   const { colorOf: statusColorOf, iconOf: statusIconOf } = useIssueStatuses(wsId);
-  const { data: issues = [] } = useQuery(issueListOptions(wsId));
+  const { data: issues = [] } = useQuery({ ...issueListOptions(wsId), enabled: !suppliedIssue });
   const listIssue = issues.find((i) => i.id === issueId);
 
   // Fallback fetch for issues outside the list's first page (the first
   // ISSUE_PAGE_SIZE issues across all categories).
   const { data: detailIssue } = useQuery({
     ...issueDetailOptions(wsId, issueId),
-    enabled: !listIssue,
+    enabled: !suppliedIssue && !listIssue,
   });
 
-  const issue = listIssue ?? detailIssue;
+  const issue = suppliedIssue ?? listIssue ?? detailIssue;
   const cls = className ? `${BASE_CLASS} ${className}` : BASE_CLASS;
 
   if (children !== undefined) {

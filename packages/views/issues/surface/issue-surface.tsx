@@ -37,6 +37,7 @@ import { IssuesHeader } from "../components/issues-header";
 import { ListView } from "../components/list-view";
 import { SwimLaneView } from "../components/swimlane-view";
 import { TableView } from "../components/table-view";
+import { TreeView } from "../components/tree-view";
 import { useT } from "../../i18n";
 import { IssueContextMenuProvider } from "../actions";
 import { IssueSurfaceActionsProvider } from "./actions-context";
@@ -371,6 +372,13 @@ function IssueSurfaceContent({
             )}
             {controller.viewMode === "gantt" && (
               <GanttView issues={controller.filteredGanttIssues} />
+            )}
+            {controller.viewMode === "tree" && (
+              <TreeView
+                issues={issues}
+                statusPagination={controller.statusPagination!}
+                onCreateIssue={openCreateIssue}
+              />
             )}
             {controller.viewMode === "swimlane" && (
               <SwimLaneView

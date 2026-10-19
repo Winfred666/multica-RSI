@@ -1,4 +1,17 @@
 {
+  "tree": {
+    "pan_hint": "キャンバスをドラッグして移動",
+    "loading": "ツリーを読み込み中…",
+    "load_failed": "一部のブランチを読み込めませんでした",
+    "hide_statuses": "ステータスを折りたたむ",
+    "collapse": "非表示のステータスを折りたたむ",
+    "expand": "非表示の課題 {{count}} 件を展開",
+    "report": "エージェントの最新レポート",
+    "no_report": "エージェントのレポートはまだありません",
+    "helpers": "協働エージェント",
+    "create_child": "サブ課題を作成",
+    "retry_agents": "協働エージェントを再読み込み"
+  },
   "inline_run": {
     "label": "{{name}} の実行",
     "stop": "停止",
@@ -249,7 +262,9 @@
     "list": "リスト",
     "table": "テーブル",
     "gantt": "ガント",
-    "swimlane": "スイムレーン"
+    "swimlane": "スイムレーン",
+    "tree": "ツリー",
+    "tooltip_tree": "ツリー表示"
   },
   "table": {
     "select_all": "表示中のタスクをすべて選択",

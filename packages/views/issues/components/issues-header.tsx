@@ -17,6 +17,7 @@ import {
   SlidersHorizontal,
   Tag,
   Table2,
+  Workflow,
   User,
   UserMinus,
   UserPen,
@@ -2443,6 +2444,8 @@ export function IssueDisplayControls({
                           <Columns3 className="size-3.5" />
                         ) : viewMode === "table" ? (
                           <Table2 className="size-3.5" />
+                        ) : viewMode === "tree" ? (
+                          <Workflow className="size-3.5" />
                         ) : viewMode === "swimlane" ? (
                           <Waves className="size-3.5" />
                         ) : viewMode === "gantt" && allowGantt ? (
@@ -2455,6 +2458,8 @@ export function IssueDisplayControls({
                             ? t(($) => $.view.board)
                             : viewMode === "table"
                             ? t(($) => $.view.table)
+                            : viewMode === "tree"
+                            ? t(($) => $.view.tree)
                             : viewMode === "swimlane"
                             ? t(($) => $.view.swimlane)
                             : viewMode === "gantt" && allowGantt
@@ -2471,6 +2476,8 @@ export function IssueDisplayControls({
                   ? t(($) => $.view.tooltip_board)
                   : viewMode === "table"
                   ? t(($) => $.view.tooltip_table)
+                  : viewMode === "tree"
+                  ? t(($) => $.view.tooltip_tree)
                   : viewMode === "swimlane"
                   ? t(($) => $.view.tooltip_swimlane)
                   : viewMode === "gantt" && allowGantt
@@ -2504,6 +2511,10 @@ export function IssueDisplayControls({
                 <DropdownMenuRadioItem value="swimlane">
                   <Waves />
                   {t(($) => $.view.swimlane)}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="tree">
+                  <Workflow />
+                  {t(($) => $.view.tree)}
                 </DropdownMenuRadioItem>
                 {allowGantt && (
                   <DropdownMenuRadioItem value="gantt">
