@@ -123,10 +123,7 @@ func subscriberReason(t *testing.T, queries *db.Queries, issueID, userType, user
 	return ""
 }
 
-// TestDelegatedSubscribe_AgentCreatedSubIssue is MUL-5483's headline case. Every
-// pre-existing auto-subscribe rule keys on ACTOR identity, so an agent-created,
-// agent-assigned sub-issue ends up with a full subscriber list and zero members
-// to notify. The human the run is attributed to must be subscribed instead.
+// Subscription prevention is opt-in; direct participants remain subscribed.
 func TestDelegatedSubscribe_AgentCreatedSubIssue(t *testing.T) {
 	queries := db.New(testPool)
 	bus := events.New()
@@ -142,10 +139,35 @@ func TestDelegatedSubscribe_AgentCreatedSubIssue(t *testing.T) {
 	publishAgentIssueCreated(bus, issueID, agentID)
 
 	if !isSubscribed(t, queries, issueID, "member", testUserID) {
-		t.Fatal("expected the human the run is attributed to to be subscribed to the agent-created sub-issue")
+		t.Fatal("default workspace behavior must preserve inherited human subscriptions")
 	}
-	if got := subscriberReason(t, queries, issueID, "member", testUserID); got != "delegated" {
-		t.Fatalf("reason = %q, want delegated", got)
+	if !isSubscribed(t, queries, issueID, "agent", agentID) {
+		t.Fatal("the child's creator must remain subscribed")
+	}
+
+	workspace, err := queries.GetWorkspace(context.Background(), util.MustParseUUID(testWorkspaceID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(), "UPDATE workspace SET settings=$2 WHERE id=$1", testWorkspaceID, workspace.Settings)
+	})
+	for _, enabled := range []bool{true, false} {
+		if _, err := testPool.Exec(context.Background(), `UPDATE workspace SET settings=jsonb_set(settings,'{prevent_inherited_child_subscriptions}',to_jsonb($2::boolean)) WHERE id=$1`, testWorkspaceID, enabled); err != nil {
+			t.Fatal(err)
+		}
+		child := createAgentOriginIssue(t, agentID, "agent_create", task, util.MustParseUUID(parentID))
+		publishAgentIssueCreated(bus, child, agentID)
+		if got := isSubscribed(t, queries, child, "member", testUserID); got == enabled {
+			t.Fatalf("inherited subscription = %v, prevention setting = %v", got, enabled)
+		}
+		if enabled {
+			direct := createAgentOriginIssue(t, agentID, "quick_create", task, util.MustParseUUID(parentID))
+			publishAgentIssueCreated(bus, direct, agentID)
+			if got := subscriberReason(t, queries, direct, "member", testUserID); got != "creator" {
+				t.Fatalf("directly requested child reason = %q, want creator", got)
+			}
+		}
 	}
 }
 
@@ -159,13 +181,15 @@ func TestDelegatedSubscribe_QuickCreateKeepsDirectReason(t *testing.T) {
 	registerSubscriberListeners(bus, testPool)
 
 	agentID, runtimeID := firstFixtureAgent(t)
-	task := createAgentTaskWithOriginator(t, agentID, runtimeID, util.MustParseUUID(testUserID))
-	issueID := createAgentOriginIssue(t, agentID, "quick_create", task, pgtype.UUID{})
-
-	publishAgentIssueCreated(bus, issueID, agentID)
-
-	if got := subscriberReason(t, queries, issueID, "member", testUserID); got != "creator" {
-		t.Fatalf("reason = %q, want creator — quick create must not be downgraded to the delegated tier", got)
+	parentID := createTestIssue(t, testWorkspaceID, testUserID)
+	t.Cleanup(func() { cleanupTestIssue(t, parentID) })
+	for _, parent := range []pgtype.UUID{{}, util.MustParseUUID(parentID)} {
+		task := createAgentTaskWithOriginator(t, agentID, runtimeID, util.MustParseUUID(testUserID))
+		issueID := createAgentOriginIssue(t, agentID, "quick_create", task, parent)
+		publishAgentIssueCreated(bus, issueID, agentID)
+		if got := subscriberReason(t, queries, issueID, "member", testUserID); got != "creator" {
+			t.Fatalf("reason = %q, want creator for directly requested work (parent %v)", got, parent.Valid)
+		}
 	}
 }
 

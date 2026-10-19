@@ -735,6 +735,9 @@
     "usage_help": "使用方法"
   },
   "workspace": {
+    "section_notifications": "通知",
+    "follow_sub_issues_label": "自动关注子任务",
+    "follow_sub_issues_description": "当你启动智能体处理任务时，自动关注处理过程中创建的子任务。",
     "section_general": "工作区信息",
     "logo_label": "工作区图标",
     "change_logo_aria": "更换工作区图标",

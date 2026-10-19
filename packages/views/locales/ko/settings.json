@@ -735,6 +735,9 @@
     "usage_help": "사용 방법"
   },
   "workspace": {
+    "section_notifications": "알림",
+    "follow_sub_issues_label": "하위 태스크 자동 구독",
+    "follow_sub_issues_description": "태스크에서 에이전트를 실행하면 해당 작업 중 생성된 하위 태스크를 자동으로 구독합니다.",
     "section_general": "워크스페이스 정보",
     "logo_label": "워크스페이스 아이콘",
     "change_logo_aria": "워크스페이스 로고 변경",

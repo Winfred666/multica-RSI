@@ -735,6 +735,9 @@
     "usage_help": "使い方"
   },
   "workspace": {
+    "section_notifications": "通知",
+    "follow_sub_issues_label": "サブタスクを自動的にフォロー",
+    "follow_sub_issues_description": "タスクでエージェントを起動すると、その作業中に作成されたサブタスクを自動的にフォローします。",
     "section_general": "ワークスペース情報",
     "logo_label": "ワークスペースのアイコン",
     "name_label": "名前",

@@ -740,6 +740,9 @@
     "usage_help": "Utilisation"
   },
   "workspace": {
+    "section_notifications": "Notifications",
+    "follow_sub_issues_label": "Suivre automatiquement les sous-tâches",
+    "follow_sub_issues_description": "Lorsque vous lancez un agent sur une tâche, suivez automatiquement les sous-tâches créées pendant ce travail.",
     "section_general": "Détails de l'espace de travail",
     "logo_label": "Logo de l'espace de travail",
     "change_logo_aria": "Changer le logo de l'espace de travail",

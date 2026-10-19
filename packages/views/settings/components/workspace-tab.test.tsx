@@ -7,6 +7,7 @@ import enCommon from "../../locales/en/common.json";
 import enSettings from "../../locales/en/settings.json";
 
 const mockUpdateWorkspace = vi.hoisted(() => vi.fn());
+const mockUpdateWorkspaceSettings = vi.hoisted(() => vi.fn());
 const mockInvalidateQueries = vi.hoisted(() => vi.fn());
 const mockToastSuccess = vi.hoisted(() => vi.fn());
 const workspaceRef = vi.hoisted(() => ({
@@ -18,6 +19,7 @@ const workspaceRef = vi.hoisted(() => ({
     context: "",
     issue_prefix: "TES",
     repos: [] as { url: string }[],
+    settings: {} as Record<string, unknown>,
   },
 }));
 const membersRef = vi.hoisted(() => ({
@@ -58,6 +60,7 @@ vi.mock("@multica/core/issues/queries", () => ({
 vi.mock("@multica/core/workspace/mutations", () => ({
   useLeaveWorkspace: () => ({ mutateAsync: vi.fn() }),
   useDeleteWorkspace: () => ({ mutateAsync: vi.fn() }),
+  useUpdateWorkspaceSettings: () => ({ mutate: mockUpdateWorkspaceSettings, isPending: false }),
 }));
 
 vi.mock("@multica/core/api", () => ({
@@ -114,6 +117,7 @@ describe("WorkspaceTab — automatic updates", () => {
       context: "",
       issue_prefix: "TES",
       repos: [],
+      settings: {},
     };
     membersRef.current = [{ user_id: "user-1", role: "owner", name: "Ada" }];
     mockUpdateWorkspace.mockImplementation(
@@ -141,6 +145,29 @@ describe("WorkspaceTab — automatic updates", () => {
     expect(screen.getByText("test-workspace")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Slug" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Save$/ })).toBeNull();
+  });
+
+  it.each([
+    { name: "enabled by default", settings: {}, checked: true },
+    { name: "enabled", settings: { prevent_inherited_child_subscriptions: false }, checked: true },
+    { name: "disabled", settings: { prevent_inherited_child_subscriptions: true }, checked: false },
+  ])("shows automatic sub-issue following as $name and lets admins toggle it", async ({ settings, checked }) => {
+    workspaceRef.current.settings = settings;
+    const user = setupUser();
+    render(<WorkspaceTab />, { wrapper: I18nWrapper });
+    const toggle = screen.getByRole("switch", { name: "Automatically follow sub-issues" });
+    expect(toggle).toHaveAttribute("aria-checked", String(checked));
+    await user.click(toggle);
+    expect(mockUpdateWorkspaceSettings).toHaveBeenCalledWith({
+      workspace: workspaceRef.current,
+      settings: { prevent_inherited_child_subscriptions: checked },
+    }, expect.objectContaining({ onError: expect.any(Function) }));
+  });
+
+  it("keeps automatic sub-issue following read-only for ordinary members", () => {
+    membersRef.current = [{ user_id: "user-1", role: "member", name: "Ada" }];
+    render(<WorkspaceTab />, { wrapper: I18nWrapper });
+    expect(screen.getByRole("switch", { name: "Automatically follow sub-issues" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("auto-saves ordinary workspace fields silently, without invalidating issue caches", async () => {

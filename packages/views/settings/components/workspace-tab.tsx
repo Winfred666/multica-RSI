@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Copy } from "lucide-react";
 import { Input } from "@multica/ui/components/ui/input";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { Button } from "@multica/ui/components/ui/button";
 import { Label } from "@multica/ui/components/ui/label";
+import { Switch } from "@multica/ui/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -28,7 +29,7 @@ import {
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
-import { useLeaveWorkspace, useDeleteWorkspace } from "@multica/core/workspace/mutations";
+import { useLeaveWorkspace, useDeleteWorkspace, useUpdateWorkspaceSettings } from "@multica/core/workspace/mutations";
 import {
   memberListOptions,
   workspaceKeys,
@@ -93,6 +94,8 @@ export function WorkspaceTab() {
   const qc = useQueryClient();
   const leaveWorkspace = useLeaveWorkspace();
   const deleteWorkspace = useDeleteWorkspace();
+  const updateSettings = useUpdateWorkspaceSettings();
+  const subscriptionsId = useId();
   const navigation = useNavigation();
   const hasOnboarded = useHasOnboarded();
 
@@ -473,6 +476,27 @@ export function WorkspaceTab() {
                 </Button>
               ) : null}
             </span>
+          </SettingsRow>
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection anchor="subscriptions" title={t(($) => $.workspace.section_notifications)}>
+        <SettingsCard>
+          <SettingsRow
+            label={<label htmlFor={subscriptionsId}>{t(($) => $.workspace.follow_sub_issues_label)}</label>}
+            description={t(($) => $.workspace.follow_sub_issues_description)}
+          >
+            <Switch
+              id={subscriptionsId}
+              checked={workspace.settings?.prevent_inherited_child_subscriptions !== true}
+              disabled={!canManageWorkspace || updateSettings.isPending}
+              aria-busy={updateSettings.isPending || undefined}
+              onCheckedChange={(enabled) => updateSettings.mutate({
+                workspace, settings: { prevent_inherited_child_subscriptions: !enabled },
+              }, {
+                onError: () => toast.error(t(($) => $.auto_save.failed)),
+              })}
+            />
           </SettingsRow>
         </SettingsCard>
       </SettingsSection>

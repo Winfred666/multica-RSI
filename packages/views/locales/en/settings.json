@@ -740,6 +740,9 @@
     "usage_help": "Usage"
   },
   "workspace": {
+    "section_notifications": "Notifications",
+    "follow_sub_issues_label": "Automatically follow sub-issues",
+    "follow_sub_issues_description": "When you start an agent on an issue, automatically follow the sub-issues created during that work.",
     "section_general": "Workspace details",
     "logo_label": "Workspace logo",
     "change_logo_aria": "Change workspace logo",
