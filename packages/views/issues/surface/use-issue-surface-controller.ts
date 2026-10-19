@@ -331,6 +331,7 @@ export function useIssueSurfaceController({
   const debouncedActiveSearch = useDebouncedTableSearch(activeSearch);
   const usesServerStatusSurface =
     effectiveViewMode === "list" ||
+    effectiveViewMode === "tree" ||
     (effectiveViewMode === "board" && effectiveGrouping === "status");
   const usesServerGroupSurface =
     (effectiveViewMode === "board" && effectiveGrouping !== "status") ||
@@ -367,7 +368,7 @@ export function useIssueSurfaceController({
       const visible = workflowColumns(
         visibleStatusKeys(
           statusFilters,
-          hiddenStatusKeys,
+          effectiveViewMode === "tree" ? [] : hiddenStatusKeys,
           catalog,
         ),
         projectWorkflow,
