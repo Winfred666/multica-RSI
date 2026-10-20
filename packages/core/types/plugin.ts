@@ -84,6 +84,12 @@ export interface PluginInstallationListResponse {
   plugins: PluginInstallation[];
 }
 
+export interface PluginExecutionStatus {
+  configured: boolean;
+  enabled: boolean;
+  run_as: { id: string; name: string } | null;
+}
+
 export interface PluginManifestSummary {
   key: string;
   name: string;

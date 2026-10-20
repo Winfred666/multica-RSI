@@ -629,7 +629,10 @@ DELETE FROM skill WHERE skill.workspace_id = $1;
 -- Plugin relationships have no foreign keys or cascades. Storage and secrets
 -- hang off the installation, so both leaf tables are cleared through the
 -- workspace's installation ids before the installations themselves.
-WITH installations AS MATERIALIZED (
+WITH deleted_execution AS (
+    DELETE FROM plugin_workspace_execution WHERE plugin_workspace_execution.workspace_id = $1
+),
+installations AS MATERIALIZED (
     SELECT plugin_installation.id
     FROM plugin_installation
     WHERE plugin_installation.workspace_id = $1

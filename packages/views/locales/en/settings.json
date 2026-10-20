@@ -481,6 +481,20 @@
       "saved": "Configuration saved",
       "secret_set": "Saved — enter a new value to replace it"
     },
+    "execution": {
+      "title": "Hosted execution",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "run_as": "Run as: {{name}}",
+      "load_failed": "Could not load hosted execution settings.",
+      "unavailable": "The PAT is invalid, its owner has left this workspace, or host configuration is unavailable.",
+      "consent": "All hosted plugins in this workspace use this PAT. Supply a token its owner has authorized for this purpose. Scripts run without a sandbox and can access every workspace available to that account.",
+      "token": "Personal access token",
+      "enable": "Enable hosted execution",
+      "replace": "Replace PAT",
+      "disable": "Disable hosted execution",
+      "disconnect_help": "Disabling removes the stored copy. The token owner controls revocation."
+    },
     "scopes": {
       "issues_read": "Read issues",
       "issues_write": "Create and edit issues",
@@ -491,7 +505,7 @@
       "agents_read": "Read the agent list",
       "members_read": "Read the member list",
       "storage_user": "Store data for each member individually",
-      "host_exec": "Run unsandboxed code on the Multica server. Plugin scopes do not restrict this code.",
+      "host_exec": "Run unsandboxed code on the Multica server using this workspace’s supplied PAT. Plugin scopes do not restrict its account-wide access.",
       "storage_workspace": "Store data shared by the workspace",
       "net": "Send data to {{domain}}",
       "unknown": "Unrecognized access — do not install"

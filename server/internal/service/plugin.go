@@ -32,6 +32,8 @@ type PluginService struct {
 	// Secrets encrypts `secret` config values. Nil disables secret writes so a
 	// misconfigured deployment fails closed instead of storing plaintext.
 	Secrets *secretbox.Box
+	// ServerURL is the ordinary account API origin used by hosted CLI calls.
+	ServerURL string
 	// LocalDir is MULTICA_PLUGIN_DIR: a directory of plugin sources an author
 	// can publish from without zipping and uploading after every edit. Empty
 	// disables the development publish channel.

@@ -180,6 +180,7 @@ import type {
   PluginTokenIssue,
   PluginPreviewRequest,
   PluginInstallRequest,
+  PluginExecutionStatus,
   PluginConfigRequest,
   IssuePullRequestsResponse,
   ListGitHubInstallationsResponse,
@@ -480,6 +481,8 @@ import {
   PluginMCPToolListSchema,
   PluginTokenIssueSchema,
   PluginInstallationSchema,
+  PluginExecutionStatusSchema,
+  EMPTY_PLUGIN_EXECUTION_STATUS,
   PluginPreviewSchema,
   WorkspaceMcpServerListSchema,
   WorkspaceMcpServerSchema,
@@ -3285,6 +3288,26 @@ export class ApiClient {
     return parseWithFallback(raw, PluginInstallationSchema, EMPTY_PLUGIN_INSTALLATION, {
       endpoint: "POST /api/workspaces/{id}/plugins",
     });
+  }
+
+  async getPluginExecution(workspaceId: string): Promise<PluginExecutionStatus> {
+    const raw = await this.fetch<unknown>(`/api/workspaces/${workspaceId}/plugins/execution`);
+    return parseWithFallback(raw, PluginExecutionStatusSchema, EMPTY_PLUGIN_EXECUTION_STATUS, {
+      endpoint: "GET /api/workspaces/{id}/plugins/execution",
+    });
+  }
+
+  async setPluginExecution(workspaceId: string, token: string): Promise<PluginExecutionStatus> {
+    const raw = await this.fetch<unknown>(`/api/workspaces/${workspaceId}/plugins/execution`, {
+      method: "PUT", body: JSON.stringify({ token }),
+    });
+    return parseWithFallback(raw, PluginExecutionStatusSchema, EMPTY_PLUGIN_EXECUTION_STATUS, {
+      endpoint: "PUT /api/workspaces/{id}/plugins/execution",
+    });
+  }
+
+  async deletePluginExecution(workspaceId: string): Promise<void> {
+    await this.fetch(`/api/workspaces/${workspaceId}/plugins/execution`, { method: "DELETE" });
   }
 
   async configurePlugin(workspaceId: string, installationId: string, request: PluginConfigRequest): Promise<PluginInstallation> {

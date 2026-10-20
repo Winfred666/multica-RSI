@@ -74,6 +74,7 @@ import type {
   ListIssueStatusesResponse,
   NotificationPreferenceResponse,
   PluginInstallation,
+  PluginExecutionStatus,
   PluginInstallationListResponse,
   PluginPackage,
   PluginPackageListResponse,
@@ -171,6 +172,16 @@ export const EMPTY_PLUGIN_INSTALLATION: PluginInstallation = {
   resources: [],
   created_at: "",
   updated_at: "",
+};
+
+export const PluginExecutionStatusSchema = z.object({
+  configured: z.boolean().default(false),
+  enabled: z.boolean().default(false),
+  run_as: z.object({ id: z.string(), name: z.string().default("") }).nullable().default(null),
+});
+
+export const EMPTY_PLUGIN_EXECUTION_STATUS: PluginExecutionStatus = {
+  configured: false, enabled: false, run_as: null,
 };
 
 export const PluginInstallationListResponseSchema = z.object({

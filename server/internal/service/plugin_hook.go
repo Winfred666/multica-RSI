@@ -66,13 +66,13 @@ type HookResult struct {
 	Attempts int             `json:"attempts"`
 }
 
-// HookActor is who the resulting writes belong to.
+// HookActor attributes writes made through the invocation callback.
 //
-// This is the whole identity model for hooks, and it follows the trigger rather
-// than the plugin: a ui/manual hook runs because a person pressed something, so
+// Callback identity follows the trigger rather than the plugin: a ui/manual
+// hook runs because a person pressed something, so
 // its writes stay that person's (marked via_plugin_id); event/schedule hooks
 // have no person behind them and must not borrow the last one who touched the
-// resource.
+// resource. Hosted CLI writes instead use the workspace's supplied PAT owner.
 type HookActor struct {
 	Type string
 	ID   pgtype.UUID
