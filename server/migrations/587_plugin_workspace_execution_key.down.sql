@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS plugin_workspace_execution_workspace_id_key;

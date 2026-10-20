@@ -39,6 +39,10 @@ func (s *PluginService) callHookExecutable(ctx context.Context, invocation HookI
 	if hook.Transport.Type != plugincontract.TransportExec || !HookAllowsTrigger(hook, invocation.Trigger) {
 		return nil, pluginErrf(PluginErrorForbidden, "this hook does not allow hosted execution for this trigger")
 	}
+	token, err := s.executionToken(ctx, installation)
+	if err != nil {
+		return nil, err
+	}
 	file, err := s.Queries.GetPluginPackageFile(ctx, db.GetPluginPackageFileParams{
 		VersionID: installation.PackageVersionID,
 		Path:      hook.Transport.Entry,
@@ -64,7 +68,14 @@ func (s *PluginService) callHookExecutable(ctx context.Context, invocation HookI
 	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	return runPluginExecutable(callCtx, file.Content, input, nil)
+	output, err := runPluginExecutable(callCtx, file.Content, input, []string{
+		"MULTICA_TOKEN=" + token,
+		"MULTICA_WORKSPACE_ID=" + uuidString(installation.WorkspaceID),
+		"MULTICA_SERVER_URL=" + s.ServerURL,
+	})
+	// A script accidentally echoing its environment must not return its PAT to a surface.
+	output = bytes.ReplaceAll(output, []byte(token), []byte("[REDACTED]"))
+	return output, err
 }
 
 func runPluginExecutable(ctx context.Context, executable, input []byte, environment []string) (json.RawMessage, error) {

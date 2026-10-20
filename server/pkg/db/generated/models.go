@@ -1355,6 +1355,12 @@ type PluginStorage struct {
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
+type PluginWorkspaceExecution struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	PatID       pgtype.UUID `json:"pat_id"`
+	Ciphertext  []byte      `json:"ciphertext"`
+}
+
 type Project struct {
 	ID          pgtype.UUID        `json:"id"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`

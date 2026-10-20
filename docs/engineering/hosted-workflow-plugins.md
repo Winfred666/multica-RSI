@@ -1,14 +1,14 @@
-# Hosted workflow plugins: minimal proposal
+# Hosted workflow plugins
 
-Status: hosted execution implemented; automatic credentials remain below.
+Status: hosted execution and an explicitly supplied PAT per workspace implemented.
 
 ## Decision
 
 Reuse native workflows, wakeups and the plugin scheduler. The core change is
-limited to executing a packaged script and supplying its credentials. Workflow
+limited to executing a packaged script with the workspace’s supplied credentials. Workflow
 policy ships as independently upgraded ZIPs inside the deployed Multica
 container. One initial host release is required; subsequent package changes
-need neither manual PAT setup nor another Multica deployment.
+reuse the workspace credential and need no further Multica deployment.
 
 ## What is already available
 
@@ -69,21 +69,64 @@ This hook fragment requires `"scopes": ["host:exec"]` in its manifest:
 }
 ```
 
-## Remaining core work
+## Workspace credentials
 
-**Supply credentials automatically.** On owner/admin installation, create
-a dedicated [PAT](../../server/internal/handler/personal_access_token.go) for
-that account and keep its value encrypted with the installation using existing
-[plugin secret storage](../../server/pkg/db/queries/plugin.sql). Inject
-`MULTICA_TOKEN`, `MULTICA_WORKSPACE_ID` and `MULTICA_SERVER_URL` into the
-ordinary account CLI environment. Disable/uninstall revokes it; re-enabling
-creates a replacement. Keep credentials out of ZIPs, user-entered config,
-browser surfaces and logs.
+Hosted execution is disabled in each workspace until an owner/admin explicitly
+supplies a PAT in **Settings → Plugins → Hosted execution**. The PAT determines
+the execution account, displayed as **Run as**. Its owner must be a member of
+that workspace; they can be an ordinary member. Supply a token its owner has
+authorized for this purpose. Multica never creates a PAT automatically.
 
-This is trusted admin-installed code. PAT authority is account-wide; manifest
-scopes and the workspace variable do not restrict it or sandbox the script.
-Make that authority clear in the installation preview and retain ordinary API
-permission checks. No package-specific permission API is needed.
+All hosted plugins in that workspace share the encrypted credential.
+Installation, upgrades, and per-plugin enable/disable do not change it or its
+owner. Each workspace has independent configuration; the host never falls back
+to another workspace's token. A dedicated PAT per workspace allows independent
+revocation, although the same account can own several PATs.
+
+The host requires `MULTICA_PLUGIN_SECRET_KEY` (a base64-encoded 32-byte key)
+and `MULTICA_PUBLIC_URL` (the API origin reachable from the host). Each invocation
+receives `MULTICA_TOKEN`, `MULTICA_WORKSPACE_ID`, and `MULTICA_SERVER_URL`.
+Credentials are write-only: reads return status and owner metadata. Token values
+are absent from ZIPs, JSON input, configuration responses and logs; accidental
+echoes in hook stdout are redacted.
+
+Execution checks the PAT's validity and its owner's workspace membership before
+launching. Expiry, revocation, or departure blocks subsequent launches. Disabling
+workspace execution or deleting the workspace removes the stored copy; it does
+not revoke the supplied PAT, which may have other uses. Already running hooks
+can finish within their timeout. The owner can revoke the PAT separately.
+
+Hosted scripts are trusted, unsandboxed code. A standard PAT is account-wide:
+workspace configuration and manifest scopes do not restrict its authority.
+CLI writes belong to the PAT owner. The existing invocation callback remains
+available for actions needing plugin attribution and scoped grants.
+
+## API and CLI
+
+These endpoints use ordinary account authentication and workspace membership.
+Only owners/admins may change the credential; members can read its status.
+
+| Operation | Endpoint |
+| --- | --- |
+| Read status and execution owner | `GET /api/workspaces/{id}/plugins/execution` |
+| Supply or replace the PAT and enable execution | `PUT /api/workspaces/{id}/plugins/execution` with `{"token":"mul_…"}` |
+| Disable execution and forget the stored copy | `DELETE /api/workspaces/{id}/plugins/execution` |
+
+GET/PUT return `configured`, `enabled`, and `run_as` (`{id, name}` or `null`),
+never the token. `configured: true, enabled: false` means the saved credential
+or host prerequisites are no longer usable.
+
+```sh
+multica workspace plugin-execution status acme
+multica workspace plugin-execution enable acme --token-stdin < /secure/plugin-pat
+multica workspace plugin-execution disable acme
+```
+
+The workspace argument also accepts a UUID/prefix, or can be omitted to use the
+CLI's selected workspace. Commands return JSON. The supplied token is separate
+from the admin credential used to authenticate the configuration request.
+
+## Workflow policy
 
 Reuse the [scheduler](../../server/internal/scheduler/jobs_plugin_hook.go).
 Scripts periodically read current state and avoid repeating recorded work.
@@ -170,14 +213,14 @@ periodic threshold check, not an instantaneous cap.
 
 ## Delivery
 
-1. **Host support:** implement the two additions above. Verify entry validation,
-   timeout/termination, failure reporting, retries, credential handling and
-   disable/re-enable. Preserve existing HTTP/MCP behavior.
+1. **Host support (implemented):** packaged execution and workspace credentials
+   reuse the existing dispatcher, scheduler and account API. No remaining core
+   work from this proposal is required to start authoring these packages.
 2. **Packages:** prove the runner with the spending check, then parent wakeups
    and Ralph. Verify repeated checks, native handoffs, custom statuses, human
    steps and pending runs. Keep these policies in package scripts.
 3. **Production acceptance:** install and upgrade ZIPs in running Docker without
-   entering a PAT or rebuilding/restarting Multica. Verify that publishing alone
+   re-entering the workspace PAT or rebuilding/restarting Multica. Verify that publishing alone
    does not upgrade an installation, and separately test scheduler recovery after
    restart. Agent-authored versions use the same publish/upgrade path.
 
@@ -185,7 +228,7 @@ Track [task/agent reads #7620](https://github.com/multica-ai/multica/pull/7620)
 and [issue listing/task creation #8851](https://github.com/multica-ai/multica/pull/8851),
 both open at review. Existing CLI/API access lets this work proceed independently.
 Maintainers [declined a separate Goal Mode](https://github.com/multica-ai/multica/issues/7185#issuecomment-5338335094),
-supporting a small optional Ralph policy. Hosted execution and automatic PATs
+supporting a small optional Ralph policy. Hosted execution and workspace credentials
 are our self-hosted extension, not an upstream commitment; the
 [July 2 maintainer position](https://github.com/multica-ai/multica/issues/4490#issuecomment-4862955743)
 reserved plugin-core development for the internal team.

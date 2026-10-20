@@ -1349,6 +1349,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// put an outside server on the critical path of creating an issue.
 	if h.PluginService != nil {
 		h.PluginService.Callbacks = service.NewCallbackTokens()
+		h.PluginService.ServerURL = strings.TrimRight(signupConfig.PublicURL, "/")
 		// Omitted rather than sent relative: a third-party hook server cannot
 		// call a path-only URL, and a broken absolute URL is harder to diagnose
 		// than an absent one.
@@ -1735,6 +1736,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					// see what is mounted in their workspace and which scopes
 					// it holds; install / configure / remove stay admin-only.
 					r.Get("/plugins", h.ListPlugins)
+					r.Get("/plugins/execution", h.GetPluginExecution)
 					// One short-lived hosted surface launch. Member-visible
 					// because opening an issue is what asks for it; executable
 					// bytes stay off the authenticated app/API origin.
@@ -1779,6 +1781,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					// exists. Both steps name the same version id, which is
 					// what makes the approved manifest and the running code
 					// the same artifact.
+					r.Put("/plugins/execution", h.SetPluginExecution)
+					r.Delete("/plugins/execution", h.DeletePluginExecution)
 					r.Post("/plugins/preview", h.PreviewPlugin)
 					r.Post("/plugins", h.InstallPlugin)
 					r.Get("/plugins/{installationId}/invocations", h.ListPluginInvocations)

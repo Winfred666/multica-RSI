@@ -28,8 +28,8 @@ import (
 // changes nothing for a workspace that already installed one — upgrading is an
 // administrator's action, which is the whole reason the two are separate.
 //
-// Only the frontend artifact moved here. Hook endpoints and MCP servers still
-// live on the author's own infrastructure; we do not run third-party backends.
+// HTTP hook endpoints and MCP servers live on the author's infrastructure;
+// executable hooks run their packaged entry on the host with host:exec consent.
 
 // PluginPackageVersionSummary is one published version as the settings page
 // lists it.

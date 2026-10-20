@@ -481,6 +481,20 @@
       "saved": "Configuration enregistrée",
       "secret_set": "Enregistré — saisissez une nouvelle valeur pour la remplacer"
     },
+    "execution": {
+      "title": "Exécution hébergée",
+      "enabled": "Activée",
+      "disabled": "Désactivée",
+      "run_as": "Exécuter en tant que : {{name}}",
+      "load_failed": "Impossible de charger les paramètres d’exécution hébergée.",
+      "unavailable": "Le jeton est invalide, son propriétaire a quitté cet espace de travail ou la configuration du serveur est indisponible.",
+      "consent": "Tous les plugins hébergés de cet espace de travail utilisent ce jeton. Fournissez un jeton autorisé par son propriétaire pour cet usage. Les scripts ne sont pas isolés et peuvent accéder à tous les espaces de travail accessibles à ce compte.",
+      "token": "Jeton d’accès personnel",
+      "enable": "Activer l’exécution hébergée",
+      "replace": "Remplacer le jeton",
+      "disable": "Désactiver l’exécution hébergée",
+      "disconnect_help": "La désactivation supprime la copie stockée. Le propriétaire du jeton contrôle sa révocation."
+    },
     "scopes": {
       "issues_read": "Lire les tâches",
       "issues_write": "Créer et modifier des tâches",
@@ -491,7 +505,7 @@
       "agents_read": "Lire la liste des agents",
       "members_read": "Lire la liste des membres",
       "storage_user": "Stocker des données pour chaque membre séparément",
-      "host_exec": "Exécuter du code sans isolation sur le serveur Multica. Les permissions du plugin ne limitent pas ce code.",
+      "host_exec": "Exécuter du code sans isolation sur le serveur Multica avec le jeton fourni pour cet espace de travail. Les permissions du plugin ne limitent pas son accès à l’ensemble du compte.",
       "storage_workspace": "Stocker des données partagées par l'espace de travail",
       "net": "Envoyer des données vers {{domain}}",
       "unknown": "Accès non reconnu — ne pas installer"
