@@ -491,6 +491,7 @@
       "agents_read": "Read the agent list",
       "members_read": "Read the member list",
       "storage_user": "Store data for each member individually",
+      "host_exec": "Run unsandboxed code on the Multica server. Plugin scopes do not restrict this code.",
       "storage_workspace": "Store data shared by the workspace",
       "net": "Send data to {{domain}}",
       "unknown": "Unrecognized access — do not install"

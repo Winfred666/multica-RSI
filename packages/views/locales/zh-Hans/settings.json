@@ -487,6 +487,7 @@
       "agents_read": "读取智能体列表",
       "members_read": "读取成员列表",
       "storage_user": "为每位成员单独存储数据",
+      "host_exec": "在 Multica 服务器上运行不受沙箱隔离的代码。插件权限范围不限制这些代码。",
       "storage_workspace": "存储工作区共享数据",
       "net": "向 {{domain}} 发送数据",
       "unknown": "无法识别的权限 — 请勿安装"

@@ -42,8 +42,10 @@ before you write one:
 ## Publishing
 
 Zip the manifest with every file it names and upload it in **Settings →
-Plugins**. You need no server of your own for the frontend; hook endpoints and
-MCP servers are still yours to run.
+Plugins**. You need no server of your own for the frontend. HTTP hook endpoints
+and MCP servers are yours to run; the `exec` transport runs a packaged executable
+on the Multica host with explicit `host:exec` consent. See the
+[hosted hook contract](../../docs/engineering/hosted-workflow-plugins.md#hosted-execution).
 
 A published version is immutable. Installing binds a workspace to one version,
 and publishing a new one changes nothing there until an administrator upgrades —

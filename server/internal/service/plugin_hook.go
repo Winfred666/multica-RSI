@@ -23,15 +23,7 @@ import (
 	"github.com/multica-ai/multica/server/pkg/remotemcp"
 )
 
-// The hook engine: the one place Multica calls OUT to a plugin's own server.
-//
-// Everything before this ran the other way — a sandboxed surface asked the host
-// and the host acted on the signed-in user's session, so no request ever left
-// our infrastructure on a plugin's say-so. A hook does leave, which is why the
-// checks here are about the destination rather than the caller: the host must
-// be one the manifest declared through a `net:` scope, it must resolve to a
-// public address at dial time, and the body must be signed so the receiver can
-// tell our call from anyone else's.
+// HTTP and hosted hooks share trigger checks, limits and invocation records.
 
 const (
 	// Signature scheme version, carried in the header so the scheme can change
@@ -211,7 +203,7 @@ func (s *PluginService) InvokeHook(ctx context.Context, invocation HookInvocatio
 	if !HookAllowsTrigger(hook, invocation.Trigger) {
 		return result, pluginErrf(PluginErrorForbidden, "hook %q does not declare the %s trigger", hook.Key, invocation.Trigger)
 	}
-	if hook.Transport.Type != plugincontract.TransportHTTP {
+	if hook.Transport.Type != plugincontract.TransportHTTP && hook.Transport.Type != plugincontract.TransportExec {
 		return result, pluginErrf(PluginErrorIncompatible, "hook transport %q is not supported yet", hook.Transport.Type)
 	}
 	if err := s.checkHookRate(ctx, invocation.Installation.ID, hook.Key); err != nil {
@@ -219,7 +211,13 @@ func (s *PluginService) InvokeHook(ctx context.Context, invocation HookInvocatio
 	}
 
 	started := time.Now()
-	output, callErr := s.callHookEndpoint(ctx, invocation)
+	var output json.RawMessage
+	var callErr error
+	if hook.Transport.Type == plugincontract.TransportExec {
+		output, callErr = s.callHookExecutable(ctx, invocation)
+	} else {
+		output, callErr = s.callHookEndpoint(ctx, invocation)
+	}
 	latency := int(time.Since(started).Milliseconds())
 
 	result.Latency = latency

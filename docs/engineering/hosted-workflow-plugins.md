@@ -1,7 +1,6 @@
 # Hosted workflow plugins: minimal proposal
 
-Status: proposal. Reviewed against upstream `a790bc8c0` on 2026-10-19.
-Hosted script execution and automatic credentials still need implementation.
+Status: hosted execution implemented; automatic credentials remain below.
 
 ## Decision
 
@@ -33,17 +32,31 @@ These are merged. Plugin and workflow management remain gated by
 [#9061](https://github.com/multica-ai/multica/pull/9061), fixes comment routing;
 it adds no hosted plugin executor.
 
-## Remaining core work
+## Hosted execution
 
-**1. Add one `exec` transport.** Extend the existing
+The `exec` transport extends the existing
 [manifest](../../server/pkg/plugincontract/manifest.go), package file validation
-and [hook dispatcher](../../server/internal/service/plugin_hook.go) together.
-Resolve the entry inside the installed version and run it with a timeout.
-Supply the existing hook payload and non-secret config as JSON on standard
-input. The [Docker image](../../Dockerfile) already contains `/app/multica`;
-start with shell scripts and executables it can run.
+and [hook dispatcher](../../server/internal/service/plugin_hook.go).
+It resolves the entry from the installed immutable version and runs it on
+Linux/macOS. Declare the `host:exec` scope: the installation preview explains
+that this is unsandboxed server execution, beyond ordinary plugin scopes.
 
-This hook fragment is **proposed, not currently supported**:
+Each invocation gets an empty temporary working directory and home, the existing
+hook payload and non-secret config as JSON on standard input, and a clean
+environment. Only the declared executable is materialized; package supporting
+files are not extracted. Scripts need a shebang such as `#!/bin/sh`; binaries
+must match the host. The [Docker image](../../Dockerfile) includes `/app/multica`
+on the execution PATH and Alpine's shell, but no Python, Node, or jq.
+
+Return JSON on stdout (or no output). Output is capped at 1 MiB; stderr is
+discarded so script diagnostics cannot leak credentials into invocation logs.
+The existing `timeout_ms` applies: 10 seconds by default, at most 30 seconds.
+The process group is killed on timeout and after completion, and the temporary
+directory is removed. Launch ordinary agent runs for long work; these hooks
+perform short policy checks. Scheduled and event retries retain existing
+semantics, so scripts must make repeated deliveries safe.
+
+This hook fragment requires `"scopes": ["host:exec"]` in its manifest:
 
 ```json
 {
@@ -56,7 +69,9 @@ This hook fragment is **proposed, not currently supported**:
 }
 ```
 
-**2. Supply credentials automatically.** On owner/admin installation, create
+## Remaining core work
+
+**Supply credentials automatically.** On owner/admin installation, create
 a dedicated [PAT](../../server/internal/handler/personal_access_token.go) for
 that account and keep its value encrypted with the installation using existing
 [plugin secret storage](../../server/pkg/db/queries/plugin.sql). Inject
@@ -81,7 +96,8 @@ native wakeup event catalog is not automatically a plugin hook catalog.
 
 `multica.plugin.json` declares a package's contributions; it is not executable
 workflow logic. The ZIP also contains any referenced frontend scripts or skills.
-Current HTTP/MCP hooks execute through their declared external endpoints.
+HTTP/MCP hooks execute through their declared external endpoints; `exec` runs
+the declared artifact on the Multica host.
 
 This is a complete example of the existing scheduled HTTP hook format.
 The endpoint is illustrative; an actual installation needs its handler deployed.

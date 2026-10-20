@@ -143,6 +143,16 @@ describe("PluginsTab", () => {
     mockUninstall.mockResolvedValue(undefined);
   });
 
+  it("discloses unsandboxed hosted execution before granting access", async () => {
+    data.packages.packages = [{ ...PACKAGE, versions: [PACKAGE.versions[0]] }];
+    mockPreview.mockResolvedValue({ ...PREVIEW, scopes: ["host:exec"] });
+    const user = userEvent.setup();
+    render(<PluginsTab />, { wrapper: Wrapper });
+    await user.click(screen.getByRole("button", { name: "Review and install" }));
+    expect(await screen.findByText(enSettings.plugins.scopes.host_exec)).toBeInTheDocument();
+    expect(mockInstall).not.toHaveBeenCalled();
+  });
+
   it("shows the scope consent screen before anything is installed", async () => {
     data.packages.packages = [{ ...PACKAGE, versions: [{ ...PACKAGE.versions[0] }] }];
     const user = userEvent.setup();

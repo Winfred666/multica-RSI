@@ -214,6 +214,18 @@ func buildBundle(open func(entry string) ([]byte, bool, error), prefix string) (
 			return Bundle{}, err
 		}
 	}
+	for _, hook := range manifest.Contributes.Hooks {
+		if hook.Transport.Type != TransportExec {
+			continue
+		}
+		content, err := collect(hook.Transport.Entry)
+		if err != nil {
+			return Bundle{}, err
+		}
+		if len(content) == 0 {
+			return Bundle{}, fmt.Errorf("plugin executable %q is empty", hook.Transport.Entry)
+		}
+	}
 	if manifest.Icon != "" {
 		content, err := collect(manifest.Icon)
 		if err != nil {
