@@ -9,7 +9,7 @@ import { viewStoreSlice } from "@multica/core/issues/stores/view-store";
 import { ViewStoreProvider } from "@multica/core/issues/stores/view-store-context";
 import type { AgentTask, Issue, TimelineEntry, TaskMessagePayload } from "@multica/core/types";
 import { chatKeys } from "@multica/core/chat/queries";
-import { issueTimelineOptions } from "@multica/core/issues/queries";
+import { issueTasksOptions, issueTimelineOptions } from "@multica/core/issues/queries";
 import { renderWithI18n } from "../../test/i18n";
 import { TreeView } from "./tree-view";
 import type { IssueStatusPagination } from "../surface/use-issue-status-branches";
@@ -132,7 +132,7 @@ describe("TreeView", () => {
     qc.clear();
   });
 
-  it("loads an agent's issue channel only on hover and updates live thinking and replies", async () => {
+  it("loads transcripts only on hover and updates live thinking and replies", async () => {
     const row = issue("Working");
     const task = { id: "10000000-0000-4000-8000-000000000001", agent_id: "agent-Working", issue_id: row.id, status: "running", created_at: "2026-01-01" } as AgentTask;
     const other = { ...task, id: "10000000-0000-4000-8000-000000000002", issue_id: "Elsewhere", created_at: "2026-02-01" };
@@ -142,7 +142,6 @@ describe("TreeView", () => {
       message(1, "thinking", "Checking "), message(2, "thinking", "the branch"),
       message(3, "tool_use", "Internal tool details"), message(4, "text", "Found the answer"),
     ]);
-    expect(api.listTasksByIssue).not.toHaveBeenCalled();
     expect(api.listTaskMessages).not.toHaveBeenCalled();
     await userEvent.hover(await screen.findByRole("img", { name: "agent-Working" }));
     expect(await screen.findByText("Checking the branch")).toBeInTheDocument();
@@ -190,8 +189,8 @@ describe("TreeView", () => {
     await userEvent.click(screen.getByRole("tab", { name: "Description" }));
     expect(screen.getByText("Original request")).toBeInTheDocument();
     await userEvent.unhover(screen.getByText("Empty", { selector: "span[tabindex]" }));
-    act(() => qc.setQueryData(issueTimelineOptions(row.id).queryKey, [comment("agent-Empty")]));
     api.listTasksByIssue.mockRejectedValueOnce(new Error("Unavailable"));
+    act(() => qc.setQueryData(issueTimelineOptions(row.id).queryKey, [comment("agent-Empty")]));
     await userEvent.hover(await screen.findByRole("img", { name: "agent-Empty" }));
     const retry = await screen.findByRole("button", { name: "Try again" });
     await userEvent.click(retry);
@@ -206,12 +205,28 @@ describe("TreeView", () => {
     await userEvent.hover(await screen.findByRole("img", { name: "ceo" }));
     expect(await screen.findByText("First instruction")).toBeInTheDocument();
     expect(screen.getByText("1 message")).toBeInTheDocument();
-    expect(api.listTasksByIssue).not.toHaveBeenCalled();
+    expect(api.listTaskMessages).not.toHaveBeenCalled();
     act(() => qc.setQueryData<TimelineEntry[]>(issueTimelineOptions(row.id).queryKey, (old = []) => [...old, { ...comment("ceo", "Second instruction", "member"), created_at: "2026-01-02" }]));
     expect(await screen.findByText("Second instruction")).toBeInTheDocument();
     expect(screen.getByText("2 messages")).toBeInTheDocument();
     const avatars = container.querySelector('[aria-label="Collaborators"]')!;
     expect(avatars.querySelector('[role="img"]')).toHaveAttribute("aria-label", "ceo");
+    qc.clear();
+  });
+
+  it("shows server input trends before hover and refreshes the ring when run history changes", async () => {
+    const row = issue("Trend");
+    const run = { id: "run", agent_id: "agent-Trend", issue_id: row.id, status: "completed", created_at: "2026-01-01", input_trend: { current_context: 1000, context_compression_count: 1 } } as AgentTask;
+    const { qc, api } = setup([row], [run], [comment("agent-Trend")]);
+    const ring = await screen.findByRole("img", { name: "Current context: 1,000 tokens" });
+    expect(ring.querySelector("svg")).toBeInTheDocument();
+    expect(screen.getByLabelText("Context compressions: 1")).toHaveTextContent("1");
+    expect(api.listTaskMessages).not.toHaveBeenCalled();
+    act(() => qc.setQueryData(issueTasksOptions(row.id).queryKey, [{ ...run, input_trend: { ...run.input_trend!, current_context: 500, context_compression_count: 2 } }]));
+    expect(await screen.findByRole("img", { name: "Current context: 500 tokens" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Context compressions: 2")).toHaveTextContent("2");
+    await userEvent.hover(screen.getByRole("img", { name: "agent-Trend" }));
+    expect(await screen.findByText("Estimated from completed runs; ring scaled to the largest recorded context.")).toBeInTheDocument();
     qc.clear();
   });
 });
