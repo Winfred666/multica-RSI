@@ -46,6 +46,7 @@ const MAX_LABELS = 3;
 interface IssueHoverCardProps {
   issueId: string;
   children: ReactNode;
+  content?: ReactNode;
   /**
    * Identifier to name the issue with when the detail fetch fails (e.g.
    * "MUL-7"). The same label the chip degrades to, so a card that cannot load
@@ -88,6 +89,7 @@ export function IssueHoverCard({
   children,
   fallbackLabel,
   delay,
+  content,
 }: IssueHoverCardProps) {
   return (
     <HoverCard>
@@ -96,8 +98,8 @@ export function IssueHoverCard({
       <HoverCardTrigger delay={delay} render={<span />}>
         {children}
       </HoverCardTrigger>
-      <HoverCardContent align="start" className="w-85 max-w-[calc(100vw-1rem)] p-3">
-        <IssueHoverCardBody issueId={issueId} fallbackLabel={fallbackLabel} />
+      <HoverCardContent align="start" className={cn(content ? "w-120" : "w-85", "max-w-[calc(100vw-1rem)] p-3")}>
+        {content ?? <IssueHoverCardBody issueId={issueId} fallbackLabel={fallbackLabel} />}
       </HoverCardContent>
     </HoverCard>
   );

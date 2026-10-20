@@ -376,6 +376,8 @@ function IssueSurfaceContent({
             {controller.viewMode === "tree" && (
               <TreeView
                 issues={issues}
+                childProgressMap={controller.childProgressMap}
+                projectMap={controller.projectMap}
                 statusPagination={controller.statusPagination!}
                 onCreateIssue={openCreateIssue}
               />

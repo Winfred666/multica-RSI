@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { EyeOff, FileText, MoreHorizontal, Plus, RotateCcw, UserRound } from "lucide-react";
-import type { AgentTask, Issue } from "@multica/core/types";
+import { EyeOff, MoreHorizontal, Plus, RotateCcw } from "lucide-react";
+import type { AgentTask, Issue, Project } from "@multica/core/types";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { useActorName } from "@multica/core/workspace/hooks";
+import { useWorkspacePaths } from "@multica/core/paths";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { isBuiltInIssueStatus } from "@multica/core/issue-statuses";
 import { agentTaskSnapshotOptions } from "@multica/core/agents";
@@ -14,17 +14,12 @@ import { issueStatusCategory, statusColumnKeys } from "@multica/core/issues";
 import { STATUS_CONFIG } from "@multica/core/issues/config";
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import {
-  buildIssueTree, issueTreeParticipants, layoutIssueTree,
-  TREE_NODE_HEIGHT, TREE_NODE_WIDTH,
+  buildIssueTree, issueTreeCollaborators, layoutIssueTree, TREE_NODE_WIDTH,
 } from "@multica/core/issues/surface/tree";
 import { Button } from "@multica/ui/components/ui/button";
-import { BorderBeam } from "@multica/ui/components/common/border-beam";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@multica/ui/components/ui/hover-card";
 import { Switch } from "@multica/ui/components/ui/switch";
-import { cn } from "@multica/ui/lib/utils";
-import { ActorAvatar } from "../../common/actor-avatar";
-import { RichContent } from "../../rich-content";
+import { AppLink } from "../../navigation";
 import { useZoomCanvas } from "../../editor/hooks/use-zoom-canvas";
 import { ZoomCanvas, ZoomControls } from "../../editor/zoom-canvas";
 import { useT } from "../../i18n";
@@ -32,15 +27,22 @@ import { sortIssues } from "../utils/sort";
 import { useStatusLabel } from "../utils/status-label";
 import type { IssueCreateDefaults } from "../surface/types";
 import type { IssueStatusPagination } from "../surface/use-issue-status-branches";
-import { IssueMentionCard } from "./issue-mention-card";
+import { IssueHoverCard } from "./issue-hover-card";
+import { BoardCardContent } from "./board-card";
+import type { ChildProgress } from "./list-row";
+import { IssueActionsContextMenu } from "../actions";
+import { PEEK_TARGET_ATTR, useIsIssuePeeked, useIssuePeekLinkProps } from "../surface/peek-context";
+import { TreeCollaboratorAvatar, TreeIssueHoverContent } from "./tree-hover-content";
 import { BUILT_IN_ICON_COLOR, StatusIcon } from "./status-icon";
 
 const EMPTY_TASKS: AgentTask[] = [];
 
-export function TreeView({ issues, statusPagination, onCreateIssue }: {
+export function TreeView({ issues, statusPagination, onCreateIssue, childProgressMap, projectMap }: {
   issues: Issue[];
   statusPagination: IssueStatusPagination;
   onCreateIssue: (defaults?: IssueCreateDefaults) => void;
+  childProgressMap?: Map<string, ChildProgress>;
+  projectMap?: Map<string, Project>;
 }) {
   const { t } = useT("issues");
   const wsId = useWorkspaceId();
@@ -54,11 +56,15 @@ export function TreeView({ issues, statusPagination, onCreateIssue }: {
   const sortDirection = useViewStore((s) => s.sortDirection);
   const { data: tasks = EMPTY_TASKS } = useQuery(agentTaskSnapshotOptions(wsId));
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [heights, setHeights] = useState<ReadonlyMap<string, number>>(new Map());
+  const onHeightChange = useCallback((id: string, height: number) => {
+    if (height > 0) setHeights((previous) => previous.get(id) === height ? previous : new Map(previous).set(id, height));
+  }, []);
   const layout = useMemo(() => layoutIssueTree(buildIssueTree(
     sortIssues(issues, sortBy, sortDirection, statusColumnKeys(catalog)),
     new Set(hiddenStatuses.filter((status) => !statusFilters.includes(status))),
     expanded,
-  )), [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded]);
+  ), heights), [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, heights]);
   const canvas = useZoomCanvas({ content: layout });
   const byId = useMemo(() => new Map(layout.nodes.map((node) => [node.node.id, node])), [layout]);
   const pages = Object.values(statusPagination);
@@ -105,8 +111,8 @@ export function TreeView({ issues, statusPagination, onCreateIssue }: {
           {layout.nodes.map((position) => {
             const parent = position.parentId ? byId.get(position.parentId) : null;
             if (!parent) return null;
-            const startY = parent.y + (parent.node.collapsed ? 88 : TREE_NODE_HEIGHT);
-            const endY = position.y + (position.node.collapsed ? 40 : 12);
+            const startY = parent.y + (parent.node.collapsed ? 88 : parent.height);
+            const endY = position.y + (position.node.collapsed ? 40 : 0);
             const midY = (startY + endY) / 2;
             const dx = position.x - parent.x;
             const radius = Math.min(12, Math.abs(dx) / 2);
@@ -119,13 +125,22 @@ export function TreeView({ issues, statusPagination, onCreateIssue }: {
           })}
         </svg>
         {layout.nodes.map(({ node, x, y }) => (
-          <div key={node.id} className="absolute flex flex-col items-center" style={{ left: x - TREE_NODE_WIDTH / 2, top: y, width: TREE_NODE_WIDTH, height: TREE_NODE_HEIGHT }}>
+          <div key={node.id} className="absolute flex flex-col items-center" style={{ left: x - TREE_NODE_WIDTH / 2, top: y, width: TREE_NODE_WIDTH }}>
             {node.collapsed ? (
               <Button variant="outline" size="icon-lg" className="relative mt-10 rounded-full bg-background shadow-[4px_4px_0_var(--muted),8px_8px_0_var(--border)]" aria-label={t(($) => $.tree.expand, { count: node.issues.length })} onClick={() => setExpanded((previous) => new Set([...previous, node.id]))}>
                 <MoreHorizontal />
                 <span className="absolute -right-2 -top-2 rounded-full border bg-background px-1 text-micro tabular-nums">{node.issues.length}</span>
               </Button>
-            ) : <TreeIssueNode issue={node.issues[0]!} tasks={tasks} onCreateIssue={onCreateIssue} />}
+            ) : (
+              <TreeIssueNode
+                issue={node.issues[0]!}
+                tasks={tasks}
+                onCreateIssue={onCreateIssue}
+                childProgress={childProgressMap?.get(node.id)}
+                project={projectMap?.get(node.issues[0]!.project_id ?? "")}
+                onHeightChange={onHeightChange}
+              />
+            )}
           </div>
         ))}
       </ZoomCanvas>
@@ -134,54 +149,65 @@ export function TreeView({ issues, statusPagination, onCreateIssue }: {
   );
 }
 
-function TreeIssueNode({ issue, tasks, onCreateIssue }: {
+function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, onHeightChange }: {
   issue: Issue;
   tasks: AgentTask[];
   onCreateIssue: (defaults?: IssueCreateDefaults) => void;
+  childProgress?: ChildProgress;
+  project?: Project;
+  onHeightChange: (id: string, height: number) => void;
 }) {
   const { t } = useT("issues");
-  const { getActorName } = useActorName();
-  // shortcut: one cached timeline per displayed issue; batch participants if large trees need it.
+  const paths = useWorkspacePaths();
+  const peeked = useIsIssuePeeked(issue.id);
+  const peekLinkProps = useIssuePeekLinkProps(issue.id);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => onHeightChange(issue.id, element.offsetHeight);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [issue.id, onHeightChange]);
+  // shortcut: one cached timeline per displayed issue; batch collaborators if large trees need it.
   const timeline = useQuery(issueTimelineOptions(issue.id));
-  const participants = useMemo(() => issueTreeParticipants(issue, timeline.data ?? [], tasks), [issue, timeline.data, tasks]);
-  const hasReportStage = issue.status === "blocked" || issue.status === "in_review" || issueStatusCategory(issue) === "done";
-  const agents = participants.agentIds;
-  const visibleAgents = agents.slice(0, 6);
-  if (participants.primaryId && !visibleAgents.includes(participants.primaryId)) visibleAgents.splice(5, 1, participants.primaryId);
-  const extraAssignee = issue.assignee_type && issue.assignee_type !== "agent" && issue.assignee_id;
+  const collaborators = useMemo(() => issueTreeCollaborators(timeline.data ?? []), [timeline.data]);
+  const report = collaborators.filter((actor) => actor.actorType === "agent").flatMap((actor) => actor.messages)
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
 
   return (
-    <>
-      <div className="flex w-full items-center justify-center gap-1 rounded-md bg-background/95 py-1">
-        <div className="min-w-0"><IssueMentionCard issueId={issue.id} issue={issue} fallbackLabel={issue.identifier} /></div>
-        {hasReportStage && (
-          <HoverCard>
-            <HoverCardTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t(($) => $.tree.report)} />}><FileText /></HoverCardTrigger>
-            <HoverCardContent className="w-96 max-w-[90vw]">
-              <p className="mb-2 text-caption font-medium">{t(($) => $.tree.report)}</p>
-              {timeline.isError ? <Button variant="outline" size="sm" onClick={() => void timeline.refetch()}>{t(($) => $.status_catalog_error.retry)}</Button> : participants.report?.content ? (
-                <div className="max-h-80 overflow-auto"><RichContent content={participants.report.content} /></div>
-              ) : <p className="text-caption text-muted-foreground">{timeline.isPending ? t(($) => $.tree.loading) : t(($) => $.tree.no_report)}</p>}
-            </HoverCardContent>
-          </HoverCard>
-        )}
-      </div>
-      <div className="h-4 w-px shrink-0 bg-border" />
-      <div className="flex max-w-full items-center justify-center gap-2 rounded-full bg-background px-2 py-1">
-        <div className="flex -space-x-2">
-          {extraAssignee && <ActorAvatar actorType={issue.assignee_type!} actorId={extraAssignee} size="xl" enableHoverCard />}
-          {visibleAgents.map((id, index) => (
-            <span key={id} className={cn("relative inline-flex rounded-full border-2 border-background", participants.runningIds.has(id) && "bg-brand/10")} style={{ zIndex: agents.length - index }} title={`${getActorName("agent", id)}${id === participants.primaryId ? ` · ${t(($) => $.table.columns.assignee)}` : ""}`}>
-              <ActorAvatar actorType="agent" actorId={id} size="xl" enableHoverCard hoverCardVariant="live" />
-              {participants.runningIds.has(id) && <BorderBeam />}
-            </span>
-          ))}
-          {!extraAssignee && agents.length === 0 && <span className="inline-flex size-10 items-center justify-center rounded-full border bg-muted text-muted-foreground" title={t(($) => $.swimlane.no_assignee)}><UserRound className="size-5" /></span>}
+    <div ref={ref} className="w-full" data-tree-card={issue.id}>
+      <IssueActionsContextMenu issue={issue}>
+        <div className="group/card" {...{ [PEEK_TARGET_ATTR]: issue.id }} data-peeked={peeked ? "" : undefined}>
+          <AppLink href={paths.issueDetail(issue.id)} newTabTitle={issue.identifier} className="block" {...peekLinkProps}>
+            <BoardCardContent
+              issue={issue}
+              editable
+              childProgress={childProgress}
+              project={project}
+              titleContent={
+                <IssueHoverCard issueId={issue.id} content={<TreeIssueHoverContent issue={issue} report={report} timeline={timeline} />}>
+                  <span tabIndex={0}>{issue.title}</span>
+                </IssueHoverCard>
+              }
+              collaborators={collaborators.length > 0 ? (
+                <span className="flex flex-wrap gap-1.5" aria-label={t(($) => $.display.card_collaborators)}>
+                  {collaborators.map((collaborator) => (
+                    <TreeCollaboratorAvatar key={`${collaborator.actorType}:${collaborator.actorId}`} collaborator={collaborator} issue={issue} tasks={tasks} />
+                  ))}
+                </span>
+              ) : null}
+            />
+          </AppLink>
         </div>
-        {agents.length > 6 && <Popover><PopoverTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t(($) => $.tree.helpers)} />}>+{agents.length - 6}</PopoverTrigger><PopoverContent className="max-h-64 w-56 overflow-auto space-y-2">{agents.map((id) => <div key={id} className="flex items-center gap-2 text-caption"><ActorAvatar actorType="agent" actorId={id} size="md" />{getActorName("agent", id)}</div>)}</PopoverContent></Popover>}
+      </IssueActionsContextMenu>
+      <div className="flex justify-center">
         <Button variant="ghost" size="icon-xs" aria-label={t(($) => $.tree.create_child)} onClick={() => onCreateIssue({ parent_issue_id: issue.id, parent_issue_identifier: issue.identifier, project_id: issue.project_id })}><Plus /></Button>
       </div>
       {timeline.isError && <Button variant="ghost" size="xs" onClick={() => void timeline.refetch()}>{t(($) => $.tree.retry_agents)}</Button>}
-    </>
+    </div>
   );
 }

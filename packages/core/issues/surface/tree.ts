@@ -1,5 +1,4 @@
-import type { AgentTask, Issue, TimelineEntry } from "../../types";
-import { parseMentions } from "../comment-trigger-outcomes";
+import type { Issue, TimelineEntry } from "../../types";
 
 export interface IssueTreeNode {
   id: string;
@@ -65,19 +64,21 @@ export interface PositionedIssueTreeNode {
   x: number;
   y: number;
   parentId: string | null;
+  height: number;
 }
 
 export const TREE_NODE_WIDTH = 300;
 export const TREE_NODE_HEIGHT = 96;
 export const TREE_LEVEL_HEIGHT = 216;
 
-export function layoutIssueTree(roots: IssueTreeNode[]) {
+export function layoutIssueTree(roots: IssueTreeNode[], heights: ReadonlyMap<string, number> = new Map()) {
   const nodes: PositionedIssueTreeNode[] = [];
   let leaf = 0;
-  let maxDepth = 0;
+  const levels: number[] = [];
   function place(node: IssueTreeNode, depth: number, parentId: string | null): number {
-    maxDepth = Math.max(maxDepth, depth);
-    const position = { node, x: 0, y: depth * TREE_LEVEL_HEIGHT + 48, parentId };
+    const height = heights.get(node.id) ?? TREE_NODE_HEIGHT;
+    levels[depth] = Math.max(levels[depth] ?? TREE_LEVEL_HEIGHT, height + 64);
+    const position = { node, x: 0, y: depth, parentId, height };
     nodes.push(position);
     const childXs = node.children.map((child) => place(child, depth + 1, node.id));
     const x = childXs.length
@@ -87,32 +88,38 @@ export function layoutIssueTree(roots: IssueTreeNode[]) {
     return x;
   }
   roots.forEach((root) => place(root, 0, null));
+  let height = 48;
+  const tops = levels.map((level) => {
+    const top = height;
+    height += level;
+    return top;
+  });
+  for (const position of nodes) position.y = tops[position.y]!;
   return {
     nodes,
     width: Math.max(1, leaf) * (TREE_NODE_WIDTH + 40) + 56,
-    height: (maxDepth + 1) * TREE_LEVEL_HEIGHT + 48,
+    height: Math.max(TREE_LEVEL_HEIGHT + 48, height),
   };
 }
 
-export function issueTreeParticipants(issue: Issue, timeline: readonly TimelineEntry[], tasks: readonly AgentTask[]) {
-  const comments = timeline.filter((entry) => entry.type === "comment" && !entry.deleted_at)
-    .toSorted((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
-  const replies = comments.filter((entry) => entry.actor_type === "agent" && entry.content?.trim());
-  const issueTasks = tasks.filter((task) => task.issue_id === issue.id)
-    .toSorted((a, b) => Date.parse(a.started_at ?? a.created_at) - Date.parse(b.started_at ?? b.created_at));
-  const primaryId = issue.assignee_type === "agent" ? issue.assignee_id : null;
-  const mentions = [issue.description ?? "", ...comments.map((entry) => entry.content ?? "")]
-    .flatMap(parseMentions).filter((mention) => mention.type === "agent").map((mention) => mention.id);
-  const agentIds = [...new Set([
-    ...replies.map((entry) => entry.actor_id),
-    ...issueTasks.map((task) => task.agent_id),
-    ...(primaryId ? [primaryId] : []),
-    ...mentions,
-  ])];
-  return {
-    agentIds,
-    primaryId,
-    runningIds: new Set(issueTasks.filter((task) => task.status === "running").map((task) => task.agent_id)),
-    report: replies[0],
-  };
+export interface IssueTreeCollaborator {
+  actorType: "member" | "agent";
+  actorId: string;
+  messages: TimelineEntry[];
+}
+
+export function issueTreeCollaborators(timeline: readonly TimelineEntry[]) {
+  const collaborators = new Map<string, IssueTreeCollaborator>();
+  for (const entry of timeline.toSorted((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))) {
+    if (entry.type !== "comment" || entry.deleted_at ||
+      (entry.actor_type !== "member" && entry.actor_type !== "agent") ||
+      entry.comment_type === "system" || entry.comment_type === "status_change" ||
+      (!entry.content?.trim() && !entry.attachments?.length)) continue;
+    const key = `${entry.actor_type}:${entry.actor_id}`;
+    const collaborator = collaborators.get(key) ?? { actorType: entry.actor_type, actorId: entry.actor_id, messages: [] };
+    collaborator.messages.push(entry);
+    collaborators.set(key, collaborator);
+  }
+  return [...collaborators.values()].sort((a, b) => b.messages.length - a.messages.length ||
+    Date.parse(b.messages[0]!.created_at) - Date.parse(a.messages[0]!.created_at));
 }
