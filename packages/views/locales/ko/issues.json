@@ -8,9 +8,13 @@
     "expand": "숨긴 이슈 {{count}}개 펼치기",
     "report": "에이전트의 최신 보고서",
     "no_report": "아직 에이전트 보고서가 없습니다",
-    "helpers": "협업 에이전트",
+    "description": "설명",
+    "no_description": "설명 없음",
+    "agent_reply": "답글",
+    "message_count_other": "메시지 {{count}}개",
+    "loading_report": "보고서 로딩 중...",
     "create_child": "하위 이슈 만들기",
-    "retry_agents": "협업 에이전트 다시 불러오기"
+    "retry_agents": "참여자 다시 불러오기"
   },
   "inline_run": {
     "label": "{{name}} 실행",
@@ -242,6 +246,7 @@
     "card_priority": "우선순위",
     "card_description": "설명",
     "card_assignee": "담당자",
+    "card_collaborators": "참여자",
     "card_start_date": "시작일",
     "card_due_date": "마감일",
     "card_project": "프로젝트",

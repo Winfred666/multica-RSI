@@ -30,6 +30,7 @@ import { LabelChip } from "../../labels/label-chip";
 import { IssueAgentActivityIndicator } from "./issue-agent-activity-indicator";
 import { CustomStatusChip, useIsCustomStatus } from "./custom-status-chip";
 import { IssueDuplicateOfMarker } from "./issue-duplicates";
+import { StatusIcon } from "./status-icon";
 import { useIssueSurfaceActionsOptional } from "../surface/actions-context";
 import {
   PEEK_TARGET_ATTR,
@@ -59,11 +60,15 @@ export const BoardCardContent = memo(function BoardCardContent({
   editable = false,
   childProgress,
   project,
+  collaborators,
+  titleContent,
 }: {
   issue: Issue;
   editable?: boolean;
   childProgress?: ChildProgress;
   project?: Project;
+  collaborators?: React.ReactNode;
+  titleContent?: React.ReactNode;
 }) {
   const { t } = useT("issues");
   const locale = useLocale();
@@ -107,7 +112,7 @@ export const BoardCardContent = memo(function BoardCardContent({
   const showPriority = storeProperties.priority && issue.priority !== "none";
   const showDescription = storeProperties.description && issue.description;
   const showAssigneeSection =
-    storeProperties.assignee && cardGrouping !== "assignee" && hasAssignee;
+    storeProperties.assignee && cardGrouping !== "assignee" && (collaborators !== undefined ? !!collaborators : hasAssignee);
   const showStartDate = storeProperties.startDate && issue.start_date;
   const showDueDate = storeProperties.dueDate && issue.due_date;
   const showProject =
@@ -118,7 +123,7 @@ export const BoardCardContent = memo(function BoardCardContent({
   // chip is the only thing in it and it decides to render nothing.
   const showCustomStatus = useIsCustomStatus(issue.status);
 
-  const showAssigneeName = showAssigneeSection && hasAssignee && !showStartDate && !showDueDate;
+  const showAssigneeName = collaborators === undefined && showAssigneeSection && hasAssignee && !showStartDate && !showDueDate;
   const showUpdatedHint = showAssigneeName && !showChildProgress;
   const { getActorName } = useActorName();
   const assigneeName =
@@ -201,6 +206,7 @@ export const BoardCardContent = memo(function BoardCardContent({
       {/* Row 1: priority + identifier (left), agent activity + assignee (right) */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
+          {viewMode === "tree" && !showCustomStatus && <StatusIcon status={issue.status} />}
           {priorityIconNode}
           <p className="text-caption text-muted-foreground truncate">{issue.identifier}</p>
           <IssueDuplicateOfMarker issue={issue} insideLink />
@@ -210,7 +216,7 @@ export const BoardCardContent = memo(function BoardCardContent({
 
       {/* Row 2: Title */}
       <p className="mt-1 text-body font-medium leading-snug line-clamp-2">
-        {issue.title}
+        {titleContent ?? issue.title}
       </p>
 
       {showDescription && (() => {
@@ -260,7 +266,7 @@ export const BoardCardContent = memo(function BoardCardContent({
         <div className="mt-2 flex items-center justify-between gap-2">
           {showAssigneeSection && (
             <div className="min-w-0 flex-1">
-              {assigneeNode}
+              {collaborators ?? assigneeNode}
             </div>
           )}
           {showRightMeta && (

@@ -8,9 +8,13 @@
     "expand": "展开 {{count}} 个已隐藏任务",
     "report": "智能体最新报告",
     "no_report": "暂无智能体报告",
-    "helpers": "协作智能体",
+    "description": "描述",
+    "no_description": "暂无描述",
+    "agent_reply": "回复",
+    "message_count_other": "{{count}} 条消息",
+    "loading_report": "正在加载报告...",
     "create_child": "新建子任务",
-    "retry_agents": "重新加载协作智能体"
+    "retry_agents": "重新加载协作者"
   },
   "inline_run": {
     "label": "{{name}} 的运行",
@@ -242,6 +246,7 @@
     "card_priority": "优先级",
     "card_description": "描述",
     "card_assignee": "负责人",
+    "card_collaborators": "协作者",
     "card_start_date": "开始日期",
     "card_due_date": "截止日期",
     "card_project": "项目",

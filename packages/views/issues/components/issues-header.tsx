@@ -2357,7 +2357,7 @@ export function IssueDisplayControls({
                         onPressedChange={() => act.toggleCardProperty(opt.key)}
                         className="h-6 rounded-md px-2 text-caption text-muted-foreground hover:bg-muted/60 aria-pressed:border-transparent aria-pressed:bg-accent aria-pressed:text-accent-foreground aria-pressed:hover:bg-accent/80"
                       >
-                        {t(($) => $.display[CARD_PROPERTY_LABEL_KEY[opt.key]])}
+                        {viewMode === "tree" && opt.key === "assignee" ? t(($) => $.display.card_collaborators) : t(($) => $.display[CARD_PROPERTY_LABEL_KEY[opt.key]])}
                       </Toggle>
                     ))}
                     {workspaceProperties.map((property) => (
