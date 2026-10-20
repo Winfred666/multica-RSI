@@ -4,8 +4,8 @@ Status: hosted execution and an explicitly supplied PAT per workspace implemente
 
 ## Decision
 
-Reuse native workflows, wakeups and the plugin scheduler. The core change is
-limited to executing a packaged script with the workspace’s supplied credentials. Workflow
+Reuse native workflows, wakeups and the plugin scheduler. Core supplies packaged
+execution, workspace credentials and idempotent wakeup creation. Workflow
 policy ships as independently upgraded ZIPs inside the deployed Multica
 container. One initial host release is required; subsequent package changes
 reuse the workspace credential and need no further Multica deployment.
@@ -46,7 +46,7 @@ hook payload and non-secret config as JSON on standard input, and a clean
 environment. Only the declared executable is materialized; package supporting
 files are not extracted. Scripts need a shebang such as `#!/bin/sh`; binaries
 must match the host. The [Docker image](../../Dockerfile) includes `/app/multica`
-on the execution PATH and Alpine's shell, but no Python, Node, or jq.
+on the execution PATH, Alpine's shell, and Python 3. Node and jq are not included.
 
 Return JSON on stdout (or no output). Output is capped at 1 MiB; stderr is
 discarded so script diagnostics cannot leak credentials into invocation logs.
@@ -120,6 +120,8 @@ or host prerequisites are no longer usable.
 multica workspace plugin-execution status acme
 multica workspace plugin-execution enable acme --token-stdin < /secure/plugin-pat
 multica workspace plugin-execution disable acme
+multica workspace plugin list acme
+multica workspace plugin configure INSTALLATION_ID acme --config-file prompts.json
 ```
 
 The workspace argument also accepts a UUID/prefix, or can be omitted to use the
@@ -203,11 +205,16 @@ Shipped examples: [Schedule Pulse](../../examples/plugins/schedule-pulse/multica
 
 | Package | Additional policy only |
 | --- | --- |
-| Parent wakeups | Keep native child-done behavior. Add configured blocked/review notifications to the parent using supported wakeup conditions or scheduled inspection; avoid duplicate rules or runs. |
-| Ralph loop | Check opted-in unfinished issues, active runs, children and wakeups on the package's schedule. Request another ordinary run when appropriate, respecting human handoffs, stop conditions and package limits. |
+| [Wakeup for sub-issue](../../plugins/wakeup-for-sub-issue/multica.plugin.json) | Replaces automatic child-done wakeups. Three configurable prompts handle all children finished, child review, and child blocked. Events plus five-minute rechecks; deduplicated ordinary wakeups. |
+| [In-progress Ralph](../../plugins/in-progress-ralph/multica.plugin.json) | Every five minutes, continue idle in-progress issues after a completed run, respecting active/deferred runs, unfinished children, pending wakeups and human handoffs. Enabling the plugin opts in the workspace. |
 | Issue spending threshold | Read `multica issue usage ISSUE --output json`; compare reported cost with configured `price_limit_usd`, then comment or cancel runs. |
 
-Use configured project/issue targets and their workflow statuses. Spending uses
+The first two packages are available in [plugins/](../../plugins/README.md).
+The retired built-in child-done settings return an empty list; writes return 410.
+Migration 588 disables their existing rules and cancels their queued/deferred
+runs. Explicit user-created wakeup conditions remain available.
+
+Spending uses
 existing `cost_usd_ticks` and coverage fields: unreported usage means this is a
 periodic threshold check, not an instantaneous cap.
 
@@ -216,9 +223,9 @@ periodic threshold check, not an instantaneous cap.
 1. **Host support (implemented):** packaged execution and workspace credentials
    reuse the existing dispatcher, scheduler and account API. No remaining core
    work from this proposal is required to start authoring these packages.
-2. **Packages:** prove the runner with the spending check, then parent wakeups
-   and Ralph. Verify repeated checks, native handoffs, custom statuses, human
-   steps and pending runs. Keep these policies in package scripts.
+2. **Packages (implemented):** parent wakeups and Ralph ship as independent ZIPs.
+   Their scripts check repeated deliveries, custom statuses, human steps and
+   pending runs. Spending checks remain a future package.
 3. **Production acceptance:** install and upgrade ZIPs in running Docker without
    re-entering the workspace PAT or rebuilding/restarting Multica. Verify that publishing alone
    does not upgrade an installation, and separately test scheduler recovery after

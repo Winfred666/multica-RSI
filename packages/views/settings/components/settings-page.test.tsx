@@ -176,7 +176,7 @@ describe("SettingsPage Plugin feature flag", () => {
 });
 
 describe("SettingsPage workflow feature flag", () => {
-  it("mounts workflows in workspace settings without losing wakeups", () => {
+  it("mounts workflows without the retired system wakeup settings", () => {
     navigationState.search = "tab=workflows";
     configStore.getState().setFeatureFlags({ [PROJECT_WORKFLOWS_V1_FLAG]: true });
 
@@ -185,7 +185,7 @@ describe("SettingsPage workflow feature flag", () => {
     expect(screen.getByText("WorkflowsTab")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Workflows" })).toHaveAttribute("aria-current", "page");
     expect(screen.queryByRole("link", { name: "Issue Statuses" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Wakeups" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Wakeups" })).not.toBeInTheDocument();
   });
 
   it("keeps the status catalog when workflows are disabled", () => {
@@ -195,7 +195,7 @@ describe("SettingsPage workflow feature flag", () => {
 
     expect(screen.getByText("IssueStatusesTab")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Workflows" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Wakeups" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Wakeups" })).not.toBeInTheDocument();
   });
 });
 

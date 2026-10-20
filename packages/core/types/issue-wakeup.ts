@@ -79,6 +79,7 @@ export interface PausedWakeup {
 
 /** Body accepted by POST /api/issues/:id/wakeups. */
 export interface IssueWakeupInput {
+  idempotency_key?: string;
   agent_id: string;
   instruction: string;
   kind: IssueWakeup["kind"];

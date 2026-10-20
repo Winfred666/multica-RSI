@@ -260,6 +260,7 @@ func newStagedBatchFixture(t *testing.T) stagedBatchFixture {
 	fx := stagedBatchFixture{parent: parent, agentID: agentID}
 	fx.stage1 = []IssueResponse{mkChild(1), mkChild(1)}
 	fx.stage2 = []IssueResponse{mkChild(2), mkChild(2)}
+	seedHistoricalChildDoneRule(t, parent.ID)
 
 	t.Cleanup(func() {
 		for _, c := range append(append([]IssueResponse{}, fx.stage1...), fx.stage2...) {

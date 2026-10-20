@@ -57,7 +57,21 @@ func newChildDoneFixture(t *testing.T, parentStatus string) childDoneFixture {
 	}
 	t.Cleanup(func() { cleanupChildDoneIssue(child.ID) })
 
+	seedHistoricalChildDoneRule(t, parent.ID)
 	return childDoneFixture{parent: parent, child: child}
+}
+
+// Keep historical rule dispatch covered after automatic creation is retired.
+func seedHistoricalChildDoneRule(t *testing.T, parentID string) {
+	t.Helper()
+	_, err := (&service.IssueWakeupService{Tasks: testHandler.TaskService}).UpdateChildDoneRule(context.Background(), parseUUID(parentID), service.SystemWakeupInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		testPool.Exec(context.Background(), `DELETE FROM issue_wakeup_receipt WHERE wakeup_id IN (SELECT id FROM issue_wakeup WHERE issue_id=$1)`, parentID)
+		testPool.Exec(context.Background(), `DELETE FROM issue_wakeup WHERE issue_id=$1`, parentID)
+	})
 }
 
 func cleanupChildDoneIssue(id string) {

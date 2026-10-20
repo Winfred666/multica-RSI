@@ -162,8 +162,7 @@ not injected into an already running prompt. Different threads queue independent
   invoke gate to both `@agent` and `@squad`. That is the *run* gate, not the
   *see* gate: a workspace admin who can open a private agent in the UI still may
   not trigger it, so being able to view the target says nothing about being able
-  to mention it. (The squad assignment/promote path has its own gate; the
-  child-done wake is ungated.)
+  to mention it. The squad assignment/promote path has its own gate.
 
 ## Who the invoke gate judges
 

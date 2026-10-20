@@ -138,6 +138,13 @@ func TestTurnedOffChildDoneRuleLeavesARequeuedRun(t *testing.T) {
 			if err := s.ProcessChildEvents(ctx, issue); err != nil {
 				t.Fatal(err)
 			}
+			parent, err := f.q.GetIssue(ctx, issue)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.ensureRule(ctx, parent); err != nil {
+				t.Fatal(err)
+			}
 			waiting := wakeWaitingRun(t, f, issue, agent, f.UserID)
 			f.Exec(t, "UPDATE issue SET status='done' WHERE id=$1", child)
 			if err := s.ProcessChildEvents(ctx, issue); err != nil {
