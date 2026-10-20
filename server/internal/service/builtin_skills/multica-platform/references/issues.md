@@ -252,7 +252,6 @@ archived statuses remain readable via an explicit status filter.
   later re-trigger confirms the overall goal is met.
 - **`in_review`** is an accepted issue status. Some workflows use it while a PR
   is open and awaiting review; moving to it is an explicit mutation.
-- **`done`** on a child issue can wake its parent's assignee (see Stages).
 - **`cancelled`** is a terminal, user-driven decision to close the issue. Like
   `done` it enqueues no new agent work, but it does **not** stop tasks already in
   flight — a run in progress keeps going. To stop a running task, cancel the
@@ -333,17 +332,7 @@ Creating every serial step as `todo` enqueues the whole chain at once.
 ### Stages: order sub-issues into barrier groups
 
 `--stage <N>` (N >= 1) groups sub-issues under the same parent into ordered
-stages. The platform's sub-issue wakeup **wakes the parent assignee when a stage
-closes while a later stage is waiting** — every sub-issue up to that stage has
-reached a terminal status (`done`/`cancelled`) — and **once more when every
-sub-issue, staged or not, is closed**. A completion that closes nothing is
-silent. A sibling set with **no** stages wakes the parent once, when the *last*
-sub-issue finishes. A parent in `backlog` is not woken; it catches up once it
-leaves backlog. A member assignee gets an inbox notification instead of a run.
-
-Advancement is agent-driven: the server only detects the closed barrier and
-wakes the parent assignee, who then decides whether to promote the next stage's
-`backlog` sub-issues to `todo`.
+stages. Promote a later stage only after its dependencies are met.
 
 ```bash
 # Stage 1 runs now; later stages parked until promoted
@@ -353,9 +342,7 @@ multica issue create --title "Build"      --parent <id> --assignee <agent> --sta
 multica issue create --title "Ship"       --parent <id> --assignee <agent> --stage 3 --status backlog
 ```
 
-When both Stage 1 sub-issues finish you (the parent assignee) are woken by the
-sub-issue wakeup; its `[WAKEUP]` block lists every stage and names the next one.
-Inspect the layout, then promote the next stage:
+Inspect the layout before promoting the next stage:
 
 ```bash
 multica issue children <parent-id>             # sub-issues grouped by stage
@@ -455,7 +442,7 @@ multica issue wakeup create <issue> --until-issue <other-issue-id> --until-issue
 
 - `--until-status KEY` — this issue's status is that key (built-in or one of the workspace's statuses).
 - `--until-pr checks` — a linked pull request's checks finished, passing or failing, on its current head. `--until-pr merged` — a linked pull request merged. `--until-pr conflicts` — an open linked GitHub pull request has merge conflicts on its current head, for example after another PR merged into its base; with `--mode continuous` it fires again each time a resolved conflict comes back or a new head is still conflicting. With several linked pull requests, any one satisfies it. These conditions inspect only PRs linked directly to this issue; they do not inherit a parent issue's PRs. Checks and conflicts also require server-side GitHub snapshots; conflicts are not detected on Forgejo, Gitea or GitLab pull requests. A missing link or snapshot is recorded in the rule's `last_error` and retried automatically rather than rejecting the rule.
-- `--until-children-done` — every sub-issue, staged or not, is closed (`done` or `cancelled`). With `--stage N` it waits only for staged sub-issues up to stage N, and stage N must have at least one. A parent with no sub-issues never fires. The parent's assignee already gets the sub-issue wakeup described under Stages; do not add this condition for the same wake.
+- `--until-children-done` — every sub-issue, staged or not, is closed (`done` or `cancelled`). With `--stage N` it waits only for staged sub-issues up to stage N, and stage N must have at least one. A parent with no sub-issues never fires.
 - `--until-issue ISSUE` — another issue in this workspace (identifier or UUID) reaches `--until-issue-state`: `done` (default), `ended` (done or cancelled), or `in_review`.
 - The same form also accepts `--until-assignee member|agent|squad:ID`, `--until-label LABEL_ID`, and `--until-property PROPERTY_ID=VALUE` (VALUE may be JSON). `multica issue wakeup create --help` lists them.
 - `wakeup create <issue> --kind at --after 10m --instruction-file ./instruction.md` schedules one run. Alternatively use `--at <RFC3339>`.
@@ -468,7 +455,7 @@ multica issue wakeup create <issue> --until-issue <other-issue-id> --until-issue
 - `wakeup disable <issue> <id>` stops future triggers and withdraws unclaimed work. Users can also turn it off in the issue sidebar. Closing/cancelling/completing the issue disables its wakeups; reopening does not restore them.
 - `--parent <comment-id>` keeps result delivery in the original thread.
 - Give waits an end: `--expires-in 72h` (restarts if the rule is re-enabled) or `--expires-at <RFC3339>`. With `--on-timeout wake`, an event rule runs the target once with a `wakeup.timeout` fact when the deadline passes first; the default `end` stops quietly. Recurring checks should carry an end date.
-- Members create the same rules from the issue sidebar. The parent's stage wake (see Stages above) appears there as a system rule; a member may turn it off for one issue or set its instruction, which your `[WAKEUP]` block then carries.
+- Members create the same rules from the issue sidebar.
 
 Read current state with issue get, comment list, and run inspection before
 judging business completion. Wait for a linked pull request with `--until-pr`

@@ -209,9 +209,6 @@ func (s *IssueWakeupService) processChildEvents(ctx context.Context, parentID pg
 	if !active {
 		return finish()
 	}
-	if _, err = EnsureChildDoneRule(ctx, tx, q, parent); err != nil {
-		return err
-	}
 	rules, err := q.ListChildConditionWakeups(ctx, parent.ID)
 	if err != nil {
 		return err

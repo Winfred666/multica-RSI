@@ -209,10 +209,6 @@ func TestStatusRuleIsFactJudgmentAtBothMoments(t *testing.T) {
 		"whoever the assignee is",
 		// Delivery lands in in_review and the ceiling keeps `done` human.
 		"`done` stays human",
-		// Assigned deliverables must not be misread as status-neutral
-		// research: stage barriers and parent notifications key off the
-		// delivery write.
-		"stage barriers and parent notifications depend on that signal",
 		// Invariant 1: conversation does not move the board. Ancillary is
 		// defined by OUTPUT (no part of the issue's own deliverable), not by
 		// activity words like "research" that also describe real work.
