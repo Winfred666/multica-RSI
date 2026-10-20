@@ -451,6 +451,11 @@ export interface AgentTask {
    * reporting was not free, we just don't know what it cost.
    */
   usage?: TaskUsage[];
+  /** Completed-run input trend within this issue; a context proxy, not a measured window. */
+  input_trend?: {
+    current_context: number;
+    context_compression_count: number;
+  };
 }
 
 /**

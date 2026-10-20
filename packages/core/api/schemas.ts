@@ -2067,6 +2067,10 @@ export const AgentTaskSchema = z.object({
   // `.catch(undefined)` collapses a bad array to "no usage recorded", which
   // the UI already renders as an em dash.
   usage: z.array(TaskUsageSchema).optional().catch(undefined),
+  input_trend: z.object({
+    current_context: z.number().int().positive(),
+    context_compression_count: z.number().int().nonnegative(),
+  }).optional().catch(undefined),
 }).loose();
 
 // Outcome counts are required: every backend that serves this endpoint

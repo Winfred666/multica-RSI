@@ -567,7 +567,8 @@ type AgentTaskResponse struct {
 	// them — a run that predates usage reporting, or one that died before any
 	// model call, genuinely has no number, and showing 0 would assert it was
 	// free. omitempty keeps both off the wire.
-	Usage []TaskUsageData `json:"usage,omitempty"`
+	Usage      []TaskUsageData `json:"usage,omitempty"`
+	InputTrend *TaskInputTrend `json:"input_trend,omitempty"`
 	// AuthToken is the task-scoped `mat_` token the daemon must inject as
 	// MULTICA_TOKEN in the agent process environment. The server binds it to
 	// this (agent_id, task_id) pair at claim time and treats any request
@@ -764,6 +765,11 @@ type TaskUsageData struct {
 	CacheReadTokens  int64  `json:"cache_read_tokens"`
 	CacheWriteTokens int64  `json:"cache_write_tokens"`
 	CostUsdTicks     *int64 `json:"cost_usd_ticks,omitempty"`
+}
+
+type TaskInputTrend struct {
+	CurrentContext          int64 `json:"current_context"`
+	ContextCompressionCount int   `json:"context_compression_count"`
 }
 
 // TaskAgentData holds agent info included in claim responses so the daemon

@@ -1,5 +1,8 @@
 {
   "tree": {
+    "input_trend": "当前上下文：{{tokens}} tokens",
+    "input_drops": "上下文压缩次数：{{count}}",
+    "input_trend_hint": "根据已完成的运行估算；圆环以已记录的最大上下文为基准。",
     "pan_hint": "拖动画布以平移",
     "loading": "正在加载树状图…",
     "load_failed": "部分分支加载失败",

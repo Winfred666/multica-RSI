@@ -633,6 +633,16 @@ describe("TimelineEntriesSchema", () => {
 });
 
 describe("AgentTaskListSchema", () => {
+  it("keeps input trends optional and drops malformed estimates without losing runs", () => {
+    const trend = { current_context: 1000, context_compression_count: 1 };
+    expect(AgentTaskListSchema.parse([{ id: "run", input_trend: trend }])[0]?.input_trend).toEqual(trend);
+    for (const input_trend of [undefined, null, {}, { ...trend, current_context: "1000" }, { ...trend, current_context: 0 }, { ...trend, context_compression_count: -1 }]) {
+      const parsed = AgentTaskListSchema.parse([{ id: "run", input_trend }]);
+      expect(parsed[0]?.id).toBe("run");
+      expect(parsed[0]?.input_trend).toBeUndefined();
+    }
+  });
+
   it("preserves negotiated supplement capability, ordered coverage and permission", () => {
     const parsed = AgentTaskListSchema.parse([{
       id: "run",

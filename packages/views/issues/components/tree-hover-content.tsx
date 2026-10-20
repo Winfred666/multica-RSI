@@ -15,6 +15,7 @@ import { buildTimeline } from "../../common/task-transcript/build-timeline";
 import { RichContent } from "../../rich-content";
 import { useT, useTimeAgo } from "../../i18n";
 import { AttachmentList } from "./comment-card";
+import { ProgressRing } from "./progress-ring";
 
 export function TreeIssueHoverContent({ issue, report, timeline }: {
   issue: Issue;
@@ -59,31 +60,46 @@ export function TreeCollaboratorAvatar({ collaborator, issue, tasks }: {
   issue: Issue;
   tasks: AgentTask[];
 }) {
+  const { t } = useT("issues");
   const { getActorName } = useActorName();
+  const isAgent = collaborator.actorType === "agent";
+  const history = useQuery({ ...issueTasksOptions(issue.id), enabled: isAgent, notifyOnChangeProps: ["data", "isError"] });
+  const contextRuns = history.data?.filter((task) => isAgent && task.agent_id === collaborator.actorId && task.issue_id === issue.id && task.status === "completed" && task.input_trend)
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)) ?? [];
+  const inputRun = contextRuns[0];
+  const ringTotal = contextRuns.reduce((total, task) => Math.max(total, task.input_trend!.current_context), 0);
+  const trend = inputRun?.input_trend;
   const latest = collaborator.messages[0];
   const name = latest?.actor_name || getActorName(collaborator.actorType, collaborator.actorId);
   return (
     <HoverCard>
-      <HoverCardTrigger render={<span />} tabIndex={0} aria-label={name} className="inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <ActorAvatar actorType={collaborator.actorType} actorId={collaborator.actorId} name={name} avatarUrl={latest?.actor_avatar_url} size="sm" profileLink={false} />
+      <HoverCardTrigger render={<span />} tabIndex={0} aria-label={name} className="inline-flex flex-col items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <span className="relative inline-flex size-7 items-center justify-center">
+          <ActorAvatar actorType={collaborator.actorType} actorId={collaborator.actorId} name={name} avatarUrl={latest?.actor_avatar_url} size="sm" profileLink={false} />
+          {trend && <span className="pointer-events-none absolute inset-0" role="img" aria-label={t(($) => $.tree.input_trend, { tokens: trend.current_context.toLocaleString() })}>
+            <ProgressRing done={trend.current_context} total={ringTotal} size={28} />
+          </span>}
+        </span>
+        {trend && <span className="text-micro tabular-nums text-muted-foreground" aria-label={t(($) => $.tree.input_drops, { count: trend.context_compression_count })}>{trend.context_compression_count}</span>}
       </HoverCardTrigger>
       <HoverCardContent align="start" className="w-120 max-w-[calc(100vw-1rem)] p-3">
-        <TreeCollaboratorHoverContent collaborator={collaborator} issue={issue} tasks={tasks} />
+        <TreeCollaboratorHoverContent collaborator={collaborator} issue={issue} tasks={tasks} history={history} inputRun={inputRun} />
       </HoverCardContent>
     </HoverCard>
   );
 }
 
-function TreeCollaboratorHoverContent({ collaborator, issue, tasks }: {
+function TreeCollaboratorHoverContent({ collaborator, issue, tasks, history, inputRun }: {
   collaborator: IssueTreeCollaborator;
   issue: Issue;
   tasks: AgentTask[];
+  history: UseQueryResult<AgentTask[]>;
+  inputRun?: AgentTask;
 }) {
   const { t } = useT("issues");
   const { getActorName } = useActorName();
   const timeAgo = useTimeAgo();
   const isAgent = collaborator.actorType === "agent";
-  const history = useQuery({ ...issueTasksOptions(issue.id), enabled: isAgent });
   const candidates = [...new Map([...(history.data ?? []), ...tasks].map((task) => [task.id, task])).values()]
     .filter((task) => isAgent && task.agent_id === collaborator.actorId && task.issue_id === issue.id)
     .sort((a, b) => Number(b.status === "running") - Number(a.status === "running") || Date.parse(b.created_at) - Date.parse(a.created_at));
@@ -94,6 +110,7 @@ function TreeCollaboratorHoverContent({ collaborator, issue, tasks }: {
     .reverse(), [messages.data]);
   const replies = collaborator.messages;
   const failed = isAgent && (history.isError || messages.isError);
+  const trend = inputRun?.input_trend;
 
   return (
     <div className="space-y-3 text-left">
@@ -103,6 +120,11 @@ function TreeCollaboratorHoverContent({ collaborator, issue, tasks }: {
           <span className="shrink-0 text-caption text-muted-foreground">{t(($) => $.tree.message_count, { count: replies.length })}</span>
         </div>
         <p className="break-words text-caption text-muted-foreground">{issue.identifier} · {issue.title}</p>
+        {trend && <div className="mt-2 space-y-1 text-caption text-muted-foreground">
+          <p>{t(($) => $.tree.input_trend, { tokens: trend.current_context.toLocaleString() })}</p>
+          <p>{t(($) => $.tree.input_drops, { count: trend.context_compression_count })}{inputRun.completed_at && <> · {timeAgo(inputRun.completed_at)}</>}</p>
+          <p>{t(($) => $.tree.input_trend_hint)}</p>
+        </div>}
       </div>
       <div className="max-h-[min(28rem,55vh)] space-y-4 overflow-auto overscroll-contain break-words">
         {entries.map((entry) => (

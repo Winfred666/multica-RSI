@@ -5723,6 +5723,7 @@ func (h *Handler) ListTasksByIssue(w http.ResponseWriter, r *http.Request) {
 	// for a column that is near-empty on runs that have not finished.
 	if !activeOnly {
 		h.hydrateTaskUsage(r.Context(), issue.ID, resp)
+		attachTaskInputTrends(resp)
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -5810,6 +5811,37 @@ func appendTaskUsage(
 		CacheWriteTokens: cacheWriteTokens,
 		CostUsdTicks:     cost,
 	})
+}
+
+func attachTaskInputTrends(resp []AgentTaskResponse) {
+	ordered := make([]*AgentTaskResponse, len(resp))
+	for i := range resp {
+		ordered[i] = &resp[i]
+	}
+	slices.SortStableFunc(ordered, func(a, b *AgentTaskResponse) int {
+		return strings.Compare(a.CreatedAt, b.CreatedAt)
+	})
+	byAgent := make(map[string]TaskInputTrend)
+	for _, task := range ordered {
+		if task.Status != "completed" || len(task.Usage) == 0 {
+			continue
+		}
+		var input int64
+		for _, usage := range task.Usage {
+			input += usage.InputTokens + usage.CacheReadTokens + usage.CacheWriteTokens
+		}
+		if input <= 0 {
+			continue
+		}
+		trend := byAgent[task.AgentID]
+		// shortcut: run totals vary with workload too; use provider snapshots when exact context resets are needed.
+		if input < trend.CurrentContext {
+			trend.ContextCompressionCount++
+		}
+		trend.CurrentContext = input
+		byAgent[task.AgentID] = trend
+		task.InputTrend = &trend
+	}
 }
 
 func attachTaskUsage(resp []AgentTaskResponse, byTask map[string][]TaskUsageData) {
