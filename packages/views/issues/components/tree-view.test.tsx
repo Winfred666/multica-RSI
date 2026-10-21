@@ -68,17 +68,23 @@ describe("TreeView", () => {
   it("expands collapsed issues, creates a child under its parent, and reacts to new filtered rows", async () => {
     const user = userEvent.setup();
     const root = issue("Parent");
-    const done = issue("Delivered", "Parent", "done");
-    const { create, rerender, render, qc } = setup([root, done]);
+    const done = { ...issue("Delivered", "Parent", "done"), description: "Completed parent summary" };
+    const descendant = issue("Active descendant", "Delivered");
+    const { create, rerender, render, qc, store } = setup([root, done, descendant]);
+    expect(screen.queryByRole("link", { name: /Active descendant/ })).not.toBeInTheDocument();
+    act(() => store.getState().toggleCardProperty("description"));
+    expect(screen.getByText("Completed parent summary")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Delivered/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Expand hidden issues (1)" }));
     expect(screen.getByRole("link", { name: /Delivered/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Active descendant/ })).toBeInTheDocument();
     await user.click(screen.getAllByRole("button", { name: "Create sub-issue" })[0]!);
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ parent_issue_id: "Parent" }));
-    rerender(render([root, done, issue("New sub-issue", "Parent")]));
+    rerender(render([root, done, descendant, issue("New sub-issue", "Parent")]));
     expect(screen.getByRole("link", { name: /New sub-issue/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Collapse hidden statuses" }));
     expect(screen.queryByRole("link", { name: /Delivered/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Active descendant/ })).not.toBeInTheDocument();
     qc.clear();
   });
 
