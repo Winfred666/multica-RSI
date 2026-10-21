@@ -11,9 +11,7 @@ import { isWorkspaceDeletePending } from "@multica/core/workspace/pending-delete
 import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceSeen } from "@multica/views/workspace/use-workspace-seen";
 import { WorkspacePresencePrefetch } from "@multica/views/layout";
-import { SourceBackfillModal } from "@multica/views/onboarding";
 import { useTabStore } from "@/stores/tab-store";
-import { useWindowOverlayStore } from "@/stores/window-overlay-store";
 
 /**
  * Which mounted layout instance currently owns the platform workspace
@@ -54,14 +52,6 @@ export function WorkspaceRouteLayout() {
   const [instanceId] = useState(() => Symbol("workspace-route-layout"));
   const user = useAuthStore((s) => s.user);
   const isAuthLoading = useAuthStore((s) => s.isLoading);
-  // While a WindowOverlay is open (onboarding, accept-invite, new-workspace),
-  // the underlying tab is still mounted in the React tree — so this layout
-  // and its SourceBackfillModal would render UNDER the overlay.
-  // Because the modal uses a Portal that targets document.body, it ends up
-  // rendered LATER in the DOM and visually outranks the overlay's z-50.
-  // Suppress the modal whenever any overlay is active; it re-evaluates the
-  // moment the overlay closes.
-  const overlayActive = useWindowOverlayStore((s) => s.overlay !== null);
 
   // Workspace routes require auth. App.tsx renders <DesktopLoginPage>
   // instead of the shell whenever `user` is null, so this tree never mounts
@@ -177,13 +167,6 @@ export function WorkspaceRouteLayout() {
     <WorkspaceSlugProvider slug={workspaceSlug}>
       <WorkspacePresencePrefetch />
       <Outlet />
-      {/* Source-attribution backfill: same Dialog the web shell mounts
-       *  inside DashboardLayout. Desktop's WorkspaceRouteLayout doesn't
-       *  wrap DashboardLayout, so the modal has to be wired in directly
-       *  here. Suppressed while a WindowOverlay is open — a portal-rendered
-       *  Dialog at z-50 would otherwise sit above an active pre-workspace
-       *  overlay. */}
-      {!overlayActive && <SourceBackfillModal />}
     </WorkspaceSlugProvider>
   );
 }
