@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { EyeOff, MoreHorizontal, Plus, RotateCcw } from "lucide-react";
+import { EyeOff, Plus, RotateCcw } from "lucide-react";
 import type { AgentTask, Issue, Project } from "@multica/core/types";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -111,8 +111,8 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
           {layout.nodes.map((position) => {
             const parent = position.parentId ? byId.get(position.parentId) : null;
             if (!parent) return null;
-            const startY = parent.y + (parent.node.collapsed ? 88 : parent.height);
-            const endY = position.y + (position.node.collapsed ? 40 : 0);
+            const startY = parent.y + parent.height;
+            const endY = position.y;
             const midY = (startY + endY) / 2;
             const dx = position.x - parent.x;
             const radius = Math.min(12, Math.abs(dx) / 2);
@@ -126,21 +126,19 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
         </svg>
         {layout.nodes.map(({ node, x, y }) => (
           <div key={node.id} className="absolute flex flex-col items-center" style={{ left: x - TREE_NODE_WIDTH / 2, top: y, width: TREE_NODE_WIDTH }}>
-            {node.collapsed ? (
-              <Button variant="outline" size="icon-lg" className="relative mt-10 rounded-full bg-background shadow-[4px_4px_0_var(--muted),8px_8px_0_var(--border)]" aria-label={t(($) => $.tree.expand, { count: node.issues.length })} onClick={() => setExpanded((previous) => new Set([...previous, node.id]))}>
-                <MoreHorizontal />
-                <span className="absolute -right-2 -top-2 rounded-full border bg-background px-1 text-micro tabular-nums">{node.issues.length}</span>
-              </Button>
-            ) : (
-              <TreeIssueNode
-                issue={node.issues[0]!}
-                tasks={tasks}
-                onCreateIssue={onCreateIssue}
-                childProgress={childProgressMap?.get(node.id)}
-                project={projectMap?.get(node.issues[0]!.project_id ?? "")}
-                onHeightChange={onHeightChange}
-              />
-            )}
+            <TreeIssueNode
+              issue={node.issues[0]!}
+              tasks={tasks}
+              onCreateIssue={onCreateIssue}
+              childProgress={childProgressMap?.get(node.issues[0]!.id)}
+              project={projectMap?.get(node.issues[0]!.project_id ?? "")}
+              onHeightChange={onHeightChange}
+              collapsed={node.collapsed ? {
+                id: node.id,
+                count: node.issues.length,
+                onExpand: () => setExpanded((previous) => new Set([...previous, node.id])),
+              } : undefined}
+            />
           </div>
         ))}
       </ZoomCanvas>
@@ -149,58 +147,75 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   );
 }
 
-function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, onHeightChange }: {
+function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, onHeightChange, collapsed }: {
   issue: Issue;
   tasks: AgentTask[];
   onCreateIssue: (defaults?: IssueCreateDefaults) => void;
   childProgress?: ChildProgress;
   project?: Project;
   onHeightChange: (id: string, height: number) => void;
+  collapsed?: { id: string; count: number; onExpand: () => void };
 }) {
   const { t } = useT("issues");
   const paths = useWorkspacePaths();
   const peeked = useIsIssuePeeked(issue.id);
   const peekLinkProps = useIssuePeekLinkProps(issue.id);
   const ref = useRef<HTMLDivElement>(null);
+  const nodeId = collapsed?.id ?? issue.id;
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
-    const measure = () => onHeightChange(issue.id, element.offsetHeight);
+    const measure = () => onHeightChange(nodeId, element.offsetHeight);
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [issue.id, onHeightChange]);
+  }, [nodeId, onHeightChange]);
   // shortcut: one cached timeline per displayed issue; batch collaborators if large trees need it.
   const timeline = useQuery(issueTimelineOptions(issue.id));
   const collaborators = useMemo(() => issueTreeCollaborators(timeline.data ?? []), [timeline.data]);
   const report = collaborators.filter((actor) => actor.actorType === "agent").flatMap((actor) => actor.messages)
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
 
+  const card = (
+    <BoardCardContent
+      issue={issue}
+      editable={!collapsed}
+      childProgress={childProgress}
+      project={project}
+      titleContent={collapsed ? issue.title :
+        <IssueHoverCard issueId={issue.id} content={<TreeIssueHoverContent issue={issue} report={report} timeline={timeline} />}>
+          <span tabIndex={0}>{issue.title}</span>
+        </IssueHoverCard>
+      }
+      collaborators={collaborators.length > 0 ? (
+        <span className="flex flex-wrap gap-1.5" aria-label={t(($) => $.display.card_collaborators)}>
+          {collaborators.map((collaborator) => (
+            <TreeCollaboratorAvatar key={`${collaborator.actorType}:${collaborator.actorId}`} collaborator={collaborator} issue={issue} tasks={tasks} />
+          ))}
+        </span>
+      ) : null}
+    />
+  );
+
+  if (collapsed) return (
+    <div ref={ref} className="group/card relative isolate w-full pb-4" data-tree-card={nodeId}>
+      <div aria-hidden="true" className="absolute inset-x-4 top-4 bottom-0 rounded-lg border border-surface-border bg-muted" />
+      <div aria-hidden="true" className="absolute inset-x-2 top-2 bottom-2 rounded-lg border border-surface-border bg-surface" />
+      <div inert className="relative">{card}</div>
+      <Button variant="ghost" className="absolute inset-0 h-auto w-full rounded-lg hover:bg-transparent" aria-label={t(($) => $.tree.expand, { count: collapsed.count })} aria-description={issue.title} onClick={collapsed.onExpand}>
+        <span className="absolute -right-2 -top-2 rounded-full border bg-background px-1.5 text-micro tabular-nums">{collapsed.count}</span>
+      </Button>
+    </div>
+  );
+
   return (
     <div ref={ref} className="w-full" data-tree-card={issue.id}>
       <IssueActionsContextMenu issue={issue}>
         <div className="group/card" {...{ [PEEK_TARGET_ATTR]: issue.id }} data-peeked={peeked ? "" : undefined}>
           <AppLink href={paths.issueDetail(issue.id)} newTabTitle={issue.identifier} className="block" {...peekLinkProps}>
-            <BoardCardContent
-              issue={issue}
-              editable
-              childProgress={childProgress}
-              project={project}
-              titleContent={
-                <IssueHoverCard issueId={issue.id} content={<TreeIssueHoverContent issue={issue} report={report} timeline={timeline} />}>
-                  <span tabIndex={0}>{issue.title}</span>
-                </IssueHoverCard>
-              }
-              collaborators={collaborators.length > 0 ? (
-                <span className="flex flex-wrap gap-1.5" aria-label={t(($) => $.display.card_collaborators)}>
-                  {collaborators.map((collaborator) => (
-                    <TreeCollaboratorAvatar key={`${collaborator.actorType}:${collaborator.actorId}`} collaborator={collaborator} issue={issue} tasks={tasks} />
-                  ))}
-                </span>
-              ) : null}
-            />
+            {card}
           </AppLink>
         </div>
       </IssueActionsContextMenu>
