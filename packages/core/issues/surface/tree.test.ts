@@ -17,14 +17,15 @@ describe("issue tree", () => {
     expect(layout.nodes.find((node) => node.node.id === "parent")!.y).toBeLessThan(layout.nodes.find((node) => node.node.id === "b")!.y);
   });
 
-  it("collapses hidden siblings together while preserving active descendants, then expands", () => {
-    const issues = [issue("p"), issue("done", "p", "done"), issue("cancel", "p", "cancelled"), issue("active", "done")];
+  it("collapses hidden siblings with all their descendants, then restores them on expansion", () => {
+    const issues = [issue("p"), issue("done", "p", "done"), issue("cancel", "p", "cancelled"), issue("active", "done"), issue("grandchild", "active"), issue("visible", "p")];
     const hidden = new Set(["done", "cancelled"]);
     const group = buildIssueTree(issues, hidden, new Set())[0]!.children[0]!;
     expect(group.collapsed).toBe(true);
     expect(group.issues.map((row) => row.id)).toEqual(["done", "cancel"]);
-    expect(group.children[0]!.id).toBe("active");
-    expect(buildIssueTree(issues, hidden, new Set([group.id]))[0]!.children.map((node) => node.id)).toEqual(["done", "cancel"]);
+    expect(group.children).toEqual([]);
+    expect(layoutIssueTree(buildIssueTree(issues, hidden, new Set())).nodes.map(({ node }) => node.id)).toEqual(["p", group.id, "visible"]);
+    expect(layoutIssueTree(buildIssueTree(issues, hidden, new Set([group.id]))).nodes.map(({ node }) => node.id)).toEqual(["p", "done", "active", "grandchild", "cancel", "visible"]);
   });
 
   it("renders cycles and duplicate rows once", () => {

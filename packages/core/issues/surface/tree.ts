@@ -49,8 +49,7 @@ export function buildIssueTree(
       id: groupId,
       issues: hidden.flatMap((node) => node.issues),
       collapsed: true,
-      // Keep active descendants reachable even when their parent is hidden.
-      children: collapse(hidden.flatMap((node) => node.children), groupId),
+      children: [],
     };
     return nodes.flatMap((node) => hiddenIds.has(node.id)
       ? node === hidden[0] ? [group] : []
