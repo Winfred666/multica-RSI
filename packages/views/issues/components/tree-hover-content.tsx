@@ -67,7 +67,8 @@ export function TreeCollaboratorAvatar({ collaborator, issue, tasks }: {
   const contextRuns = history.data?.filter((task) => isAgent && task.agent_id === collaborator.actorId && task.issue_id === issue.id && task.status === "completed" && task.input_trend)
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)) ?? [];
   const inputRun = contextRuns[0];
-  const ringTotal = contextRuns.reduce((total, task) => Math.max(total, task.input_trend!.current_context), 0);
+  // shortcut: assumed window until run history reports the effective context limit.
+  const ringTotal = 256_000;
   const trend = inputRun?.input_trend;
   const latest = collaborator.messages[0];
   const name = latest?.actor_name || getActorName(collaborator.actorType, collaborator.actorId);
