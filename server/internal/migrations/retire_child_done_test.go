@@ -34,7 +34,7 @@ INSERT INTO agent_task_queue VALUES ('{"wakeup_system":"child_done"}', 'queued',
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = tx.Exec(ctx, readMigrationFile(t, "588_retire_child_done_system_wakeup.up.sql")); err != nil {
+	if _, err = tx.Exec(ctx, readMigrationFile(t, "596_retire_child_done_system_wakeup.up.sql")); err != nil {
 		t.Fatal(err)
 	}
 	var valid bool
