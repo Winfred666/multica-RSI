@@ -4,8 +4,6 @@ import hashlib
 import json
 import os
 import sys
-import time
-from datetime import datetime
 from urllib.error import HTTPError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
@@ -38,10 +36,12 @@ class API:
             "Content-Type": "application/json",
         }
 
-    def request(self, method, path, body=None, missing=None):
+    def request(self, method, path, body=None, missing=None, response_headers=None):
         data = None if body is None else json.dumps(body).encode()
         try:
             with urlopen(Request(self.base + path, data, self.headers, method=method), timeout=5) as response:
+                if response_headers is not None:
+                    response_headers.update(response.headers)
                 raw = response.read()
                 return json.loads(raw) if raw else None
         except HTTPError as error:

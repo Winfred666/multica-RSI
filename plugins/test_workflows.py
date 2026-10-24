@@ -72,6 +72,9 @@ class FakeAPI(runtime.API):
             return {"issues": [copy.deepcopy(row) for row in self.rows.values() if row.get("parent_issue_id") == issue_id]}
         if parts[4] == "task-runs":
             return self.tasks.get(issue_id, [])
+        if parts[4] == "comments" and method == "POST":
+            self.writes.append(dict(body, issue_id=issue_id))
+            return self.writes[-1]
         if parts[4] == "wakeups":
             if method == "GET":
                 return [row for row in self.rules.values() if row["issue_id"] == issue_id]
@@ -170,18 +173,18 @@ class RalphTests(unittest.TestCase):
     def setUp(self):
         self.api = FakeAPI()
         self.api.rows.pop("child")
-        self.api.tasks["parent"] = [{"id": "run-1", "status": "completed", "created_at": "2026-01-01T00:00:00Z",
-                                     "completed_at": "2026-01-01T00:01:00Z"}]
-        self.payload = {"config": {"prompt": "Continue the task"}}
+        self.api.tasks["parent"] = [{"id": "run-1", "status": "completed", "created_at": "2026-01-01T00:00:00Z"}]
+        self.payload = {"event_type": "task.completed", "issue_id": "parent", "input": {"task_id": "run-1"},
+                        "config": {"prompt": "Continue the task"}}
 
-    def test_continues_once_per_completed_run(self):
-        RALPH(self.api, self.payload)
-        self.assertEqual(len(self.api.writes), 1)
-        for rule in self.api.rules.values():
-            rule["enabled"] = False
+    def test_continues_immediately_once_per_completed_run(self):
+        self.assertEqual(RALPH(self.api, self.payload), {"continued": 1})
+        self.assertEqual(self.api.writes[0]["content"], "[@Agent](mention://agent/agent)\n\nContinue the task")
+        self.assertEqual(self.api.rules, {})
         RALPH(self.api, self.payload)
         self.assertEqual(len(self.api.writes), 1)
         self.api.tasks["parent"][0]["id"] = "run-2"
+        self.payload["input"]["task_id"] = "run-2"
         RALPH(self.api, self.payload)
         self.assertEqual(len(self.api.writes), 2)
 
@@ -190,36 +193,22 @@ class RalphTests(unittest.TestCase):
             self.api.status("parent", state)
             RALPH(self.api, self.payload)
         self.api.status("parent", "in_progress")
-        for state in ("queued", "running", "deferred", "waiting_local_directory", "failed", "cancelled"):
+        for state in ("queued", "running", "dispatched", "deferred", "waiting_local_directory", "failed", "cancelled"):
             self.api.tasks["parent"][0]["status"] = state
             RALPH(self.api, self.payload)
         self.assertEqual(self.api.writes, [])
 
-    def test_waits_for_children_rules_and_five_minute_cooldown(self):
+    def test_waits_for_children_and_rules(self):
         self.api.rows["child"] = self.api.row("child", "todo", "parent")
         RALPH(self.api, self.payload)
         self.api.rows.pop("child")
         self.api.rules["wait"] = {"issue_id": "parent", "enabled": True}
         RALPH(self.api, self.payload)
-        self.api.rules.clear()
-        self.api.tasks["parent"][0]["completed_at"] = datetime_now()
-        RALPH(self.api, self.payload)
         self.assertEqual(self.api.writes, [])
-
-    def test_pages_past_the_first_hundred_issues(self):
-        parent = self.api.rows.pop("parent")
-        self.api.rows = {str(i): self.api.row(str(i), "done") for i in range(101)}
-        self.api.rows["parent"] = parent
-        RALPH(self.api, self.payload)
-        self.assertEqual(len(self.api.writes), 1)
-
-
-def datetime_now():
-    return runtime.datetime.now().astimezone().isoformat()
 
 
 class PackagingTests(unittest.TestCase):
-    def test_packages_are_single_file_executables_with_five_minute_schedules(self):
+    def test_packages_are_single_file_executables_with_declared_triggers(self):
         with tempfile.TemporaryDirectory() as directory:
             for name in ("wakeup-for-sub-issue", "in-progress-ralph"):
                 output = Path(directory) / (name + ".zip")
@@ -231,7 +220,13 @@ class PackagingTests(unittest.TestCase):
                     compile(code, "hook.py", "exec")
                     manifest = json.loads(bundle.read("multica.plugin.json"))
                     for hook in manifest["contributes"]["hooks"]:
-                        self.assertEqual(hook["schedule"]["cron"], "*/5 * * * *")
+                        if name == "in-progress-ralph":
+                            self.assertEqual(hook["triggers"], ["event"])
+                            self.assertEqual(hook["events"], ["task.completed"])
+                            self.assertIn("tasks:read", manifest["scopes"])
+                            self.assertNotIn("schedule", hook)
+                        else:
+                            self.assertEqual(hook["schedule"]["cron"], "*/5 * * * *")
 
 
 if __name__ == "__main__":
