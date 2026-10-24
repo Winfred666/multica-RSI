@@ -1,6 +1,6 @@
 # Hosted workflow plugins
 
-These packages use the existing event hooks, scheduler, plugin storage and issue
+These packages use the existing event hooks, native wakeups, plugin storage and issue
 APIs. Policy changes ship as versioned ZIPs. Python 3 is the only runtime
 dependency and is included in the server image.
 
@@ -49,9 +49,10 @@ installation upgrade; configuration edits need neither a ZIP nor a host restart.
 
 ## Delivery and deduplication
 
-Sub-issue hooks react to issue events and recheck every five minutes. They defer
-while a parent has an active/deferred run; they skip closed, backlog, human-assigned
-and unassigned parents. Current status categories support custom board statuses.
+Sub-issue hooks react to issue events without recurring schedules. They submit a
+durable native wakeup even while the parent is busy; Multica handles waiting and
+delivery. They skip closed, backlog, human-assigned and unassigned parents.
+Current status categories support custom board statuses. Manual checks remain available.
 Ralph listens only to `task.completed`, checks the affected issue, and posts the
 configured prompt as a comment mentioning its current agent or squad leader.
 The comment triggers continuation immediately, without a timer or cooldown.
@@ -96,8 +97,8 @@ the same issue and account return the existing rule, even after that one-shot wa
 consumed. This covers concurrent deliveries and a crash between queueing and
 saving state for sub-issue wakeups.
 Repeated review/block/completion cycles rearm when a check observes the condition
-become false. A brief transition missed by both events and scheduled reads is
-not guaranteed delivery. Ralph events are best-effort; there is no polling
+become false. A brief transition missed by event delivery is not guaranteed
+delivery. Ralph events are best-effort; there is no polling
 recovery. Its comment and deduplication write are separate requests, so concurrent
 delivery or a failed storage write can produce duplicate comments.
 
