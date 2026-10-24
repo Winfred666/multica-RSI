@@ -104,7 +104,7 @@ class API:
         if not current or finished(current) or category(current) == "backlog":
             return False
         agent = self.target(current)
-        if not agent or self.runs(current["id"], active=True):
+        if not agent:
             return False
         try:
             self.request("POST", f"/api/issues/{current['id']}/wakeups", {
