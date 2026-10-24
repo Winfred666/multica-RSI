@@ -2,6 +2,7 @@ package plugincontract
 
 import (
 	"fmt"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -49,7 +50,11 @@ func HostCapabilities() Capabilities {
 		// tools, which is why it ships with an approval step that pins them by
 		// schema digest — see service/plugin_mcp_transport.go. Installing the
 		// plugin is not the grant there; approving the tools is.
-		HookTransport: map[string]bool{TransportHTTP: true, TransportMCP: true},
+		HookTransport: map[string]bool{
+			TransportHTTP: true,
+			TransportMCP:  true,
+			TransportExec: runtime.GOOS == "linux" || runtime.GOOS == "darwin",
+		},
 		// A skill resource is not a call in either direction — it is a SKILL.md
 		// written into the existing skill table at install and removed at
 		// uninstall. service.InstallSkillResources does that.

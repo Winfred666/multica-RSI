@@ -13,11 +13,15 @@ const mockSetEnabled = vi.hoisted(() => vi.fn());
 const mockUninstall = vi.hoisted(() => vi.fn());
 const mockPublish = vi.hoisted(() => vi.fn());
 const mockDeletePackage = vi.hoisted(() => vi.fn());
+const mockSetExecution = vi.hoisted(() => vi.fn());
+const mockDeleteExecution = vi.hoisted(() => vi.fn());
+const mockResetExecution = vi.hoisted(() => vi.fn());
 
 const data = vi.hoisted(() => ({
   installed: { plugins: [] as Array<Record<string, unknown>> },
   packages: { packages: [] as Array<Record<string, unknown>> },
   role: "owner" as "owner" | "admin" | "member",
+  execution: { configured: false, enabled: false, run_as: null as null | { id: string; name: string } },
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -28,6 +32,8 @@ vi.mock("@tanstack/react-query", () => ({
   useQuery: (options: { queryKey?: readonly unknown[] }) =>
     options?.queryKey?.includes("members")
       ? { data: [], isLoading: false, isError: false }
+      : options?.queryKey?.[1] === "execution"
+      ? { data: data.execution, isLoading: false, isError: false }
       : options?.queryKey?.[1] === "packages"
       ? { data: data.packages, isLoading: false, isError: false }
       : { data: data.installed, isLoading: false, isError: false },
@@ -36,6 +42,9 @@ vi.mock("@tanstack/react-query", () => ({
 vi.mock("@multica/core/plugins", () => ({
   pluginInstallationsOptions: () => ({ queryKey: ["plugins", "installed"] }),
   pluginPackagesOptions: () => ({ queryKey: ["plugins", "packages"] }),
+  pluginExecutionOptions: () => ({ queryKey: ["plugins", "execution"] }),
+  useSetPluginExecution: () => ({ mutateAsync: mockSetExecution, reset: mockResetExecution, isPending: false }),
+  useDeletePluginExecution: () => ({ mutateAsync: mockDeleteExecution, isPending: false }),
   usePreviewPlugin: () => ({ mutateAsync: mockPreview, isPending: false }),
   useInstallPlugin: () => ({ mutateAsync: mockInstall, isPending: false }),
   useConfigurePlugin: () => ({ mutateAsync: mockConfigure, isPending: false }),
@@ -134,6 +143,7 @@ describe("PluginsTab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     data.role = "owner";
+    data.execution = { configured: false, enabled: false, run_as: null };
     data.installed.plugins = [];
     data.packages.packages = [PACKAGE];
     mockPreview.mockResolvedValue(PREVIEW);
@@ -141,6 +151,49 @@ describe("PluginsTab", () => {
     mockConfigure.mockResolvedValue(INSTALLATION);
     mockSetEnabled.mockResolvedValue(INSTALLATION);
     mockUninstall.mockResolvedValue(undefined);
+    mockSetExecution.mockResolvedValue({ configured: true, enabled: true, run_as: { id: "alice", name: "Alice" } });
+    mockDeleteExecution.mockResolvedValue(undefined);
+  });
+
+  it("requires an explicitly supplied PAT and clears it after saving", async () => {
+    const user = userEvent.setup();
+    render(<PluginsTab />, { wrapper: Wrapper });
+    const enable = screen.getByRole("button", { name: "Enable hosted execution" });
+    expect(enable).toBeDisabled();
+    expect(mockSetExecution).not.toHaveBeenCalled();
+    const input = screen.getByLabelText("Personal access token");
+    expect(input).toHaveAttribute("type", "password");
+    await user.type(input, "mul_explicitly_supplied");
+    await user.click(enable);
+    await waitFor(() => expect(mockSetExecution).toHaveBeenCalledWith("mul_explicitly_supplied"));
+    await waitFor(() => expect(input).toHaveValue(""));
+    expect(mockResetExecution).toHaveBeenCalled();
+  });
+
+  it("shows the shared execution owner and disconnects without a token", async () => {
+    data.execution = { configured: true, enabled: true, run_as: { id: "alice", name: "Alice" } };
+    const user = userEvent.setup();
+    render(<PluginsTab />, { wrapper: Wrapper });
+    expect(screen.getByText("Run as: Alice")).toBeInTheDocument();
+    expect(screen.getByLabelText("Personal access token")).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "Disable hosted execution" }));
+    await waitFor(() => expect(mockDeleteExecution).toHaveBeenCalledWith());
+  });
+
+  it("does not offer credential changes to ordinary members", () => {
+    data.role = "member";
+    render(<PluginsTab />, { wrapper: Wrapper });
+    expect(screen.queryByLabelText("Personal access token")).not.toBeInTheDocument();
+  });
+
+  it("discloses unsandboxed hosted execution before granting access", async () => {
+    data.packages.packages = [{ ...PACKAGE, versions: [PACKAGE.versions[0]] }];
+    mockPreview.mockResolvedValue({ ...PREVIEW, scopes: ["host:exec"] });
+    const user = userEvent.setup();
+    render(<PluginsTab />, { wrapper: Wrapper });
+    await user.click(screen.getByRole("button", { name: "Review and install" }));
+    expect(await screen.findByText(enSettings.plugins.scopes.host_exec)).toBeInTheDocument();
+    expect(mockInstall).not.toHaveBeenCalled();
   });
 
   it("shows the scope consent screen before anything is installed", async () => {

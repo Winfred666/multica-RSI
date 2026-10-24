@@ -77,6 +77,38 @@ func TestParseManifestAcceptsReferenceDocument(t *testing.T) {
 	}
 }
 
+func TestExecHookContract(t *testing.T) {
+	for _, tc := range []struct {
+		name, entry, endpoint, scope, want string
+	}{
+		{name: "packaged script", entry: "hooks/check.sh", scope: "host:exec"},
+		{name: "missing consent", entry: "hooks/check.sh", want: "host:exec"},
+		{name: "missing entry", scope: "host:exec", want: "entry"},
+		{name: "traversal", entry: "../check.sh", scope: "host:exec", want: "entry"},
+		{name: "absolute", entry: "/bin/sh", scope: "host:exec", want: "entry"},
+		{name: "mixed transports", entry: "hooks/check.sh", endpoint: "https://example.com", scope: "host:exec", want: "url"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := mutate(t, func(doc map[string]any) {
+				if tc.scope != "" {
+					doc["scopes"] = append(doc["scopes"].([]any), tc.scope)
+				}
+				hook := doc["contributes"].(map[string]any)["hooks"].([]any)[0].(map[string]any)
+				hook["transport"] = map[string]any{"type": "exec", "entry": tc.entry, "url": tc.endpoint}
+				hook["triggers"] = []any{"schedule", "manual", "agent"}
+				hook["schedule"] = map[string]any{"cron": "0 6 * * *", "timezone": "UTC"}
+			})
+			_, _, err := ParseManifest(raw)
+			if tc.want == "" && err != nil {
+				t.Fatal(err)
+			}
+			if tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseManifestAcceptsScheduledHook(t *testing.T) {
 	raw := mutate(t, func(doc map[string]any) {
 		contributes := doc["contributes"].(map[string]any)
@@ -109,7 +141,7 @@ func TestParseManifestValidatesScheduledHookContract(t *testing.T) {
 		{name: "missing timezone", triggers: []any{"schedule"}, schedule: map[string]any{"cron": "*/5 * * * *", "timezone": ""}, want: "timezone must not be empty"},
 		{name: "invalid timezone", triggers: []any{"schedule"}, schedule: map[string]any{"cron": "*/5 * * * *", "timezone": "Mars/Olympus"}, want: "timezone is invalid"},
 		{name: "too frequent", triggers: []any{"schedule"}, schedule: map[string]any{"cron": "*/4 * * * *", "timezone": "UTC"}, want: "every five minutes"},
-		{name: "mcp transport", triggers: []any{"schedule"}, schedule: map[string]any{"cron": "*/5 * * * *", "timezone": "UTC"}, transport: map[string]any{"type": "mcp", "url": "https://example.com/mcp"}, want: "only supports the http transport"},
+		{name: "mcp transport", triggers: []any{"schedule"}, schedule: map[string]any{"cron": "*/5 * * * *", "timezone": "UTC"}, transport: map[string]any{"type": "mcp", "url": "https://example.com/mcp"}, want: "only supports the http and exec transports"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

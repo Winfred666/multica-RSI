@@ -257,7 +257,7 @@ func pluginHookScheduleHandler(
 		hook, err := service.FindHook(installation, row.HookKey)
 		if err != nil || hook.Schedule == nil ||
 			!service.HookAllowsTrigger(hook, plugincontract.TriggerSchedule) ||
-			hook.Transport.Type != plugincontract.TransportHTTP ||
+			(hook.Transport.Type != plugincontract.TransportHTTP && hook.Transport.Type != plugincontract.TransportExec) ||
 			hook.Schedule.Cron != row.CronExpression || hook.Schedule.Timezone != row.Timezone {
 			return pluginHookScheduleSkipped("manifest_changed"), nil
 		}

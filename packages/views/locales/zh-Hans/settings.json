@@ -477,6 +477,20 @@
       "saved": "配置已保存",
       "secret_set": "已保存 — 输入新值可替换"
     },
+    "execution": {
+      "title": "托管执行",
+      "enabled": "已启用",
+      "disabled": "已禁用",
+      "run_as": "执行账户：{{name}}",
+      "load_failed": "无法加载托管执行设置。",
+      "unavailable": "令牌无效、所有者已离开此工作空间，或服务器配置不可用。",
+      "consent": "此工作空间的所有托管插件共用此令牌。请提供所有者明确授权用于此用途的令牌。脚本不受沙箱隔离，可访问该账户有权访问的所有工作空间。",
+      "token": "个人访问令牌",
+      "enable": "启用托管执行",
+      "replace": "更换令牌",
+      "disable": "禁用托管执行",
+      "disconnect_help": "禁用会删除已保存的副本。令牌的撤销由其所有者控制。"
+    },
     "scopes": {
       "issues_read": "读取任务",
       "issues_write": "创建和修改任务",
@@ -487,6 +501,7 @@
       "agents_read": "读取智能体列表",
       "members_read": "读取成员列表",
       "storage_user": "为每位成员单独存储数据",
+      "host_exec": "使用为此工作空间提供的令牌，在 Multica 服务器上运行不受沙箱隔离的代码。插件权限范围不限制其账户级访问权限。",
       "storage_workspace": "存储工作区共享数据",
       "net": "向 {{domain}} 发送数据",
       "unknown": "无法识别的权限 — 请勿安装"
@@ -682,8 +697,7 @@
     },
     "system": {
       "title": "系统通知",
-      "description": "Multica 在后台时显示系统通知。",
-      "label": "显示系统通知"
+      "label": "Multica 在后台时显示系统通知"
     },
     "browser": {
       "label": "浏览器通知",
@@ -1224,6 +1238,15 @@
   "desktop": {
     "tabs": {
       "updates": "更新"
+    },
+    "tab_bar": {
+      "pin": "固定标签页",
+      "unpin": "取消固定标签页",
+      "close": "关闭标签页",
+      "close_others": "关闭其他标签页",
+      "open_window": "在新窗口打开",
+      "new": "新建标签页",
+      "pinned_name": "{{title}}（已固定）"
     },
     "updates": {
       "title": "更新",

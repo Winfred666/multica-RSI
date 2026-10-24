@@ -70,6 +70,7 @@ var scheduleCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cro
 const (
 	TransportHTTP = "http"
 	TransportMCP  = "mcp"
+	TransportExec = "exec"
 )
 
 // Resource types. Resources involve no call in either direction.
@@ -100,6 +101,7 @@ const (
 	ScopeMembersRead      = "members:read"
 	ScopeStorageUser      = "storage:user"
 	ScopeStorageWorkspace = "storage:workspace"
+	ScopeHostExec         = "host:exec"
 
 	// ScopeNetPrefix guards outbound network access: both the iframe CSP
 	// connect-src allowlist and the hook transport host check derive from it.
@@ -128,6 +130,7 @@ var fixedScopes = map[string]bool{
 	ScopeMembersRead:      true,
 	ScopeStorageUser:      true,
 	ScopeStorageWorkspace: true,
+	ScopeHostExec:         true,
 }
 
 func hasScope(scopes []string, want string) bool {
@@ -231,8 +234,9 @@ type HookSchedule struct {
 }
 
 type HookTransport struct {
-	Type string `json:"type"`
-	URL  string `json:"url"`
+	Type  string `json:"type"`
+	URL   string `json:"url,omitempty"`
+	Entry string `json:"entry,omitempty"`
 }
 
 // Resource is a static contribution. No call happens in either direction, so a
@@ -667,8 +671,8 @@ func (m Manifest) validateContributions() error {
 			if hook.Schedule == nil {
 				return fmt.Errorf("%s.schedule is required when the schedule trigger is declared", field)
 			}
-			if hook.Transport.Type != TransportHTTP {
-				return fmt.Errorf("%s.schedule only supports the http transport", field)
+			if hook.Transport.Type != TransportHTTP && hook.Transport.Type != TransportExec {
+				return fmt.Errorf("%s.schedule only supports the http and exec transports", field)
 			}
 			if err := validateHookSchedule(field+".schedule", *hook.Schedule); err != nil {
 				return err
@@ -751,12 +755,21 @@ func validateHookSchedule(field string, schedule HookSchedule) error {
 	return nil
 }
 
-// validateHookTransport enforces that a hook can only reach a host the manifest
-// declared through a `net:` scope. Without this the consent screen would not
-// describe where plugin data actually goes.
+// Hosted execution requires separate consent: net: scopes cannot sandbox it.
 func (m Manifest) validateHookTransport(field string, transport HookTransport) error {
 	switch transport.Type {
+	case TransportExec:
+		if !hasScope(m.Scopes, ScopeHostExec) {
+			return fmt.Errorf("%s.transport requires the host:exec scope", field)
+		}
+		if transport.URL != "" {
+			return fmt.Errorf("%s.transport.url must be omitted for exec", field)
+		}
+		return validateRelativePath(field+".transport.entry", transport.Entry)
 	case TransportHTTP, TransportMCP:
+		if transport.Entry != "" {
+			return fmt.Errorf("%s.transport.entry is only supported for exec", field)
+		}
 	default:
 		return fmt.Errorf("%s.transport.type is unsupported: %q", field, transport.Type)
 	}

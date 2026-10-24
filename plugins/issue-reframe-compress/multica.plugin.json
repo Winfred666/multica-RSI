@@ -1,0 +1,80 @@
+{
+  "manifest_version": 1,
+  "key": "com.multica.issue-reframe-compress",
+  "name": "Issue reframe compress",
+  "description": "Clean issue discussion at a natural stopping point in the assignee\u2019s existing run, after two context compressions.",
+  "version": "1.0.1",
+  "author": {
+    "name": "Multica"
+  },
+  "scopes": [
+    "host:exec",
+    "issues:read",
+    "tasks:read",
+    "comments:read",
+    "comments:write",
+    "storage:workspace"
+  ],
+  "contributes": {
+    "hooks": [
+      {
+        "key": "comments",
+        "name": "Issue comments",
+        "description": "Issue comments: At a natural stopping point in your normal issue work, call with issue_id to check whether cleanup is due. If comments are returned, process them serially: delete noise, update with one short plain-text result or conclusion, or preserve important experiments, guidance, and knowledge. Submit id, revision, and action; include content for update. Repeat until complete, then follow the returned instruction to resume your original task. Do not post a cleanup comment.",
+        "triggers": [
+          "agent"
+        ],
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "issue_id": {
+              "type": "string"
+            },
+            "decisions": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "delete",
+                      "update",
+                      "preserve"
+                    ]
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "revision",
+                  "action"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "issue_id"
+          ],
+          "additionalProperties": false
+        },
+        "timeout_ms": 30000,
+        "transport": {
+          "type": "exec",
+          "entry": "hook.py"
+        }
+      }
+    ]
+  }
+}

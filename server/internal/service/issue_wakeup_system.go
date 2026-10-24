@@ -209,9 +209,6 @@ func (s *IssueWakeupService) processChildEvents(ctx context.Context, parentID pg
 	if !active {
 		return finish()
 	}
-	if _, err = EnsureChildDoneRule(ctx, tx, q, parent); err != nil {
-		return err
-	}
 	rules, err := q.ListChildConditionWakeups(ctx, parent.ID)
 	if err != nil {
 		return err
@@ -433,6 +430,11 @@ func (s *IssueWakeupService) dispatchSystem(ctx context.Context, prev db.IssueWa
 	}
 	if w.Revision != prev.Revision {
 		return tx.Commit(ctx)
+	}
+	// Every commit below, including those that evaluate nothing, means this
+	// pass got the locks an earlier failed pass did not; an error rolls it back.
+	if _, err = tx.Exec(ctx, "UPDATE issue_wakeup SET last_error=NULL WHERE id=$1 AND last_error IS NOT NULL", w.ID); err != nil {
+		return err
 	}
 	current, err := resolveWakeTarget(ctx, q, issue)
 	if err != nil {
