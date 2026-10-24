@@ -220,19 +220,24 @@ describe("TreeView", () => {
     qc.clear();
   });
 
-  it("shows server input trends before hover and refreshes the ring when run history changes", async () => {
+  it("scales context against 256K and refreshes the ring when run history changes", async () => {
     const row = issue("Trend");
-    const run = { id: "run", agent_id: "agent-Trend", issue_id: row.id, status: "completed", created_at: "2026-01-01", input_trend: { current_context: 1000, context_compression_count: 1 } } as AgentTask;
+    const run = { id: "run", agent_id: "agent-Trend", issue_id: row.id, status: "completed", created_at: "2026-01-01", input_trend: { current_context: 128000, context_compression_count: 1 } } as AgentTask;
     const { qc, api } = setup([row], [run], [comment("agent-Trend")]);
-    const ring = await screen.findByRole("img", { name: "Current context: 1,000 tokens" });
-    expect(ring.querySelector("svg")).toBeInTheDocument();
+    const ring = await screen.findByRole("img", { name: "Current context: 128,000 tokens" });
+    const arc = ring.querySelector("circle[stroke-dashoffset]")!;
+    const circumference = Number(arc.getAttribute("stroke-dasharray"));
+    expect(Number(arc.getAttribute("stroke-dashoffset"))).toBeCloseTo(circumference / 2);
     expect(screen.getByLabelText("Context compressions: 1")).toHaveTextContent("1");
     expect(api.listTaskMessages).not.toHaveBeenCalled();
-    act(() => qc.setQueryData(issueTasksOptions(row.id).queryKey, [{ ...run, input_trend: { ...run.input_trend!, current_context: 500, context_compression_count: 2 } }]));
-    expect(await screen.findByRole("img", { name: "Current context: 500 tokens" })).toBeInTheDocument();
+    act(() => qc.setQueryData(issueTasksOptions(row.id).queryKey, [{ ...run, input_trend: { ...run.input_trend!, current_context: 64000, context_compression_count: 2 } }]));
+    expect(await screen.findByRole("img", { name: "Current context: 64,000 tokens" })).toBeInTheDocument();
     expect(screen.getByLabelText("Context compressions: 2")).toHaveTextContent("2");
+    expect(Number(arc.getAttribute("stroke-dashoffset"))).toBeCloseTo(circumference * 0.75);
+    act(() => qc.setQueryData(issueTasksOptions(row.id).queryKey, [{ ...run, input_trend: { ...run.input_trend!, current_context: 512000 } }]));
+    await waitFor(() => expect(Number(arc.getAttribute("stroke-dashoffset"))).toBe(0));
     await userEvent.hover(screen.getByRole("img", { name: "agent-Trend" }));
-    expect(await screen.findByText("Estimated from completed runs; ring scaled to the largest recorded context.")).toBeInTheDocument();
+    expect(await screen.findByText("Estimated from completed runs; ring assumes a 256K-token context window.")).toBeInTheDocument();
     qc.clear();
   });
 });
