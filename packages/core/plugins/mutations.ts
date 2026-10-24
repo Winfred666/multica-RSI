@@ -74,6 +74,23 @@ export function useSetPluginEnabled(wsId: string) {
   });
 }
 
+export function useSetPluginExecution(wsId: string) {
+  const invalidate = useInvalidatePlugins(wsId);
+  return useMutation({
+    mutationFn: (token: string) => api.setPluginExecution(wsId, token),
+    onSettled: invalidate,
+    gcTime: 0,
+  });
+}
+
+export function useDeletePluginExecution(wsId: string) {
+  const invalidate = useInvalidatePlugins(wsId);
+  return useMutation({
+    mutationFn: () => api.deletePluginExecution(wsId),
+    onSettled: invalidate,
+  });
+}
+
 /**
  * Pins the approved tool set for one `mcp` hook.
  *

@@ -477,6 +477,20 @@
       "saved": "설정을 저장했습니다",
       "secret_set": "저장됨 — 새 값을 입력하면 교체됩니다"
     },
+    "execution": {
+      "title": "호스트 실행",
+      "enabled": "활성화됨",
+      "disabled": "비활성화됨",
+      "run_as": "실행 계정: {{name}}",
+      "load_failed": "호스트 실행 설정을 불러오지 못했습니다.",
+      "unavailable": "PAT가 유효하지 않거나 소유자가 워크스페이스를 떠났거나 호스트 설정을 사용할 수 없습니다.",
+      "consent": "이 워크스페이스의 모든 호스트 실행 플러그인이 이 PAT를 사용합니다. 소유자가 이 용도로 승인한 토큰을 제공하세요. 스크립트는 샌드박스 격리 없이 실행되며 계정이 접근할 수 있는 모든 워크스페이스에 접근할 수 있습니다.",
+      "token": "개인 액세스 토큰",
+      "enable": "호스트 실행 활성화",
+      "replace": "PAT 교체",
+      "disable": "호스트 실행 비활성화",
+      "disconnect_help": "비활성화하면 저장된 사본이 삭제됩니다. 토큰 폐기는 소유자가 관리합니다."
+    },
     "scopes": {
       "issues_read": "태스크 읽기",
       "issues_write": "태스크 생성 및 수정",
@@ -487,6 +501,7 @@
       "agents_read": "agent 목록 읽기",
       "members_read": "멤버 목록 읽기",
       "storage_user": "멤버별로 데이터 저장",
+      "host_exec": "이 워크스페이스에 제공된 PAT로 Multica 서버에서 샌드박스 격리 없이 코드를 실행합니다. 계정 전체에 대한 접근은 플러그인 권한 범위로 제한되지 않습니다.",
       "storage_workspace": "워크스페이스 공유 데이터 저장",
       "net": "{{domain}}(으)로 데이터 전송",
       "unknown": "알 수 없는 권한 — 설치하지 마세요"
@@ -682,8 +697,7 @@
     },
     "system": {
       "title": "시스템 알림",
-      "description": "Multica가 백그라운드에 있을 때 시스템 알림을 표시합니다.",
-      "label": "시스템 알림 표시"
+      "label": "Multica가 백그라운드에 있을 때 시스템 알림 표시"
     },
     "browser": {
       "label": "브라우저 알림",
@@ -964,6 +978,15 @@
   "desktop": {
     "tabs": {
       "updates": "업데이트"
+    },
+    "tab_bar": {
+      "pin": "탭 고정",
+      "unpin": "탭 고정 해제",
+      "close": "탭 닫기",
+      "close_others": "다른 탭 닫기",
+      "open_window": "새 창에서 열기",
+      "new": "새 탭",
+      "pinned_name": "{{title}} (고정됨)"
     },
     "updates": {
       "title": "업데이트",

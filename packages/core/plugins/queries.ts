@@ -5,7 +5,16 @@ export const pluginKeys = {
   all: (wsId: string) => ["workspaces", wsId, "plugins"] as const,
   installed: (wsId: string) => [...pluginKeys.all(wsId), "installed"] as const,
   packages: (wsId: string) => [...pluginKeys.all(wsId), "packages"] as const,
+  execution: (wsId: string) => [...pluginKeys.all(wsId), "execution"] as const,
 };
+
+export function pluginExecutionOptions(wsId: string) {
+  return queryOptions({
+    queryKey: pluginKeys.execution(wsId),
+    queryFn: () => api.getPluginExecution(wsId),
+    enabled: wsId.length > 0,
+  });
+}
 
 export function pluginInstallationsOptions(wsId: string) {
   return queryOptions({

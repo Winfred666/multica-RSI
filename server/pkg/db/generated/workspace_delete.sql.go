@@ -530,7 +530,10 @@ func (q *Queries) DeleteWorkspaceLeafData(ctx context.Context, workspaceID pgtyp
 }
 
 const deleteWorkspacePluginData = `-- name: DeleteWorkspacePluginData :exec
-WITH installations AS MATERIALIZED (
+WITH deleted_execution AS (
+    DELETE FROM plugin_workspace_execution WHERE plugin_workspace_execution.workspace_id = $1
+),
+installations AS MATERIALIZED (
     SELECT plugin_installation.id
     FROM plugin_installation
     WHERE plugin_installation.workspace_id = $1

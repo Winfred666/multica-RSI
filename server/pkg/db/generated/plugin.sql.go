@@ -487,6 +487,15 @@ func (q *Queries) DeletePluginStorageValue(ctx context.Context, arg DeletePlugin
 	return result.RowsAffected(), nil
 }
 
+const deleteWorkspacePluginExecution = `-- name: DeleteWorkspacePluginExecution :exec
+DELETE FROM plugin_workspace_execution WHERE workspace_id = $1
+`
+
+func (q *Queries) DeleteWorkspacePluginExecution(ctx context.Context, workspaceID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWorkspacePluginExecution, workspaceID)
+	return err
+}
+
 const disablePluginHookSchedules = `-- name: DisablePluginHookSchedules :exec
 UPDATE plugin_hook_schedule
 SET enabled = FALSE, next_run_at = NULL, updated_at = now()
@@ -691,6 +700,40 @@ func (q *Queries) GetPluginStorageValue(ctx context.Context, arg GetPluginStorag
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
+	return i, err
+}
+
+const getWorkspacePluginExecution = `-- name: GetWorkspacePluginExecution :one
+SELECT workspace_id, pat_id, ciphertext FROM plugin_workspace_execution WHERE workspace_id = $1
+`
+
+func (q *Queries) GetWorkspacePluginExecution(ctx context.Context, workspaceID pgtype.UUID) (PluginWorkspaceExecution, error) {
+	row := q.db.QueryRow(ctx, getWorkspacePluginExecution, workspaceID)
+	var i PluginWorkspaceExecution
+	err := row.Scan(&i.WorkspaceID, &i.PatID, &i.Ciphertext)
+	return i, err
+}
+
+const getWorkspacePluginExecutionStatus = `-- name: GetWorkspacePluginExecutionStatus :one
+SELECT p.user_id, u.name,
+    COALESCE(NOT p.revoked AND (p.expires_at IS NULL OR p.expires_at > now())
+        AND EXISTS (SELECT 1 FROM member m WHERE m.workspace_id = c.workspace_id AND m.user_id = p.user_id), FALSE)::boolean AS enabled
+FROM plugin_workspace_execution c
+LEFT JOIN personal_access_token p ON p.id = c.pat_id
+LEFT JOIN "user" u ON u.id = p.user_id
+WHERE c.workspace_id = $1
+`
+
+type GetWorkspacePluginExecutionStatusRow struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	Name    pgtype.Text `json:"name"`
+	Enabled bool        `json:"enabled"`
+}
+
+func (q *Queries) GetWorkspacePluginExecutionStatus(ctx context.Context, workspaceID pgtype.UUID) (GetWorkspacePluginExecutionStatusRow, error) {
+	row := q.db.QueryRow(ctx, getWorkspacePluginExecutionStatus, workspaceID)
+	var i GetWorkspacePluginExecutionStatusRow
+	err := row.Scan(&i.UserID, &i.Name, &i.Enabled)
 	return i, err
 }
 
@@ -1235,6 +1278,17 @@ func (q *Queries) LockPluginPackageKey(ctx context.Context, dollar_1 string) err
 	return err
 }
 
+const lockWorkspaceForPluginWrite = `-- name: LockWorkspaceForPluginWrite :one
+SELECT id FROM workspace WHERE id = $1 FOR KEY SHARE
+`
+
+func (q *Queries) LockWorkspaceForPluginWrite(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, lockWorkspaceForPluginWrite, id)
+	var id_2 pgtype.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const reactivatePluginHookSchedule = `-- name: ReactivatePluginHookSchedule :one
 UPDATE plugin_hook_schedule
 SET enabled = TRUE,
@@ -1359,6 +1413,23 @@ func (q *Queries) SetPluginMCPApprovals(ctx context.Context, arg SetPluginMCPApp
 		&i.PackageVersionID,
 	)
 	return i, err
+}
+
+const setWorkspacePluginExecution = `-- name: SetWorkspacePluginExecution :exec
+INSERT INTO plugin_workspace_execution (workspace_id, pat_id, ciphertext)
+VALUES ($1, $2, $3)
+ON CONFLICT (workspace_id) DO UPDATE SET pat_id = EXCLUDED.pat_id, ciphertext = EXCLUDED.ciphertext
+`
+
+type SetWorkspacePluginExecutionParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	PatID       pgtype.UUID `json:"pat_id"`
+	Ciphertext  []byte      `json:"ciphertext"`
+}
+
+func (q *Queries) SetWorkspacePluginExecution(ctx context.Context, arg SetWorkspacePluginExecutionParams) error {
+	_, err := q.db.Exec(ctx, setWorkspacePluginExecution, arg.WorkspaceID, arg.PatID, arg.Ciphertext)
+	return err
 }
 
 const updatePluginHookScheduleDefinition = `-- name: UpdatePluginHookScheduleDefinition :one

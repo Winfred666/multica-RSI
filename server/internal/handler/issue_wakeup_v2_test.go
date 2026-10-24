@@ -62,42 +62,6 @@ func TestChildDoneRequestPathLeavesNothingToSweep(t *testing.T) {
 	}
 }
 
-// A rule created while the workspace default is off stays off until the
-// issue sets its own.
-func TestChildDoneWorkspaceDefault(t *testing.T) {
-	var settings []byte
-	dbfx.QueryRow(t, "SELECT settings FROM workspace WHERE id=$1", testWorkspaceID).Scan(&settings)
-	t.Cleanup(func() {
-		testPool.Exec(context.Background(), "UPDATE workspace SET settings=$2 WHERE id=$1", testWorkspaceID, settings)
-	})
-	dbfx.Exec(t, `UPDATE workspace SET settings=settings||'{"system_wakeup_child_done":false}' WHERE id=$1`, testWorkspaceID)
-
-	off := newChildDoneFixture(t, "in_progress")
-	if rules := listSystemWakeupsFor(t, off.parent.ID); len(rules) != 1 || rules[0].Enabled || rules[0].WorkspaceDefault {
-		t.Fatalf("workspace default not applied: %+v", rules)
-	}
-	updateChildStatus(t, off.child.ID, "done")
-	if got := len(childDoneEntries(t, off.parent.ID)); got != 0 {
-		t.Fatalf("rule off by default still fired: %d", got)
-	}
-	// The issue's own setting wins over the default; a partial body keeps
-	// the instruction.
-	on := newChildDoneFixture(t, "in_progress")
-	if w := putChildDoneRule(t, on.parent.ID, map[string]any{"instruction": "Check the window first."}); w.Code != http.StatusOK {
-		t.Fatalf("save instruction: %d %s", w.Code, w.Body.String())
-	}
-	if w := putChildDoneRule(t, on.parent.ID, map[string]any{"enabled": true}); w.Code != http.StatusOK {
-		t.Fatalf("enable: %d %s", w.Code, w.Body.String())
-	}
-	if rules := listSystemWakeupsFor(t, on.parent.ID); len(rules) != 1 || !rules[0].Enabled || rules[0].Instruction != "Check the window first." {
-		t.Fatalf("override: %+v", rules)
-	}
-	updateChildStatus(t, on.child.ID, "done")
-	if got := len(childDoneEntries(t, on.parent.ID)); got != 1 {
-		t.Fatalf("issue override on: %d entries, want 1", got)
-	}
-}
-
 type workspaceWakeupRow struct {
 	ID              string  `json:"id"`
 	IssueID         string  `json:"issue_id"`
@@ -157,9 +121,6 @@ func TestWorkspaceWakeupsListSourcesSystemRulesAndPaused(t *testing.T) {
 		dbfx.Task(t, agent, testutil.Cols{"issue_id": issue, "runtime_id": testRuntimeID, "status": "completed", "context": fmt.Sprintf(`{"wakeup_id":%q}`, paused)})
 	}
 
-	if w := putChildDoneRule(t, fx.parent.ID, map[string]any{"instruction": "Advance the next stage."}); w.Code != http.StatusOK {
-		t.Fatalf("create system rule: %d", w.Code)
-	}
 	rows, counts := listWorkspaceWakeupRows(t, "scope=all&limit=100")
 	byID := map[string]workspaceWakeupRow{}
 	var system workspaceWakeupRow

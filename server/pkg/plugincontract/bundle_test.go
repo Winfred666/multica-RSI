@@ -68,6 +68,35 @@ func TestParseBundleKeepsOnlyDeclaredFiles(t *testing.T) {
 	}
 }
 
+func TestBundleCollectsExecEntry(t *testing.T) {
+	manifest := `{"manifest_version":1,"key":"com.example.exec","name":"Exec","version":"1.0.0","author":{"name":"Example"},"scopes":["host:exec"],"contributes":{"hooks":[{"key":"check","name":"Check","description":"Check work.","triggers":["manual"],"transport":{"type":"exec","entry":"hooks/check.sh"}}]}}`
+	for _, tc := range []struct{ name, content, want string }{
+		{"script", "#!/bin/sh\nprintf '{}'\n", ""},
+		{"empty", "", "empty"},
+		{"missing", "", "missing"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files := map[string]string{plugincontract.ManifestFilename: manifest}
+			if tc.name != "missing" {
+				files["hooks/check.sh"] = tc.content
+			}
+			bundle, err := plugincontract.ParseBundle(zipBundle(t, files))
+			if tc.want != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("error=%v, want %q", err, tc.want)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if content, ok := bundle.File("hooks/check.sh"); !ok || string(content) != tc.content {
+				t.Fatalf("executable not preserved: %q", content)
+			}
+		})
+	}
+}
+
 // Zipping a folder is what a person does, and it produces
 // `my-plugin/multica.plugin.json`. One leading directory is accepted; the
 // manifest's own entries stay relative to it.

@@ -396,7 +396,6 @@ export function DraftDefinitionFields() {
                       )
                     }
                     aria-label={sortDirectionLabel ?? undefined}
-                    title={sortDirectionLabel ?? undefined}
                   >
                     {sortDirectionLabel}
                   </Button>

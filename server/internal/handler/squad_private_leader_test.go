@@ -276,6 +276,7 @@ func TestChildDone_SquadPrivateLeader_PlainMemberWakesLeader(t *testing.T) {
 	})
 
 	// Plain member moves child to done.
+	seedHistoricalChildDoneRule(t, parent.ID)
 	w = httptest.NewRecorder()
 	r = newRequestAs(memberID, "PATCH", "/api/issues/"+child.ID, map[string]any{
 		"status": "done",
@@ -392,6 +393,7 @@ func TestChildDone_SquadPrivateLeader_AgentActorWakesLeader(t *testing.T) {
 	})
 
 	// Worker agent moves the child to done (agent actor via X-Agent-ID/X-Task-ID).
+	seedHistoricalChildDoneRule(t, parent.ID)
 	w = httptest.NewRecorder()
 	r = newRequest("PATCH", "/api/issues/"+child.ID, map[string]any{
 		"status": "done",

@@ -127,6 +127,29 @@ RETURNING *;
 -- name: GetPluginInstallation :one
 SELECT * FROM plugin_installation WHERE id = $1;
 
+-- name: LockWorkspaceForPluginWrite :one
+SELECT id FROM workspace WHERE id = $1 FOR KEY SHARE;
+
+-- name: GetWorkspacePluginExecution :one
+SELECT * FROM plugin_workspace_execution WHERE workspace_id = $1;
+
+-- name: GetWorkspacePluginExecutionStatus :one
+SELECT p.user_id, u.name,
+    COALESCE(NOT p.revoked AND (p.expires_at IS NULL OR p.expires_at > now())
+        AND EXISTS (SELECT 1 FROM member m WHERE m.workspace_id = c.workspace_id AND m.user_id = p.user_id), FALSE)::boolean AS enabled
+FROM plugin_workspace_execution c
+LEFT JOIN personal_access_token p ON p.id = c.pat_id
+LEFT JOIN "user" u ON u.id = p.user_id
+WHERE c.workspace_id = $1;
+
+-- name: SetWorkspacePluginExecution :exec
+INSERT INTO plugin_workspace_execution (workspace_id, pat_id, ciphertext)
+VALUES ($1, $2, $3)
+ON CONFLICT (workspace_id) DO UPDATE SET pat_id = EXCLUDED.pat_id, ciphertext = EXCLUDED.ciphertext;
+
+-- name: DeleteWorkspacePluginExecution :exec
+DELETE FROM plugin_workspace_execution WHERE workspace_id = $1;
+
 -- name: GetWorkspacePluginInstallation :one
 SELECT * FROM plugin_installation
 WHERE workspace_id = $1 AND id = $2;

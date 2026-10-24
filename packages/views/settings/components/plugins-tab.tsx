@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useCurrentMember } from "@multica/core/permissions";
 import {
   pluginInstallationsOptions,
+  pluginExecutionOptions,
   pluginPackagesOptions,
   useConfigurePlugin,
   useDeletePluginPackage,
@@ -14,6 +15,8 @@ import {
   usePreviewPlugin,
   usePublishPluginPackage,
   useSetPluginEnabled,
+  useSetPluginExecution,
+  useDeletePluginExecution,
   useUninstallPlugin,
 } from "@multica/core/plugins";
 import { useCurrentWorkspace } from "@multica/core/paths";
@@ -26,6 +29,7 @@ import type {
 import { Alert, AlertDescription, AlertTitle } from "@multica/ui/components/ui/alert";
 import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
+import { IconButton } from "@multica/ui/components/common/icon-button";
 import { Input } from "@multica/ui/components/ui/input";
 import {
   Select,
@@ -136,6 +140,7 @@ function scopeDescription(scope: string, t: Translate): string {
     return t(($) => $.plugins.scopes.net, { domain: scope.slice("net:".length) });
   }
   switch (scope) {
+    case "host:exec": return t(($) => $.plugins.scopes.host_exec);
     case "issues:read": return t(($) => $.plugins.scopes.issues_read);
     case "issues:write": return t(($) => $.plugins.scopes.issues_write);
     case "comments:read": return t(($) => $.plugins.scopes.comments_read);
@@ -507,15 +512,15 @@ function PublishedPackage({
           <div className="text-body font-medium">{pluginPackage.name}</div>
           <p className="text-caption text-muted-foreground">{pluginPackage.plugin_key}</p>
         </div>
-        <Button
+        <IconButton
           size="icon"
           variant="ghost"
-          aria-label={t(($) => $.plugins.publish.delete)}
+          label={t(($) => $.plugins.publish.delete)}
           disabled={!canManage || busy}
           onClick={() => onDelete(pluginPackage.id)}
         >
           <Trash2 />
-        </Button>
+        </IconButton>
       </div>
 
       <ul className="space-y-1.5">
@@ -610,17 +615,17 @@ function InstalledPlugin({
                   : t(($) => $.plugins.disabled)))
                 .catch(reportError)}
             />
-            <Button
+            <IconButton
               size="icon"
               variant="ghost"
-              aria-label={t(($) => $.plugins.uninstall)}
+              label={t(($) => $.plugins.uninstall)}
               disabled={!canManage || isMutating}
               onClick={() => uninstallMutation.mutateAsync(installation.id)
                 .then(() => toast.success(t(($) => $.plugins.uninstalled)))
                 .catch(reportError)}
             >
               {uninstallMutation.isPending ? <Loader2 className="animate-spin" /> : <Trash2 />}
-            </Button>
+            </IconButton>
           </div>
         </div>
 
@@ -673,6 +678,71 @@ function InstalledPlugin({
   );
 }
 
+function HostedExecution({ wsId, canManage }: { wsId: string; canManage: boolean }) {
+  const { t } = useT("settings");
+  const { data, isLoading, isError } = useQuery(pluginExecutionOptions(wsId));
+  const save = useSetPluginExecution(wsId);
+  const remove = useDeletePluginExecution(wsId);
+  const [token, setToken] = useState("");
+  const busy = save.isPending || remove.isPending;
+  const reportError = (error: unknown) => toast.error(error instanceof Error ? error.message : t(($) => $.plugins.action_failed));
+  const submit = async () => {
+    try {
+      await save.mutateAsync(token.trim());
+      setToken("");
+    } catch (error) {
+      reportError(error);
+    } finally {
+      save.reset();
+    }
+  };
+
+  return (
+    <SettingsSection title={t(($) => $.plugins.execution.title)}>
+      <SettingsCard>
+        <div className="space-y-3 p-4">
+          {isLoading ? <Skeleton className="h-6 w-40" /> : isError ? (
+            <p role="alert">{t(($) => $.plugins.execution.load_failed)}</p>
+          ) : (
+            <>
+              <p className="text-caption font-medium">
+                {data?.enabled === true ? t(($) => $.plugins.execution.enabled) : t(($) => $.plugins.execution.disabled)}
+              </p>
+              {data?.run_as ? <p className="text-caption">{t(($) => $.plugins.execution.run_as, { name: data.run_as.name || data.run_as.id })}</p> : null}
+              {data?.configured === true && data.enabled !== true ? (
+                <p role="alert" className="text-caption">{t(($) => $.plugins.execution.unavailable)}</p>
+              ) : null}
+            </>
+          )}
+          {canManage ? (
+            <>
+              <p className="text-caption text-muted-foreground">{t(($) => $.plugins.execution.consent)}</p>
+              <label className="block space-y-2 text-caption">
+                <span>{t(($) => $.plugins.execution.token)}</span>
+                <Input type="password" autoComplete="new-password" value={token} disabled={busy}
+                  onChange={(event) => setToken(event.target.value)} />
+              </label>
+              <div className="flex flex-wrap justify-end gap-2">
+                {data?.configured === true ? (
+                  <Button variant="outline" size="sm" disabled={busy}
+                    onClick={() => { void remove.mutateAsync().catch(reportError); }}>
+                    {t(($) => $.plugins.execution.disable)}
+                  </Button>
+                ) : null}
+                <Button size="sm" disabled={busy || isLoading || isError || !token.trim()} onClick={() => { void submit(); }}>
+                  {save.isPending ? <Loader2 className="animate-spin" /> : null}
+                  {data?.configured === true ? t(($) => $.plugins.execution.replace) : t(($) => $.plugins.execution.enable)}
+                </Button>
+              </div>
+              {data?.configured === true ? <p className="text-caption text-muted-foreground">{t(($) => $.plugins.execution.disconnect_help)}</p> : null}
+            </>
+          ) : null}
+        </div>
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
 export function PluginsTab() {
   const { t } = useT("settings");
   const workspace = useCurrentWorkspace();
@@ -686,6 +756,8 @@ export function PluginsTab() {
   return (
     <SettingsTab title={t(($) => $.plugins.title)} scope="workspace">
       {role && !canManage ? <SettingsReadOnlyNotice wsId={wsId} /> : null}
+
+      <HostedExecution key={wsId} wsId={wsId} canManage={canManage} />
 
       {canManage ? <PublishAndInstall wsId={wsId} canManage={canManage} /> : null}
 
