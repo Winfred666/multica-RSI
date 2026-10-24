@@ -2,7 +2,7 @@
   "tree": {
     "input_trend": "Contexte actuel : {{tokens}} tokens",
     "input_drops": "Compressions du contexte : {{count}}",
-    "input_trend_hint": "Estimation à partir des exécutions terminées ; anneau relatif au plus grand contexte enregistré.",
+    "input_trend_hint": "Estimation à partir des exécutions terminées ; anneau basé sur une fenêtre supposée de 256K tokens.",
     "pan_hint": "Faites glisser le canevas pour vous déplacer",
     "loading": "Chargement de l’arbre…",
     "load_failed": "Certaines branches n’ont pas pu être chargées",
