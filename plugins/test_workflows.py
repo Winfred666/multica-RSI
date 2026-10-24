@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 from urllib.parse import parse_qs, unquote, urlsplit
 from zipfile import ZipFile
 
@@ -123,14 +124,20 @@ class ChildWakeupTests(unittest.TestCase):
         self.check("all_finished")
         self.assertEqual(len(self.api.writes), 5)
 
-    def test_busy_parent_defers_and_uses_current_prompt(self):
-        self.api.status("child", "blocked")
-        self.api.tasks["parent"] = [{"status": "deferred"}]
-        self.check("blocked")
-        self.assertEqual(self.api.writes, [])
-        self.api.tasks.clear()
-        self.check("blocked", event=False, prompt="New configured prompt")
-        self.assertTrue(self.api.writes[0]["instruction"].endswith("New configured prompt"))
+    def test_busy_parent_gets_one_durable_wakeup_without_polling(self):
+        for status in ("queued", "deferred", "running", "dispatched", "waiting_local_directory"):
+            with self.subTest(status=status):
+                self.api = FakeAPI()
+                self.api.status("child", "blocked")
+                self.api.tasks["parent"] = [{"status": status}]
+                with patch.object(self.api, "issues", side_effect=AssertionError("workspace scan")), \
+                     patch.object(self.api, "runs", side_effect=AssertionError("busy-parent check")):
+                    self.check("blocked")
+                    self.check("blocked")
+                self.assertEqual(len(self.api.writes), 1)
+                self.assertEqual(self.api.writes[0]["kind"], "at")
+                self.assertEqual(self.api.writes[0]["after_seconds"], 1)
+                self.assertTrue(self.api.writes[0]["instruction"].endswith("Configured instruction"))
 
     def test_uninvocable_parent_does_not_stop_other_parents(self):
         self.api.status("child", "blocked")
@@ -226,7 +233,9 @@ class PackagingTests(unittest.TestCase):
                             self.assertIn("tasks:read", manifest["scopes"])
                             self.assertNotIn("schedule", hook)
                         else:
-                            self.assertEqual(hook["schedule"]["cron"], "*/5 * * * *")
+                            self.assertEqual(hook["triggers"], ["event", "manual"])
+                            self.assertEqual(hook["events"], ["issue.created", "issue.updated", "issue.status_changed"])
+                            self.assertNotIn("schedule", hook)
 
 
 if __name__ == "__main__":
