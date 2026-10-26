@@ -1272,7 +1272,13 @@ func publishIssueBranch(gitRoot, branch string) error {
 	if _, err := runGit(gitRoot, "remote", "get-url", "origin"); err != nil {
 		return nil
 	}
-	if out, err := runGit(gitRoot, "push", "--set-upstream", "origin", "refs/heads/"+branch+":refs/heads/"+branch); err != nil {
+	args := []string{"push", "--set-upstream", "origin", "refs/heads/" + branch + ":refs/heads/" + branch}
+	out, err := runGit(gitRoot, args...)
+	// Retry one dropped TLS handshake; publishing the same ref is idempotent.
+	if err != nil && strings.Contains(out, "gnutls_handshake() failed:") {
+		out, err = runGit(gitRoot, args...)
+	}
+	if err != nil {
 		return fmt.Errorf("execenv: publish issue branch %q: %s: %w", branch, strings.TrimSpace(out), err)
 	}
 	return nil

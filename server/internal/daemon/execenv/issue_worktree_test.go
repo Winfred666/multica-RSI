@@ -17,6 +17,44 @@ func issueWorktreeTestParams(t *testing.T, repo, issueID, base string) LocalWork
 	}
 }
 
+func TestPublishIssueBranchRetriesTLSFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name, message string
+		persistent    bool
+		attempts      int
+		wantError     bool
+	}{
+		{"transient TLS", "gnutls_handshake() failed: The TLS connection was non-properly terminated.", false, 2, false},
+		{"persistent TLS", "gnutls_handshake() failed: The TLS connection was non-properly terminated.", true, 2, true},
+		{"permission", "permission denied", true, 1, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := newTestRepo(t)
+			origin := t.TempDir()
+			gitRun(t, origin, "init", "--bare", "-b", "main")
+			gitRun(t, repo, "remote", "add", "origin", origin)
+			gitRun(t, repo, "branch", "issue/test")
+			condition := "[ ! -e push-failed ]"
+			if tc.persistent {
+				condition = "true"
+			}
+			hook := "#!/bin/sh\nprintf 'attempt\\n' >> push-attempts\nif " + condition + "; then\n: > push-failed\nprintf '%s\\n' '" + tc.message + "' >&2\nexit 1\nfi\n"
+			if err := os.WriteFile(filepath.Join(origin, "hooks", "pre-receive"), []byte(hook), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := publishIssueBranch(repo, "issue/test"); (err != nil) != tc.wantError {
+				t.Fatalf("publish error = %v, want error %v", err, tc.wantError)
+			}
+			if got := strings.Count(readFile(t, filepath.Join(origin, "push-attempts")), "attempt\n"); got != tc.attempts {
+				t.Fatalf("push attempts = %d, want %d", got, tc.attempts)
+			}
+			if !tc.wantError && gitRun(t, origin, "rev-parse", "issue/test") != gitRun(t, repo, "rev-parse", "issue/test") {
+				t.Fatal("retry did not publish the issue branch")
+			}
+		})
+	}
+}
+
 func TestPrepareIssueBranchWithoutAgent(t *testing.T) {
 	t.Parallel()
 	repo := newTestRepo(t)
