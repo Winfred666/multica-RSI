@@ -8,6 +8,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/multica-ai/multica/server/internal/service"
+	"github.com/multica-ai/multica/server/internal/testutil"
 )
 
 func TestCreateAgent_MaxConcurrentTasksBoundsAndDefault(t *testing.T) {
@@ -64,6 +67,41 @@ func TestCreateAgent_MaxConcurrentTasksBoundsAndDefault(t *testing.T) {
 			})
 			if response.MaxConcurrentTasks != tt.want {
 				t.Fatalf("max_concurrent_tasks = %d, want %d", response.MaxConcurrentTasks, tt.want)
+			}
+		})
+	}
+}
+
+func TestUpdateAgent_ConcurrencyIncreaseWakesRuntime(t *testing.T) {
+	if testHandler == nil || testPool == nil {
+		t.Skip("database not available")
+	}
+	agentID := createHandlerTestAgent(t, "concurrency-wakeup", nil)
+	dbfx.Exec(t, `UPDATE agent SET max_concurrent_tasks = 1 WHERE id = $1`, agentID)
+	recorder := &terminalWakeupRecorder{}
+	h := *testHandler
+	h.TaskService = service.NewTaskService(h.Queries, testPool, h.TaskService.Hub, h.TaskService.Bus, recorder)
+
+	for _, tt := range []struct {
+		name string
+		body map[string]any
+		want int
+	}{
+		{"increase", map[string]any{"max_concurrent_tasks": 5}, 1},
+		{"unchanged", map[string]any{"max_concurrent_tasks": 5}, 0},
+		{"decrease", map[string]any{"max_concurrent_tasks": 2}, 0},
+		{"omitted", map[string]any{"description": "updated"}, 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder.calls = nil
+			req := withURLParam(newRequest(http.MethodPut, "/api/agents/"+agentID, tt.body), "id", agentID)
+			var response AgentResponse
+			testutil.Call(t, h.UpdateAgent, req).Want(http.StatusOK).JSON(&response)
+			if len(recorder.calls) != tt.want {
+				t.Fatalf("wakeups = %v, want %d", recorder.calls, tt.want)
+			}
+			if tt.want > 0 && (recorder.calls[0].runtimeID != response.RuntimeID || recorder.calls[0].taskID != "") {
+				t.Fatalf("wakeup = %+v, want runtime %s without a task ID", recorder.calls[0], response.RuntimeID)
 			}
 		})
 	}

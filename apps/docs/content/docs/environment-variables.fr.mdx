@@ -233,7 +233,7 @@ Les variables ci-dessous sont lues sur l'ordinateur qui exécute vos agents, et 
 | `MULTICA_DAEMON_POLL_INTERVAL` | `30s` | Intervalle d'interrogation des exécutions lorsqu'aucun événement de réveil n'arrive |
 | `MULTICA_DAEMON_WS_CLAIM_POLL_INTERVAL` | `3m` | Borne supérieure des interrogations de sécurité de la prise en charge via WebSocket lorsque celle-ci est saine, configurée indépendamment de `MULTICA_DAEMON_POLL_INTERVAL` ; une gigue à la baisse ramène la valeur par défaut effective à `2m30s`–`2m45s`, tandis que les anciens serveurs et les prises en charge incertaines conservent l'intervalle d'interrogation ordinaire |
 | `MULTICA_DAEMON_HEARTBEAT_INTERVAL` | `15s` | Intervalle des signaux de vie (heartbeat) |
-| `MULTICA_DAEMON_MAX_CONCURRENT_TASKS` | `20` | Plafond d'exécutions simultanées par daemon |
+| `MULTICA_DAEMON_MAX_CONCURRENT_TASKS` | `50` | Plafond d'exécutions simultanées par daemon |
 | `MULTICA_AGENT_TIMEOUT` | `0` | Durée maximale absolue par exécution ; `0` signifie aucune limite |
 | `MULTICA_AGENT_IDLE_WATCHDOG` | `2h` | Durée maximale de silence, sans sortie ni exécution d'outil ; `0` désactive entièrement le watchdog |
 | `MULTICA_AGENT_TOOL_WATCHDOG` | identique à `MULTICA_AGENT_IDLE_WATCHDOG` | Durée maximale de silence pour un seul appel d'outil ; ne la définissez que pour laisser aux outils plus de marge qu'au modèle, `0` n'arrête jamais de force un appel d'outil. Les shells d'arrière-plan de Cursor restent en cours tant que les processus qui leur appartiennent ne se sont pas terminés ; à cette limite, le daemon arrête ces processus et accorde à Cursor un nouveau budget de watchdog pour produire son résultat final. Si l'appartenance des processus ou leur nettoyage ne peut pas être vérifié, la politique ordinaire d'annulation des exécutions s'applique |
@@ -285,7 +285,7 @@ Clés prises en charge :
 | `device_name` | nom d'hôte | Nom de l'appareil affiché dans la liste des runtimes |
 | `runtime_name` | `Local Agent` | Nom d'affichage du runtime |
 | `workspaces_root` | chemin sous `~` dépendant du profil | Répertoire racine des répertoires de travail des exécutions |
-| `max_concurrent_tasks` | `20` | Plafond d'exécutions simultanées ; `0` ou une valeur vide signifie non défini |
+| `max_concurrent_tasks` | `50` | Plafond d'exécutions simultanées ; `0` ou une valeur vide signifie non défini |
 | `poll_interval` | `30s` | Intervalle d'interrogation des exécutions |
 | `ws_claim_poll_interval` | `3m` | Borne supérieure des interrogations de sécurité de la prise en charge via WebSocket lorsque celle-ci est saine, indépendante de `poll_interval` ; le daemon applique une gigue uniquement à la baisse |
 | `heartbeat_interval` | `15s` | Intervalle des signaux de vie (heartbeat) |

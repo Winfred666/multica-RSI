@@ -5456,12 +5456,12 @@ func (d *Daemon) runBatchPoller(pollerCtx, parentCtx context.Context, sem chan i
 			releaseSlots(slots[dispatched:])
 		}
 
-		// If we filled every slot, more work may be queued — loop immediately.
-		// Otherwise wait for the next wakeup / poll interval. A connection that
+		// A partial batch can leave runnable work; drain until a claim is empty.
+		// Then wait for the next wakeup / poll interval. A connection that
 		// negotiated WS RPC receives task-available pushes, so this poll is only
 		// a missed-event safety net and can run less often. Claim errors retain
 		// the configured fallback cadence above.
-		if dispatched > 0 && dispatched == len(slots) {
+		if dispatched > 0 {
 			continue
 		}
 		if err := sleepWithContextOrWakeup(pollerCtx, d.taskClaimPollInterval(claimResult), wakeup); err != nil {

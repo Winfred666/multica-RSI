@@ -104,7 +104,7 @@ Les états détaillés et les règles de relance figurent dans [Exécutions](/ta
 
 ## Limites de parallélisme
 
-Par défaut, un daemon traite au maximum 20 exécutions simultanées, et chaque agent au maximum 50. Le parallélisme effectif correspond à la plus petite de ces deux valeurs.
+Par défaut, un daemon traite au maximum 50 exécutions simultanées, et chaque agent au maximum 50. Le parallélisme effectif correspond à la plus petite de ces deux valeurs.
 
 Une fois une limite atteinte, les nouvelles exécutions restent en file d'attente. Vous pouvez ajuster le parallélisme d'un agent donné dans ses paramètres, et le plafond global de la machine via `MULTICA_DAEMON_MAX_CONCURRENT_TASKS`. Les exécutions en parallèle se disputent en même temps la capacité de la machine, le quota du compte de l'outil et le même répertoire de travail.
 

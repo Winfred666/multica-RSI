@@ -240,6 +240,65 @@ func TestTaskClaimPollIntervalTracksWSRPCAvailability(t *testing.T) {
 	}
 }
 
+func TestRunBatchPollerDrainsPartialBatchesBeforeSleeping(t *testing.T) {
+	t.Parallel()
+	var claims atomic.Int64
+	started := make(chan string, 2)
+	empty := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/api/daemon/tasks/claim") {
+			switch claims.Add(1) {
+			case 1:
+				w.Write([]byte(`{"tasks":[{"id":"t1","runtime_id":"rt-1","issue_id":"i1"}]}`))
+			case 2:
+				w.Write([]byte(`{"tasks":[{"id":"t2","runtime_id":"rt-1","issue_id":"i2"}]}`))
+			default:
+				w.Write([]byte(`{"tasks":[]}`))
+				if claims.Load() == 3 {
+					close(empty)
+				}
+			}
+			return
+		}
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	d := New(Config{ServerBaseURL: srv.URL, PollInterval: time.Hour, MaxConcurrentTasks: 3}, slog.New(slog.NewTextHandler(noopWriter{}, nil)))
+	d.workspaces["ws-1"] = &workspaceState{workspaceID: "ws-1", runtimeIDs: []string{"rt-1"}}
+	d.runtimeIndex["rt-1"] = Runtime{ID: "rt-1"}
+	d.cancelPollInterval = time.Hour
+	d.runner = taskRunnerFunc(func(ctx context.Context, task Task, _ string, _ int, _ *slog.Logger) (TaskResult, error) {
+		started <- task.ID
+		<-ctx.Done()
+		return TaskResult{Status: "cancelled"}, ctx.Err()
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	var taskWG sync.WaitGroup
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		d.runBatchPoller(ctx, ctx, newTaskSlotSemaphore(3), make(chan struct{}, 1), &taskWG)
+	}()
+	defer func() { cancel(); <-done; taskWG.Wait() }()
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("free capacity remained idle after a partial batch")
+		}
+	}
+	select {
+	case <-empty:
+	case <-time.After(time.Second):
+		t.Fatal("poller did not drain to an empty batch")
+	}
+	time.Sleep(50 * time.Millisecond)
+	if got := claims.Load(); got != 3 {
+		t.Fatalf("claims = %d, want 3; empty queue must sleep", got)
+	}
+}
+
 // TestRunBatchPollerWakesAfterTaskExit guards the gap where a queued task is
 // temporarily unclaimable (for example, because the same agent/issue task is
 // still running), the batch claim returns empty, and the poller goes to sleep
@@ -264,6 +323,7 @@ func testRunBatchPollerTaskExitWakeup(t *testing.T, maxConcurrent int, releaseDe
 	t.Helper()
 
 	var firstCompleted atomic.Bool
+	var firstServed atomic.Bool
 	var secondServed atomic.Bool
 	var claimCalls atomic.Int64
 	firstStarted := make(chan struct{})
@@ -276,9 +336,9 @@ func testRunBatchPollerTaskExitWakeup(t *testing.T, maxConcurrent int, releaseDe
 		case strings.HasSuffix(r.URL.Path, "/api/daemon/tasks/claim"):
 			claimCalls.Add(1)
 			switch {
-			case !firstCompleted.Load():
+			case firstServed.CompareAndSwap(false, true):
 				w.Write([]byte(`{"tasks":[{"id":"t1","runtime_id":"rt-1","issue_id":"i1","agent":{"name":"a"}}]}`))
-			case secondServed.CompareAndSwap(false, true):
+			case firstCompleted.Load() && secondServed.CompareAndSwap(false, true):
 				w.Write([]byte(`{"tasks":[{"id":"t2","runtime_id":"rt-1","issue_id":"i1","agent":{"name":"a"}}]}`))
 			default:
 				w.Write([]byte(`{"tasks":[]}`))

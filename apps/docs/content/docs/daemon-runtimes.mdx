@@ -105,7 +105,7 @@ Detailed states and retry rules are in [Runs](/tasks).
 
 ## Concurrency limits
 
-One daemon executes at most 20 runs at a time by default; each agent at most 50. Effective concurrency is the smaller of the two.
+One daemon executes at most 50 runs at a time by default; each agent at most 50. Effective concurrency is the smaller of the two.
 
 Once a limit is reached, new runs keep queueing. You can adjust a single agent's concurrency in the agent settings, and the machine-wide cap through `MULTICA_DAEMON_MAX_CONCURRENT_TASKS`. Parallel runs compete for machine capacity, tool account quota, and the same working directory all at once.
 

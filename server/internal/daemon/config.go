@@ -69,7 +69,7 @@ const (
 	DefaultWorkspaceSyncInterval          = 30 * time.Minute
 	DefaultWorkspaceSyncMaxBackoff        = 30 * time.Minute
 	DefaultHealthPort                     = 19514
-	DefaultMaxConcurrentTasks             = 20
+	DefaultMaxConcurrentTasks             = 50
 	DefaultGCInterval                     = 2 * time.Hour
 	DefaultGCTTL                          = 24 * time.Hour      // 1 day — AI-coding issues rarely stay open long
 	DefaultGCCompletedTaskTTLCloud        = 14 * 24 * time.Hour // 14 days — Multica Cloud bounds completed issue-task env retention by default; see defaultGCCompletedTaskTTL
@@ -115,7 +115,7 @@ type Config struct {
 	WorkspacesRoot                 string                // base path for execution envs (default: ~/multica_workspaces)
 	KeepEnvAfterTask               bool                  // preserve env after task for debugging
 	HealthPort                     int                   // local HTTP port for health checks (default: 19514)
-	MaxConcurrentTasks             int                   // max tasks running in parallel (default: 20)
+	MaxConcurrentTasks             int                   // max tasks running in parallel
 	GCEnabled                      bool                  // enable periodic workspace garbage collection (default: true)
 	GCInterval                     time.Duration         // how often the GC loop runs (default: 2h)
 	GCTTL                          time.Duration         // clean dirs whose issue is done/cancelled and updated_at < now()-TTL (default: 24h)
