@@ -63,6 +63,9 @@ func TestCreateMikaAgent_ServerOwnsTheDefinition(t *testing.T) {
 	if resp.PermissionMode != mikaAgentPermissionMode {
 		t.Fatalf("permission_mode = %q, want %q", resp.PermissionMode, mikaAgentPermissionMode)
 	}
+	if resp.MaxConcurrentTasks != 50 {
+		t.Fatalf("max_concurrent_tasks = %d, want 50", resp.MaxConcurrentTasks)
+	}
 	// The workspace half starts empty — the product half is never written to
 	// the row, which is what keeps a release from overwriting workspace notes.
 	if resp.Instructions != "" {

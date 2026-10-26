@@ -22,8 +22,8 @@ func TestCreateAgent_MaxConcurrentTasksBoundsAndDefault(t *testing.T) {
 		wantCode int
 		want     int32
 	}{
-		{name: "omitted defaults to six", provided: false, wantCode: http.StatusCreated, want: 6},
-		{name: "null defaults to six", value: nil, provided: true, wantCode: http.StatusCreated, want: 6},
+		{name: "omitted defaults to fifty", provided: false, wantCode: http.StatusCreated, want: 50},
+		{name: "null defaults to fifty", value: nil, provided: true, wantCode: http.StatusCreated, want: 50},
 		{name: "minimum accepted", value: 1, provided: true, wantCode: http.StatusCreated, want: 1},
 		{name: "maximum accepted", value: 50, provided: true, wantCode: http.StatusCreated, want: 50},
 		{name: "zero rejected", value: 0, provided: true, wantCode: http.StatusBadRequest},

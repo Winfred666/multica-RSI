@@ -130,9 +130,9 @@ multica agent copy <source-agent-id> --runtime-id <target> --model <model>  # cr
 | `custom_env` | `custom_env` (JSON object) | — | daemon (process env); see Env and secrets |
 | `mcp_config` | `mcp_config` (raw JSON) | CLI checks it is a JSON object or `null`; server stores as-is. At create, literal `null` is dropped (no-op); at update, `null` clears the field | daemon → provider (provider-specific MCP handling); redacted on read |
 | `visibility` | `visibility` | — | access control; defaults to `private`; gates who can read/route a private agent (e.g. a private squad leader) — NOT the runtime prompt |
-| `max_concurrent_tasks` | `max_concurrent_tasks` | integer from 1 through 50; out-of-range values return 400 | scheduler task cap; defaults to `6` |
+| `max_concurrent_tasks` | `max_concurrent_tasks` | integer from 1 through 50; out-of-range values return 400 | scheduler task cap; defaults to `50` |
 
-Defaults when omitted or explicitly `null`: `max_concurrent_tasks` → `6`.
+Defaults when omitted or explicitly `null`: `max_concurrent_tasks` → `50`.
 Other defaults when omitted: `runtime_config` → `{}`, `custom_env` → `{}`,
 `custom_args` → `[]`, `avatar_url` → a random `emoji:<glyph>`, `visibility` →
 `private` (all materialized server-side before the insert).
@@ -140,7 +140,7 @@ Other defaults when omitted: `runtime_config` → `{}`, `custom_env` → `{}`,
 happens in the CLI, not on the server.
 
 The 1–50 concurrency range applies consistently to create and update. On
-create, an omitted field defaults to 6 while an explicitly supplied 0 is
+create, an omitted field defaults to 50 while an explicitly supplied 0 is
 rejected; on update, omission preserves the current value. The CLI performs the
 same range check before sending create or update requests.
 

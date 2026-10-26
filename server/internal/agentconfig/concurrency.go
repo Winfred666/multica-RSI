@@ -3,7 +3,7 @@ package agentconfig
 import "fmt"
 
 const (
-	DefaultMaxConcurrentTasks int32 = 6
+	DefaultMaxConcurrentTasks int32 = 50
 	MinMaxConcurrentTasks     int32 = 1
 	MaxMaxConcurrentTasks     int32 = 50
 )
