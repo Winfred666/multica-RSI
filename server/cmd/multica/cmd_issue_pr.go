@@ -157,6 +157,11 @@ func runIssuePullRequestAction(ctx context.Context, client *cli.APIClient, issue
 		}
 	}
 	if pr.State == "OPEN" {
+		if action == "merge" && pr.Draft {
+			if _, err := localPRCommand(ctx, "gh", "pr", "ready", prURL); err != nil {
+				return err
+			}
+		}
 		if _, err := localPRCommand(ctx, "gh", args...); err != nil {
 			return err
 		}
@@ -234,6 +239,8 @@ type localPullRequest struct {
 	State  string `json:"state"`
 	Title  string `json:"title"`
 	Body   string `json:"body"`
+	Draft  bool   `json:"isDraft"`
+	Number int    `json:"number"`
 }
 
 func readLocalPullRequest(ctx context.Context, prURL string) (localPullRequest, error) {
@@ -241,7 +248,7 @@ func readLocalPullRequest(ctx context.Context, prURL string) (localPullRequest, 
 	if !githubPullRequestURL.MatchString(prURL) {
 		return pr, fmt.Errorf("expected a GitHub PR URL: %s", prURL)
 	}
-	data, err := localPRCommand(ctx, "gh", "pr", "view", prURL, "--json", "url,title,body,headRefName,baseRefName,headRefOid,state")
+	data, err := localPRCommand(ctx, "gh", "pr", "view", prURL, "--json", "url,number,title,body,isDraft,headRefName,baseRefName,headRefOid,state")
 	if err != nil {
 		return pr, err
 	}

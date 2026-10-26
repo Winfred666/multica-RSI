@@ -1125,7 +1125,7 @@ func runIssuePullRequests(cmd *cobra.Command, args []string) error {
 				return err
 			}
 			row := map[string]any{"html_url": pr.URL, "state": strings.ToLower(pr.State), "title": pr.Title,
-				"number": pr.URL[strings.LastIndex(pr.URL, "/")+1:], "branch": pr.Branch}
+				"number": pr.Number, "branch": pr.Branch}
 			if review {
 				diff, err := localPRCommand(ctx, "gh", "pr", "diff", pr.URL)
 				if err != nil {
@@ -1141,7 +1141,10 @@ func runIssuePullRequests(cmd *cobra.Command, args []string) error {
 			found := false
 			for i, item := range prs {
 				if existing, ok := item.(map[string]any); ok && strings.EqualFold(pullRequestURL(existing), pr.URL) {
-					prs[i], found = row, true
+					for key, value := range row {
+						existing[key] = value
+					}
+					prs[i], found = existing, true
 				}
 			}
 			if !found {

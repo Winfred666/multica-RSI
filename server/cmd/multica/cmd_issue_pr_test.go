@@ -254,6 +254,7 @@ func TestIssuePullRequestsReviewLocally(t *testing.T) {
 			wantErr                       bool
 		}{
 			{"member", "reviewed-head", "", "parent", issueTestPRURL, false},
+			{"draft PR", "reviewed-head", "", "parent", issueTestPRURL, false},
 			{"root member", "reviewed-head", "", "", issueTestPRURL, false},
 			{"parent run", "reviewed-head", "parent-run", "parent", issueTestPRURL, false},
 			{"wrong run", "reviewed-head", "child-run", "parent", issueTestPRURL, true},
@@ -264,6 +265,9 @@ func TestIssuePullRequestsReviewLocally(t *testing.T) {
 		} {
 			t.Run(action+"/"+tc.name, func(t *testing.T) {
 				log := fakeIssueGH(t, `{"url":"`+issueTestPRURL+`","headRefName":"issue/child","baseRefName":"issue/parent","headRefOid":"reviewed-head","state":"OPEN"}`)
+				if tc.name == "draft PR" {
+					t.Setenv("GH_TEST_PR", strings.TrimSuffix(os.Getenv("GH_TEST_PR"), "}")+`,"isDraft":true}`)
+				}
 				if tc.name == "wrong checkout" {
 					t.Setenv("GH_TEST_BRANCH", "issue/other")
 				}
@@ -328,6 +332,9 @@ func TestIssuePullRequestsReviewLocally(t *testing.T) {
 				}
 				if strings.Contains(string(calls), mutation+"\n") == tc.wantErr {
 					t.Fatalf("unexpected local gh mutation: %s", calls)
+				}
+				if strings.Contains(string(calls), "pr ready "+issueTestPRURL+"\n") != (tc.name == "draft PR" && action == "merge") {
+					t.Fatalf("unexpected draft preparation: %s", calls)
 				}
 				wantSync := !tc.wantErr && action == "merge" && tc.parent != ""
 				if strings.Contains(string(calls), "git fetch origin refs/heads/issue/parent\ngit merge --no-edit FETCH_HEAD\n") != wantSync {
