@@ -2,13 +2,6 @@ import { test, expect } from "@playwright/test";
 import { TestApiClient } from "./fixtures";
 import { waitForPageText } from "./helpers";
 
-// Smoke test for the onboarding flow: welcome → About you (role +
-// use case on ONE screen) → workspace → runtime. The source question
-// is intentionally absent — it moved to the workspace source-backfill
-// prompt (MUL-5159). Captures screenshots for review. Uses a unique
-// email per run so the user is always a fresh, un-onboarded user
-// landing on /onboarding.
-
 const EMAIL = `onboarding-v3-${Date.now()}@localhost`;
 const SHOTS_DIR = "../shots-rail";
 

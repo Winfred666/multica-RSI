@@ -55,9 +55,6 @@ export type UseCase =
   | "other";
 
 /**
- * Questionnaire persistence shared by onboarding and source backfill.
- * use_case is multi-select; source and role are single-select. Source retains an
- * array shape for stored compatibility and is collected after agent work completes.
  * Explicit *_skipped flags distinguish declines from unanswered fields.
  *
  * Readers normalize older single-string source/use_case values to arrays.

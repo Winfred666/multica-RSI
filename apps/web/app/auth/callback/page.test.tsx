@@ -120,15 +120,6 @@ function renderCallback(locale: SupportedLocale = "en") {
 describe("CallbackPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset the source-backfill dismiss counter so a test that writes
-    // it doesn't leak state into the next test (and the next test
-    // doesn't inherit a cap-reached state from a previous run).
-    for (let i = window.localStorage.length - 1; i >= 0; i--) {
-      const k = window.localStorage.key(i);
-      if (k && k.startsWith("multica.source_backfill.dismiss.")) {
-        window.localStorage.removeItem(k);
-      }
-    }
     // Snapshot keys before deleting — forEach + delete skips entries because
     // the iteration index advances while the underlying list shrinks.
     Array.from(mockSearchParams.keys()).forEach((k) =>

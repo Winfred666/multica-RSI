@@ -12,10 +12,6 @@ const OTHER_INPUT_MAX_LENGTH = 80;
  * enum value; `icon` is a React node (lucide icon, brand SVG, or emoji
  * span); `label` is the localized string already resolved by the
  * caller. `isOther` flips this card into a free-text input row.
- *
- * Shared by the About-you onboarding step and the workspace
- * source-backfill prompt, which both render their options through the
- * cards below.
  */
 export interface QuestionOption {
   slug: string;
