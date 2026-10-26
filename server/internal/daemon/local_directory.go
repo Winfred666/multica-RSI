@@ -51,10 +51,9 @@ type localDirectoryAssignment struct {
 }
 
 // UsesWorktree reports whether this assignment runs each task in its own git
-// worktree instead of in the user's directory. Worktree tasks skip the per-path
-// mutex entirely — that is the whole point of the mode — so every caller that
-// serialises, cleans up sidecars, or exempts the env root from GC must branch
-// on this rather than on "is there a local_directory assignment at all".
+// worktree instead of in the user's directory. Issue worktrees serialize only
+// runs sharing one issue branch; sibling issues stay parallel. Cleanup and GC
+// must distinguish worktrees from the user's directory.
 func (a *localDirectoryAssignment) UsesWorktree() bool {
 	return a != nil && strings.TrimSpace(a.Ref.ExecutionMode) == localDirectoryModeWorktree
 }

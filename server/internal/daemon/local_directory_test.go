@@ -1213,3 +1213,69 @@ func TestIssueTasksStillSerialiseOnPathMutex(t *testing.T) {
 	}
 	release()
 }
+
+func TestWorktreeTasksSerializeByIssue(t *testing.T) {
+	t.Parallel()
+	const daemonID = "d-mine"
+	raw, err := json.Marshal(localDirectoryRef{LocalPath: t.TempDir(), DaemonID: daemonID, ExecutionMode: localDirectoryModeWorktree})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources := []ProjectResourceData{{ID: "r1", ResourceType: localDirectoryResourceType, ResourceRef: raw}}
+	waiting := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasSuffix(req.URL.Path, "/wait-local-directory") {
+			waiting <- struct{}{}
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	d := &Daemon{cfg: Config{DaemonID: daemonID}, client: NewClient(srv.URL), localPathLocks: NewLocalPathLocker(), logger: slog.Default(), cancelPollInterval: time.Hour}
+	owner := Task{ID: "owner", IssueID: "issue-1", ProjectResources: resources}
+	release, abort := d.acquireLocalDirectoryLockIfNeeded(context.Background(), owner, slog.Default())
+	if abort || release == nil {
+		t.Fatal("issue worktree owner did not acquire its branch lock")
+	}
+	defer release()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	type result struct {
+		release func()
+		abort   bool
+	}
+	acquire := func(task Task) <-chan result {
+		done := make(chan result, 1)
+		go func() {
+			r, a := d.acquireLocalDirectoryLockIfNeeded(ctx, task, slog.Default())
+			done <- result{r, a}
+		}()
+		return done
+	}
+	// Sibling issues use different branches and must remain concurrent.
+	sibling := <-acquire(Task{ID: "sibling", IssueID: "issue-2", ProjectResources: resources})
+	if sibling.abort || sibling.release == nil {
+		t.Fatal("a sibling issue was blocked by another issue's branch")
+	}
+	defer sibling.release()
+	peer := acquire(Task{ID: "peer", IssueID: owner.IssueID, ProjectResources: resources})
+	select {
+	case <-waiting:
+	case <-ctx.Done():
+		t.Fatal("peer did not enter the existing task wait queue")
+	}
+	select {
+	case got := <-peer:
+		if got.release != nil {
+			got.release()
+		}
+		t.Fatal("peer acquired the branch while its owner was active")
+	default:
+	}
+	release()
+	got := <-peer
+	if got.abort || got.release == nil {
+		t.Fatal("peer did not acquire the branch after its owner finished")
+	}
+	got.release()
+}

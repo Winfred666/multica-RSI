@@ -6100,15 +6100,14 @@ func (d *Daemon) acquireLocalDirectoryLockIfNeeded(ctx context.Context, task Tas
 		return nil, true
 	}
 
-	// Worktree mode is the whole point of not serialising: each task gets its
-	// own checkout of the repo inside its env root, so there is no shared
-	// mutable state on the user's path to protect. Skipping the mutex here is
-	// what lets sibling tasks on one directory run concurrently. Path
-	// validation above still applies — git needs to write worktree
-	// registrations into the user's repo.
+	lockPath := assignment.RealPath
 	if assignment.UsesWorktree() {
-		taskLog.Info("local_directory: worktree mode, skipping path mutex")
-		return nil, false
+		if task.IssueID == "" {
+			taskLog.Info("local_directory: task worktree, skipping path mutex")
+			return nil, false
+		}
+		// One branch per issue: peer runs wait, while sibling issues stay parallel.
+		lockPath += "\x00" + task.WorkspaceID + "\x00" + task.IssueID
 	}
 
 	// A conversation is not a second writer. Everything above still applied —
@@ -6199,7 +6198,7 @@ func (d *Daemon) acquireLocalDirectoryLockIfNeeded(ctx context.Context, task Tas
 			}()
 		})
 	}
-	release, err = d.localPathLocks.Acquire(waitCtx, assignment.RealPath, task.ID, onWait)
+	release, err = d.localPathLocks.Acquire(waitCtx, lockPath, task.ID, onWait)
 	if err != nil {
 		// If the wait was cut short because the server finalized the task
 		// (terminal state) or deleted the row, the row is already in a
