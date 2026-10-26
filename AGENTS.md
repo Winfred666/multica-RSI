@@ -30,6 +30,7 @@ Multica is a task management platform where people and agents collaborate on iss
 
 Use `Makefile`, workspace `package.json` files, and `pnpm-workspace.yaml` for current commands and versions. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and worktree operations.
 
+- The local Next.js preview runs as a separate frontend service. Rebuild or restart the frontend freely when refreshing the preview; leave the backend, daemon, database, and their configuration untouched. This frontend-only setup does not make application interactions read-only.
 - Use the checkout's managed environment: `make up`, `make status`, `make down`. `make down` preserves data; `make destroy` removes the environment and its data.
 - Worktrees share PostgreSQL but have isolated databases/ports. Use the environment scripts and `.env.worktree`; do not copy the main checkout's `.env` or manually create a database through an assumed PostgreSQL instance.
 - Regenerate sqlc with `make sqlc` after SQL changes.
