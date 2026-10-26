@@ -130,12 +130,13 @@ from the admin credential used to authenticate the configuration request.
 
 ## Workflow policy
 
-Reuse the [scheduler](../../server/internal/scheduler/jobs_plugin_hook.go).
-Scripts periodically read current state and avoid repeating recorded work.
-Existing events can accelerate checks, but the
+Workflow policy belongs in plugin packages. Sub-issue hooks react to issue
+events and create deduplicated native wakeups; Ralph reacts to completed runs.
+Neither package uses recurring polling. The
 [plugin dispatcher](../../server/internal/service/plugin_event_dispatch.go)
-can drop events under load. Scheduled rechecks remain the baseline; the richer
-native wakeup event catalog is not automatically a plugin hook catalog.
+can drop events under load; manual sub-issue checks can re-evaluate current
+conditions. Other packages can use the existing
+[scheduler](../../server/internal/scheduler/jobs_plugin_hook.go) when needed.
 
 ## Existing V1 manifest examples
 
@@ -205,13 +206,14 @@ Shipped examples: [Schedule Pulse](../../examples/plugins/schedule-pulse/multica
 
 | Package | Additional policy only |
 | --- | --- |
-| [Wakeup for sub-issue](../../plugins/wakeup-for-sub-issue/multica.plugin.json) | Replaces automatic child-done wakeups. Three configurable prompts handle all children finished, child review, and child blocked. Events plus five-minute rechecks; deduplicated ordinary wakeups. |
-| [In-progress Ralph](../../plugins/in-progress-ralph/multica.plugin.json) | Every five minutes, continue idle in-progress issues after a completed run, respecting active/deferred runs, unfinished children, pending wakeups and human handoffs. Enabling the plugin opts in the workspace. |
+| [Wakeup for sub-issue](../../plugins/wakeup-for-sub-issue/multica.plugin.json) | Three configurable prompts handle all children finished, child review, and child blocked. Issue events create one native wakeup per transition. Saved transition IDs preserve deduplication when older timeline activity is truncated. |
+| [In-progress Ralph](../../plugins/in-progress-ralph/multica.plugin.json) | On task completion, continue the affected idle in-progress issue, respecting active/deferred runs, unfinished children, pending wakeups and human handoffs. |
+| [Issue reframe compress](../../plugins/issue-reframe-compress/multica.plugin.json) | Review and clean issue comments within the assignee's current run after two reported context compressions. |
 | Issue spending threshold | Read `multica issue usage ISSUE --output json`; compare reported cost with configured `price_limit_usd`, then comment or cancel runs. |
 
-The first two packages are available in [plugins/](../../plugins/README.md).
+The packages are available in [plugins/](../../plugins/README.md).
 The retired built-in child-done settings return an empty list; writes return 410.
-Migration 588 disables their existing rules and cancels their queued/deferred
+Migration 596 disables their existing rules and cancels their queued/deferred
 runs. Explicit user-created wakeup conditions remain available.
 
 Spending uses
@@ -231,11 +233,4 @@ periodic threshold check, not an instantaneous cap.
    does not upgrade an installation, and separately test scheduler recovery after
    restart. Agent-authored versions use the same publish/upgrade path.
 
-Track [task/agent reads #7620](https://github.com/multica-ai/multica/pull/7620)
-and [issue listing/task creation #8851](https://github.com/multica-ai/multica/pull/8851),
-both open at review. Existing CLI/API access lets this work proceed independently.
-Maintainers [declined a separate Goal Mode](https://github.com/multica-ai/multica/issues/7185#issuecomment-5338335094),
-supporting a small optional Ralph policy. Hosted execution and workspace credentials
-are our self-hosted extension, not an upstream commitment; the
-[July 2 maintainer position](https://github.com/multica-ai/multica/issues/4490#issuecomment-4862955743)
-reserved plugin-core development for the internal team.
+Hosted execution and workspace credentials are extensions maintained by this fork.
