@@ -154,7 +154,7 @@ func (d *Daemon) watchIssueBranchConnection(ctx context.Context, workspaceID str
 	default:
 		return fmt.Errorf("issue event stream requires http or https")
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/api/ws"
+	u.Path = strings.TrimRight(u.Path, "/") + "/ws"
 	q := u.Query()
 	q.Set("workspace_id", workspaceID)
 	u.RawQuery = q.Encode()

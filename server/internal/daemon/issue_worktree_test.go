@@ -28,7 +28,7 @@ func TestIssueBranchPreparationUsesCreatedEvents(t *testing.T) {
 	prepared := make(chan string, 2)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/ws":
+		case "/ws":
 			if r.URL.Query().Get("workspace_id") != "workspace" {
 				t.Error("missing workspace subscription")
 			}
