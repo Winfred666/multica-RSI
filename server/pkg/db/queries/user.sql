@@ -57,8 +57,14 @@ RETURNING *;
 -- questionnaire JSONB is patchable — the v2 attempt at persisting Step 3
 -- runtime choice on the user row was reverted; that state now lives in a
 -- frontend Zustand transient store.
+-- Source attribution is discarded, including answers sent by installed clients.
 UPDATE "user" SET
-    onboarding_questionnaire = COALESCE(sqlc.narg('questionnaire'), onboarding_questionnaire),
+    onboarding_questionnaire = CASE
+        WHEN jsonb_typeof(COALESCE(sqlc.narg('questionnaire')::jsonb, onboarding_questionnaire)) = 'object'
+        THEN COALESCE(sqlc.narg('questionnaire')::jsonb, onboarding_questionnaire)
+            - 'source' - 'source_other' - 'source_skipped'
+        ELSE COALESCE(sqlc.narg('questionnaire')::jsonb, onboarding_questionnaire)
+    END,
     updated_at = now()
 WHERE id = sqlc.arg('id')
 RETURNING *;

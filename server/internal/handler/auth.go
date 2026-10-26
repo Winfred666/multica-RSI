@@ -83,13 +83,16 @@ type UserResponse struct {
 const MaxProfileDescriptionLen = 2000
 
 func (h *Handler) userToResponse(u db.User) UserResponse {
-	// JSONB column is []byte with DEFAULT '{}', so it's never nil at the DB
-	// level. Defensive coalesce just in case a future ALTER makes the column
-	// nullable and some row comes back with no default applied.
-	q := u.OnboardingQuestionnaire
-	if len(q) == 0 {
-		q = []byte("{}")
+	var questionnaire map[string]json.RawMessage
+	_ = json.Unmarshal(u.OnboardingQuestionnaire, &questionnaire)
+	if questionnaire == nil {
+		questionnaire = make(map[string]json.RawMessage)
 	}
+	delete(questionnaire, "source")
+	delete(questionnaire, "source_other")
+	// Suppress the source backfill popup using the existing client skip marker.
+	questionnaire["source_skipped"] = json.RawMessage("true")
+	q, _ := json.Marshal(questionnaire)
 	return UserResponse{
 		ID:                      uuidToString(u.ID),
 		Name:                    u.Name,

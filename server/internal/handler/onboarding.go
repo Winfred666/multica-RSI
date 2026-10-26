@@ -131,16 +131,7 @@ type patchOnboardingRequest struct {
 	Questionnaire *json.RawMessage `json:"questionnaire,omitempty"`
 }
 
-// questionnaireAnswers mirrors the frontend's `QuestionnaireAnswers`
-// shape. `use_case` is multi-select (Step 3 allows picking several);
-// `source` is single-select (primary acquisition channel) but kept
-// as `stringOrSlice` for back-compat with v2 multi-select rows — the
-// client now always commits a one-element array. `role` stays
-// single-select.
-//
-// stringOrSlice also tolerates pre-array rows that wrote a bare
-// string into the JSONB column — `json.Unmarshal` would otherwise
-// fail on type mismatch when reading those back.
+// stringOrSlice accepts both current multi-select answers and pre-array rows.
 type stringOrSlice []string
 
 func (s *stringOrSlice) UnmarshalJSON(data []byte) error {
@@ -170,9 +161,6 @@ func (s *stringOrSlice) UnmarshalJSON(data []byte) error {
 }
 
 type questionnaireAnswers struct {
-	Source         stringOrSlice `json:"source"`
-	SourceOther    string        `json:"source_other"`
-	SourceSkipped  bool          `json:"source_skipped"`
 	Role           string        `json:"role"`
 	RoleOther      string        `json:"role_other"`
 	RoleSkipped    bool          `json:"role_skipped"`
@@ -182,9 +170,6 @@ type questionnaireAnswers struct {
 	Version        int           `json:"version"`
 }
 
-func (q questionnaireAnswers) sourceResolved() bool {
-	return len(q.Source) > 0 || q.SourceSkipped
-}
 func (q questionnaireAnswers) roleResolved() bool {
 	return q.Role != "" || q.RoleSkipped
 }
@@ -198,12 +183,7 @@ func (q questionnaireAnswers) useCaseResolved() bool {
 const questionnaireSchemaVersion = 2
 
 // complete covers the IN-FLOW questionnaire only: role + use_case.
-// Source moved out of the onboarding flow (MUL-5159) — it is collected
-// later by the workspace backfill prompt, and its resolution is
-// tracked by the separate `onboarding_source_submitted` emission in
-// PatchOnboarding. Requiring source here would stall the funnel's
-// "questionnaire submitted" step for days (or forever, for users who
-// never see the backfill prompt).
+// Source attribution is discarded rather than collected.
 func (q questionnaireAnswers) complete() bool {
 	if q.Version != questionnaireSchemaVersion {
 		return false
@@ -218,11 +198,8 @@ func (q questionnaireAnswers) complete() bool {
 //
 // Emits `onboarding_questionnaire_submitted` exactly once per user:
 // the first PATCH that transitions role + use_case from "at least one
-// slot empty" to "both resolved". Emits `onboarding_source_submitted`
-// exactly once on the source slot's own unresolved → resolved
-// transition, which normally happens later via the workspace backfill
-// prompt. Revisions past those points don't re-emit — the funnel
-// counts users, not edits.
+// slot empty" to "both resolved". Source answers are discarded by the
+// update query. Revisions past that point don't re-emit.
 func (h *Handler) PatchOnboarding(w http.ResponseWriter, r *http.Request) {
 	userID, ok := requireUserID(w, r)
 	if !ok {
@@ -278,31 +255,15 @@ func (h *Handler) PatchOnboarding(w http.ResponseWriter, r *http.Request) {
 	if after.complete() && !before.complete() {
 		obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.OnboardingQuestionnaireSubmitted(
 			userID,
-			[]string(after.Source),
+			nil,
 			after.Role,
 			[]string(after.UseCase),
-			after.SourceSkipped,
+			false,
 			after.RoleSkipped,
 			after.UseCaseSkipped,
-			after.SourceOther != "",
+			false,
 			after.RoleOther != "",
 			after.UseCaseOther != "",
-		))
-	}
-
-	// Source resolves on its own timeline — typically days after the
-	// in-flow questionnaire, via the workspace backfill prompt (it can
-	// no longer resolve in-flow). Emit on the unresolved → resolved
-	// transition so the backfill prompt's answer/decline rate shows up
-	// in Grafana; the transition check keeps the emission
-	// once-per-user, mirroring the questionnaire event above.
-	if after.Version == questionnaireSchemaVersion &&
-		after.sourceResolved() && !before.sourceResolved() {
-		obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.OnboardingSourceSubmitted(
-			userID,
-			[]string(after.Source),
-			after.SourceSkipped,
-			after.SourceOther != "",
 		))
 	}
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
+	"github.com/multica-ai/multica/server/internal/testutil"
 )
 
 // newWaitlistTestUser inserts a fresh user row, returns its id, and
@@ -229,19 +231,12 @@ func patchOnboardingAs(t *testing.T, h *Handler, userID, questionnaire string) {
 	req := httptest.NewRequest("PATCH", "/api/me/onboarding", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-User-ID", userID)
-	w := httptest.NewRecorder()
-	h.PatchOnboarding(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("patch onboarding: expected 200, got %d: %s", w.Code, w.Body.String())
-	}
+	var response UserResponse
+	testutil.Call(t, h.PatchOnboarding, req).Want(http.StatusOK).JSON(&response)
 }
 
-// The in-flow questionnaire is role + use_case only (MUL-5159): its
-// funnel counter must move without source, and source's own counter
-// must move exactly once when source resolves later via the workspace
-// backfill prompt.
-func TestPatchOnboardingSplitsQuestionnaireAndSourceEvents(t *testing.T) {
-	userID := newWaitlistTestUser(t, "onboarding-event-split@multica.ai")
+func TestPatchOnboardingDiscardsSourceAnswers(t *testing.T) {
+	userID := dbfx.User(t, "Onboarding Test", "onboarding-event-split@multica.ai")
 
 	m := obsmetrics.NewBusinessMetrics()
 	h := *testHandler
@@ -254,14 +249,13 @@ func TestPatchOnboardingSplitsQuestionnaireAndSourceEvents(t *testing.T) {
 		`"role":"engineer","role_other":null,"role_skipped":false,` +
 		`"use_case":["ship_code"],"use_case_other":null,"use_case_skipped":false,"version":2}`
 
-	// Role + use_case resolved, source untouched → questionnaire counter
-	// moves now; source counter must NOT.
+	// Profile answers still complete the questionnaire.
 	patchOnboardingAs(t, &h, userID, inFlow)
 	if got := counterValue(t, m, questionnaireCounter); got != 1 {
 		t.Fatalf("expected questionnaire counter 1 after role+use_case resolve, got %v", got)
 	}
 	if got := counterValue(t, m, sourceCounter); got != 0 {
-		t.Fatalf("expected source counter 0 while source unresolved, got %v", got)
+		t.Fatalf("expected source counter 0, got %v", got)
 	}
 
 	// Idempotency: replaying the same answers re-emits nothing.
@@ -270,30 +264,38 @@ func TestPatchOnboardingSplitsQuestionnaireAndSourceEvents(t *testing.T) {
 		t.Fatalf("expected questionnaire counter to stay at 1 after replay, got %v", got)
 	}
 
-	// Source lands later (the backfill prompt merges it into the row).
-	const withSource = `{"source":["search"],"source_other":null,"source_skipped":false,` +
+	// A client submitting the retired question must not store its answer.
+	const withSource = `{"source":["other"],"source_other":"old answer","source_skipped":false,` +
 		`"role":"engineer","role_other":null,"role_skipped":false,` +
 		`"use_case":["ship_code"],"use_case_other":null,"use_case_skipped":false,"version":2}`
 	patchOnboardingAs(t, &h, userID, withSource)
-	if got := counterValue(t, m, sourceCounter); got != 1 {
-		t.Fatalf("expected source counter 1 after source resolves, got %v", got)
+	if got := counterValue(t, m, sourceCounter); got != 0 {
+		t.Fatalf("expected source counter 0 after discarded source answer, got %v", got)
 	}
 	if got := counterValue(t, m, questionnaireCounter); got != 1 {
 		t.Fatalf("expected questionnaire counter to stay at 1 after source lands, got %v", got)
 	}
 
-	// Replaying the source answer re-emits nothing.
-	patchOnboardingAs(t, &h, userID, withSource)
-	if got := counterValue(t, m, sourceCounter); got != 1 {
-		t.Fatalf("expected source counter to stay at 1 after replay, got %v", got)
+	user, err := h.Queries.GetUser(context.Background(), parseUUID(userID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored, want map[string]any
+	if err := json.Unmarshal(user.OnboardingQuestionnaire, &stored); err != nil {
+		t.Fatal(err)
+	}
+	const profileOnly = `{"role":"engineer","role_other":null,"role_skipped":false,` +
+		`"use_case":["ship_code"],"use_case_other":null,"use_case_skipped":false,"version":2}`
+	if err := json.Unmarshal([]byte(profileOnly), &want); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(stored, want) {
+		t.Fatalf("stored questionnaire = %s, want %s", user.OnboardingQuestionnaire, profileOnly)
 	}
 }
 
-// Declining every question at once (the About-you Skip writes both
-// role and use_case skip markers; a backfill Skip writes source's) is
-// a resolution too: both counters move exactly once.
-func TestPatchOnboardingAllSkippedResolvesBothCounters(t *testing.T) {
-	userID := newWaitlistTestUser(t, "onboarding-source-skip@multica.ai")
+func TestPatchOnboardingAllSkippedCompletesQuestionnaire(t *testing.T) {
+	userID := dbfx.User(t, "Onboarding Test", "onboarding-source-skip@multica.ai")
 
 	m := obsmetrics.NewBusinessMetrics()
 	h := *testHandler
@@ -307,7 +309,27 @@ func TestPatchOnboardingAllSkippedResolvesBothCounters(t *testing.T) {
 	if got := counterValue(t, m, "multica_onboarding_questionnaire_submitted_total"); got != 1 {
 		t.Fatalf("expected questionnaire counter 1 for all-skip, got %v", got)
 	}
-	if got := counterValue(t, m, "multica_onboarding_source_submitted_total"); got != 1 {
-		t.Fatalf("expected source counter 1 for an explicit decline, got %v", got)
+	if got := counterValue(t, m, "multica_onboarding_source_submitted_total"); got != 0 {
+		t.Fatalf("expected source counter 0 for discarded decline, got %v", got)
+	}
+}
+
+func TestPatchOnboardingOmittedQuestionnaireRemovesLegacySource(t *testing.T) {
+	userID := dbfx.User(t, "Onboarding Test", "onboarding-source-legacy@multica.ai", testutil.Cols{
+		"onboarding_questionnaire": `{"source":"search","source_other":null,"source_skipped":false,"role":"engineer","version":2}`,
+	})
+	req := testutil.JSONRequest("PATCH", "/api/me/onboarding", `{}`)
+	req.Header.Set("X-User-ID", userID)
+	var response UserResponse
+	testutil.Call(t, testHandler.PatchOnboarding, req).Want(http.StatusOK).JSON(&response)
+	var matches bool
+	if err := testPool.QueryRow(context.Background(), `
+		SELECT onboarding_questionnaire = '{"role":"engineer","version":2}'::jsonb
+		FROM "user" WHERE id = $1
+	`, userID).Scan(&matches); err != nil {
+		t.Fatal(err)
+	}
+	if !matches {
+		t.Fatal("omitting questionnaire did not remove legacy source answers while preserving profile")
 	}
 }

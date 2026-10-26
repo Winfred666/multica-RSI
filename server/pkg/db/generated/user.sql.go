@@ -211,7 +211,12 @@ func (q *Queries) MarkUserOnboarded(ctx context.Context, id pgtype.UUID) (User, 
 
 const patchUserOnboarding = `-- name: PatchUserOnboarding :one
 UPDATE "user" SET
-    onboarding_questionnaire = COALESCE($1, onboarding_questionnaire),
+    onboarding_questionnaire = CASE
+        WHEN jsonb_typeof(COALESCE($1::jsonb, onboarding_questionnaire)) = 'object'
+        THEN COALESCE($1::jsonb, onboarding_questionnaire)
+            - 'source' - 'source_other' - 'source_skipped'
+        ELSE COALESCE($1::jsonb, onboarding_questionnaire)
+    END,
     updated_at = now()
 WHERE id = $2
 RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone
@@ -226,6 +231,7 @@ type PatchUserOnboardingParams struct {
 // questionnaire JSONB is patchable — the v2 attempt at persisting Step 3
 // runtime choice on the user row was reverted; that state now lives in a
 // frontend Zustand transient store.
+// Source attribution is discarded, including answers sent by installed clients.
 func (q *Queries) PatchUserOnboarding(ctx context.Context, arg PatchUserOnboardingParams) (User, error) {
 	row := q.db.QueryRow(ctx, patchUserOnboarding, arg.Questionnaire, arg.ID)
 	var i User
