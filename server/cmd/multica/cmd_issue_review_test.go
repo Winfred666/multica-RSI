@@ -1,12 +1,30 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/multica-ai/multica/server/internal/cli"
 )
+
+func TestIssueReviewAcceptsLocalPRWithoutWebhook(t *testing.T) {
+	fakeIssueGH(t, `{"url":"`+issueTestPRURL+`","headRefName":"issue/child","baseRefName":"issue/parent","headRefOid":"reviewed-head","state":"OPEN"}`)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/pull-requests") {
+			t.Error("local review required a webhook mirror")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"metadata": map[string]string{
+			"git_branch": "issue/child", "git_base_branch": "issue/parent", "git_pr_urls": `["` + issueTestPRURL + `"]`}})
+	}))
+	defer srv.Close()
+	if err := requireIssueReviewPR(context.Background(), cli.NewAPIClient(srv.URL, "workspace", "token"), testIssueUUID, "in_review"); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestIssueReviewRequiresLinkedBranchPR(t *testing.T) {
 	for _, command := range []string{"status", "update"} {

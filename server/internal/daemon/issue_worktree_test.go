@@ -15,9 +15,83 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/multica-ai/multica/server/internal/daemon/execenv"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
+
+func TestIssueBranchPreparationUsesCreatedEvents(t *testing.T) {
+	frames := make(chan protocol.Message)
+	scanned := make(chan struct{}, 2)
+	prepared := make(chan string, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/ws":
+			if r.URL.Query().Get("workspace_id") != "workspace" {
+				t.Error("missing workspace subscription")
+			}
+			conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			defer conn.Close()
+			var auth struct {
+				Type    string
+				Payload struct{ Token string }
+			}
+			if err := conn.ReadJSON(&auth); err != nil || auth.Type != "auth" || auth.Payload.Token != "daemon-token" {
+				t.Errorf("invalid event stream authentication: %+v, %v", auth, err)
+				return
+			}
+			_ = conn.WriteJSON(protocol.Message{Type: "auth_ack"})
+			for frame := range frames {
+				if err := conn.WriteJSON(frame); err != nil {
+					return
+				}
+			}
+		case "/api/issues":
+			_, _ = w.Write([]byte(`{"issues":[],"total":0}`))
+			scanned <- struct{}{}
+		case "/api/issues/created":
+			_, _ = w.Write([]byte(`{"id":"created","metadata":{"git_branch":"issue/created"}}`))
+			prepared <- "created"
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	d := &Daemon{client: NewClient(srv.URL), logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	d.client.SetToken("daemon-token")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	finished := make(chan error, 1)
+	go func() { finished <- d.watchIssueBranchConnection(ctx, "workspace") }()
+	select {
+	case <-scanned:
+	case <-time.After(3 * time.Second):
+		t.Fatal("no connection recovery scan")
+	}
+	frames <- protocol.Message{Type: protocol.EventIssueUpdated, Payload: json.RawMessage(`{"issue":{"id":"unrelated"}}`)}
+	frames <- protocol.Message{Type: protocol.EventIssueCreated, Payload: json.RawMessage(`{"issue":{"id":"created"}}`)}
+	select {
+	case <-prepared:
+	case <-time.After(3 * time.Second):
+		t.Fatal("issue-created event did not prepare its branch")
+	}
+	close(frames)
+	select {
+	case <-finished:
+	case <-time.After(3 * time.Second):
+		t.Fatal("event stream did not stop on disconnect")
+	}
+	if len(scanned) != 0 || len(prepared) != 0 {
+		t.Fatal("live events caused a workspace scan or unrelated issue fetch")
+	}
+}
 
 func TestPrepareWorkspaceIssueBranchesWithoutTasks(t *testing.T) {
 	t.Parallel()

@@ -632,6 +632,8 @@ func init() {
 	issuePullRequestsCmd.Flags().String("merge", "", "Merge this linked PR URL with local gh (direct parent review)")
 	issuePullRequestsCmd.Flags().String("close", "", "Close this linked PR URL without merging (direct parent review)")
 	issuePullRequestsCmd.Flags().String("head", "", "Reviewed PR head SHA; required with --merge or --close")
+	issuePullRequestsCmd.Flags().Bool("review", false, "Read linked PRs, diffs, and the three JSON decision choices")
+	issuePullRequestsCmd.Flags().String("decision", "", `Apply a JSON decision: {"action":"merge|resteer|reject","pr":"URL","head":"SHA","prompt":"feedback for resteer"}`)
 
 	issueChildrenCmd.Flags().String("output", "table", "Output format: table or json")
 	issueChildrenCmd.Flags().Bool("full-id", false, "Show full UUIDs in table output")
@@ -1059,6 +1061,23 @@ func runIssuePullRequests(cmd *cobra.Command, args []string) error {
 	if (action == "merge" || action == "close") != (head != "") {
 		return fmt.Errorf("--head is required with --merge or --close and cannot be used alone or with --link")
 	}
+	review, _ := cmd.Flags().GetBool("review")
+	rawDecision, _ := cmd.Flags().GetString("decision")
+	decision := issuePRDecision{Action: action, PR: prURL, Head: head}
+	if rawDecision != "" {
+		if action != "" || head != "" || review {
+			return fmt.Errorf("--decision cannot be combined with --review, --link, --merge, --close, or --head")
+		}
+		var err error
+		decision, err = parseIssuePRDecision(rawDecision)
+		if err != nil {
+			return err
+		}
+		action = decision.Action
+	}
+	if review && action != "" {
+		return fmt.Errorf("--review cannot be combined with a PR action")
+	}
 	client, err := newAPIClient(cmd)
 	if err != nil {
 		return err
@@ -1072,35 +1091,73 @@ func runIssuePullRequests(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolve issue: %w", err)
 	}
 	if action != "" {
-		if err := runIssuePullRequestAction(ctx, client, issueRef.ID, prURL, action, head); err != nil {
+		if err := runIssuePullRequestAction(ctx, client, issueRef.ID, decision); err != nil {
 			return err
 		}
 		if action != "link" {
-			fmt.Fprintf(os.Stderr, "PR %s requested with local gh; Multica updates from GitHub webhooks.\n", action)
+			fmt.Fprintf(os.Stderr, "PR %s confirmed with local gh.\n", action)
 		}
 	}
 
 	var result map[string]any
-	path := "/api/issues/" + url.PathEscape(issueRef.ID) + "/pull-requests"
-	if action == "link" {
-		err = client.PostJSON(ctx, path, map[string]string{"url": prURL}, &result)
-	} else {
-		err = client.GetJSON(ctx, path, &result)
-	}
-	if err != nil {
-		var httpErr *cli.HTTPError
-		if action == "link" && errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
-			return fmt.Errorf("PR is not mirrored yet; connect its repository in Settings → Code, confirm GitHub App pull_request webhooks are delivered, then retry --link: %w", err)
-		}
+	path := "/api/issues/" + url.PathEscape(issueRef.ID)
+	if err := client.GetJSON(ctx, path+"/pull-requests", &result); err != nil {
 		return fmt.Errorf("issue pull requests: %w", err)
 	}
-
+	var issue issuePRBinding
+	if err := client.GetJSON(ctx, path, &issue); err != nil {
+		return err
+	}
+	prs, _ := result["pull_requests"].([]any)
+	if issue.Metadata.PRURLs != "" || review {
+		var urls []string
+		if review {
+			urls, _, err = readIssuePullRequestURLs(ctx, client, issueRef.ID, issue)
+			if err != nil {
+				return err
+			}
+		} else if err := json.Unmarshal([]byte(issue.Metadata.PRURLs), &urls); err != nil {
+			return fmt.Errorf("decode git_pr_urls: %w", err)
+		}
+		for _, u := range urls {
+			pr, err := readLocalPullRequest(ctx, u)
+			if err != nil {
+				return err
+			}
+			row := map[string]any{"html_url": pr.URL, "state": strings.ToLower(pr.State), "title": pr.Title,
+				"number": pr.URL[strings.LastIndex(pr.URL, "/")+1:], "branch": pr.Branch}
+			if review {
+				diff, err := localPRCommand(ctx, "gh", "pr", "diff", pr.URL)
+				if err != nil {
+					return err
+				}
+				row["head_sha"], row["base_branch"], row["body"], row["diff"] = pr.Head, pr.Base, pr.Body, string(diff)
+				row["decisions"] = []issuePRDecision{
+					{Action: "merge", PR: pr.URL, Head: pr.Head},
+					{Action: "resteer", PR: pr.URL, Head: pr.Head, Prompt: "<correction within this child's assigned scope>"},
+					{Action: "reject", PR: pr.URL, Head: pr.Head, Prompt: "<reason>"},
+				}
+			}
+			found := false
+			for i, item := range prs {
+				if existing, ok := item.(map[string]any); ok && strings.EqualFold(pullRequestURL(existing), pr.URL) {
+					prs[i], found = row, true
+				}
+			}
+			if !found {
+				prs = append(prs, row)
+			}
+		}
+	}
+	result["pull_requests"] = prs
+	if review {
+		result["decision_command"] = "multica issue prs " + issueRef.ID + " --decision '<JSON decision>'"
+	}
 	output, _ := cmd.Flags().GetString("output")
-	if output == "json" {
+	if output == "json" || review {
 		return cli.PrintJSON(os.Stdout, result)
 	}
 
-	prs, _ := result["pull_requests"].([]any)
 	printIssuePullRequestsTable(normalizePullRequestList(prs))
 	return nil
 }
@@ -2042,17 +2099,28 @@ func requireIssueReviewPR(ctx context.Context, client *cli.APIClient, issueID, s
 	if strings.ToLower(strings.TrimSpace(status)) != "in_review" {
 		return nil
 	}
-	var issue struct {
-		Metadata struct {
-			Branch string `json:"git_branch"`
-		} `json:"metadata"`
-	}
+	var issue issuePRBinding
 	path := "/api/issues/" + url.PathEscape(issueID)
 	if err := client.GetJSON(ctx, path, &issue); err != nil {
 		return fmt.Errorf("check issue branch before review: %w", err)
 	}
 	if issue.Metadata.Branch == "" {
 		return nil
+	}
+	if issue.Metadata.PRURLs != "" {
+		var urls []string
+		if err := json.Unmarshal([]byte(issue.Metadata.PRURLs), &urls); err != nil {
+			return fmt.Errorf("decode git_pr_urls: %w", err)
+		}
+		for _, u := range urls {
+			pr, err := readLocalPullRequest(ctx, u)
+			if err != nil {
+				return err
+			}
+			if pr.Branch == issue.Metadata.Branch && pr.Base == issue.Metadata.Base && pr.State == "OPEN" {
+				return nil
+			}
+		}
 	}
 	var result struct {
 		PullRequests []struct {

@@ -2,13 +2,18 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
+
+	"github.com/gorilla/websocket"
 
 	"github.com/multica-ai/multica/server/internal/cli"
 	"github.com/multica-ai/multica/server/internal/daemon/execenv"
 	"github.com/multica-ai/multica/server/internal/issuestatus"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 type worktreeIssue struct {
@@ -88,29 +93,131 @@ func writeIssueBranchBinding(ctx context.Context, client *cli.APIClient, issueID
 	return nil
 }
 
-// Issue creation need not schedule an agent, so branch preparation also runs independently of tasks.
+// Each workspace uses the existing client event stream; only reconnects need a recovery scan.
 func (d *Daemon) issueWorktreeLoop(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	watching := make(map[string]context.CancelFunc)
+	defer func() {
+		for _, cancel := range watching {
+			cancel()
+		}
+	}()
 	for {
+		reconnected := d.reconcile.notify()
 		d.mu.Lock()
-		workspaces := make([]string, 0, len(d.workspaces))
 		for id := range d.workspaces {
-			workspaces = append(workspaces, id)
+			if watching[id] == nil {
+				watchCtx, cancel := context.WithCancel(ctx)
+				watching[id] = cancel
+				go d.watchIssueBranches(watchCtx, id)
+			}
+		}
+		for id, cancel := range watching {
+			if d.workspaces[id] == nil {
+				cancel()
+				delete(watching, id)
+			}
 		}
 		d.mu.Unlock()
-		for _, id := range workspaces {
-			if ctx.Err() != nil {
-				return
-			}
-			if err := d.prepareWorkspaceIssueBranches(ctx, id); err != nil {
-				d.logger.Warn("prepare issue branches", "workspace_id", id, "error", err)
-			}
-		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-reconnected:
+		}
+	}
+}
+
+func (d *Daemon) watchIssueBranches(ctx context.Context, workspaceID string) {
+	backoff := time.Second
+	for ctx.Err() == nil {
+		if err := d.watchIssueBranchConnection(ctx, workspaceID); err != nil && ctx.Err() == nil {
+			d.logger.Warn("issue branch event stream disconnected", "workspace_id", workspaceID, "error", err)
+		}
+		if sleepWithContext(ctx, backoff) != nil {
+			return
+		}
+		backoff = min(backoff*2, taskWakeupMaxBackoff)
+	}
+}
+
+func (d *Daemon) watchIssueBranchConnection(ctx context.Context, workspaceID string) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	u, err := url.Parse(d.client.baseURL)
+	if err != nil {
+		return err
+	}
+	switch u.Scheme {
+	case "http":
+		u.Scheme = "ws"
+	case "https":
+		u.Scheme = "wss"
+	default:
+		return fmt.Errorf("issue event stream requires http or https")
+	}
+	u.Path = strings.TrimRight(u.Path, "/") + "/api/ws"
+	q := u.Query()
+	q.Set("workspace_id", workspaceID)
+	u.RawQuery = q.Encode()
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, u.String(), nil)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	conn.SetReadLimit(16 << 20)
+	_ = conn.SetWriteDeadline(time.Now().Add(taskWakeupWriteWait))
+	if err := conn.WriteJSON(map[string]any{"type": "auth", "payload": map[string]string{"token": d.client.Token()}}); err != nil {
+		return err
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(taskWakeupWriteWait))
+	var ack protocol.Message
+	if err := conn.ReadJSON(&ack); err != nil {
+		return err
+	}
+	if ack.Type != "auth_ack" {
+		return fmt.Errorf("issue event stream authentication failed")
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(taskWakeupPongWait))
+	conn.SetPingHandler(func(data string) error {
+		_ = conn.SetReadDeadline(time.Now().Add(taskWakeupPongWait))
+		return conn.WriteControl(websocket.PongMessage, []byte(data), time.Now().Add(taskWakeupWriteWait))
+	})
+	created := make(chan string, 64)
+	go func() {
+		if err := d.prepareWorkspaceIssueBranches(ctx, workspaceID); err != nil {
+			d.logger.Warn("recover issue branches", "workspace_id", workspaceID, "error", err)
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case id := <-created:
+				if err := d.prepareCreatedIssueBranch(ctx, workspaceID, id); err != nil {
+					d.logger.Warn("prepare created issue branch", "issue_id", id, "error", err)
+				}
+			}
+		}
+	}()
+	for {
+		var msg protocol.Message
+		if err := conn.ReadJSON(&msg); err != nil {
+			return err
+		}
+		_ = conn.SetReadDeadline(time.Now().Add(taskWakeupPongWait))
+		if msg.Type != protocol.EventIssueCreated {
+			continue
+		}
+		var payload struct {
+			Issue worktreeIssue `json:"issue"`
+		}
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil || payload.Issue.ID == "" {
+			continue
+		}
+		select {
+		case created <- payload.Issue.ID:
+		default:
+			return fmt.Errorf("issue event queue full; reconnect to recover branches")
 		}
 	}
 }
@@ -139,6 +246,20 @@ func (d *Daemon) prepareWorkspaceIssueBranches(ctx context.Context, workspaceID 
 			return fmt.Errorf("issue list ended before its total")
 		}
 	}
+	return d.prepareIssueBranches(ctx, workspaceID, client, issues)
+}
+
+func (d *Daemon) prepareCreatedIssueBranch(ctx context.Context, workspaceID, issueID string) error {
+	client := cli.NewAPIClient(d.client.baseURL, workspaceID, d.client.Token())
+	client.HTTPClient = d.client.client
+	var issue worktreeIssue
+	if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(issueID), &issue); err != nil {
+		return err
+	}
+	return d.prepareIssueBranches(ctx, workspaceID, client, map[string]*worktreeIssue{issueID: &issue})
+}
+
+func (d *Daemon) prepareIssueBranches(ctx context.Context, workspaceID string, client *cli.APIClient, issues map[string]*worktreeIssue) error {
 	assignments := make(map[string]*localDirectoryAssignment)
 	visiting := make(map[string]bool)
 	var prepare func(*worktreeIssue) error
@@ -181,6 +302,7 @@ func (d *Daemon) prepareWorkspaceIssueBranches(ctx context.Context, workspaceID 
 				if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(issue.ParentIssueID), parent); err != nil {
 					return err
 				}
+				issues[parent.ID] = parent
 			}
 			if err := prepare(parent); err != nil {
 				return err
