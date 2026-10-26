@@ -56,6 +56,18 @@ apps/web/test-results/
 .agent_context/
 .multica/
 
+# Local development notes and generated scratch output
+/.local-artifacts/
+/tmp/
+/scratch-*
+/tmp-*
+/*.dump
+/*.sql
+/goal-loop-issue.md
+/issue-lifecycle-guide-r*.html
+/quick-create-context-guidance.md
+/quick-create-harness-description.md
+
 # local settings
 .claude/
 .tool-versions
@@ -81,3 +93,5 @@ __pycache__/
 perf-report/
 # The production example is a tracked template; `.env*` above would hide it.
 !apps/mobile/.env.production.example
+.codex
+cache/
