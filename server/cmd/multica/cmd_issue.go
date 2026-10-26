@@ -252,7 +252,7 @@ var issueGetCmd = &cobra.Command{
 var issuePullRequestsCmd = &cobra.Command{
 	Use:     "pull-requests <id>",
 	Aliases: []string{"prs"},
-	Short:   "List pull requests linked to an issue",
+	Short:   "List, link, merge, or close an issue's pull requests",
 	Args:    exactArgs(1),
 	RunE:    runIssuePullRequests,
 }
@@ -628,6 +628,10 @@ func init() {
 
 	// issue pull-requests
 	issuePullRequestsCmd.Flags().String("output", "table", "Output format: table or json")
+	issuePullRequestsCmd.Flags().String("link", "", "Link this GitHub PR URL after binding its branch metadata")
+	issuePullRequestsCmd.Flags().String("merge", "", "Merge this linked PR URL with local gh (direct parent review)")
+	issuePullRequestsCmd.Flags().String("close", "", "Close this linked PR URL without merging (direct parent review)")
+	issuePullRequestsCmd.Flags().String("head", "", "Reviewed PR head SHA; required with --merge or --close")
 
 	issueChildrenCmd.Flags().String("output", "table", "Output format: table or json")
 	issueChildrenCmd.Flags().Bool("full-id", false, "Show full UUIDs in table output")
@@ -1039,6 +1043,22 @@ func runIssueList(cmd *cobra.Command, _ []string) error {
 }
 
 func runIssuePullRequests(cmd *cobra.Command, args []string) error {
+	linkURL, _ := cmd.Flags().GetString("link")
+	closeURL, _ := cmd.Flags().GetString("close")
+	mergeURL, _ := cmd.Flags().GetString("merge")
+	head, _ := cmd.Flags().GetString("head")
+	action, prURL := "", ""
+	for _, flag := range []struct{ name, value string }{{"link", linkURL}, {"close", closeURL}, {"merge", mergeURL}} {
+		if flag.value != "" {
+			if action != "" {
+				return fmt.Errorf("--link, --merge, and --close are mutually exclusive")
+			}
+			action, prURL = flag.name, strings.TrimSpace(flag.value)
+		}
+	}
+	if (action == "merge" || action == "close") != (head != "") {
+		return fmt.Errorf("--head is required with --merge or --close and cannot be used alone or with --link")
+	}
 	client, err := newAPIClient(cmd)
 	if err != nil {
 		return err
@@ -1051,10 +1071,28 @@ func runIssuePullRequests(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve issue: %w", err)
 	}
+	if action != "" {
+		if err := runIssuePullRequestAction(ctx, client, issueRef.ID, prURL, action, head); err != nil {
+			return err
+		}
+		if action != "link" {
+			fmt.Fprintf(os.Stderr, "PR %s requested with local gh; Multica updates from GitHub webhooks.\n", action)
+		}
+	}
 
 	var result map[string]any
-	if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(issueRef.ID)+"/pull-requests", &result); err != nil {
-		return fmt.Errorf("list issue pull requests: %w", err)
+	path := "/api/issues/" + url.PathEscape(issueRef.ID) + "/pull-requests"
+	if action == "link" {
+		err = client.PostJSON(ctx, path, map[string]string{"url": prURL}, &result)
+	} else {
+		err = client.GetJSON(ctx, path, &result)
+	}
+	if err != nil {
+		var httpErr *cli.HTTPError
+		if action == "link" && errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("PR is not mirrored yet; connect its repository in Settings → Code, confirm GitHub App pull_request webhooks are delivered, then retry --link: %w", err)
+		}
+		return fmt.Errorf("issue pull requests: %w", err)
 	}
 
 	output, _ := cmd.Flags().GetString("output")
@@ -1709,6 +1747,11 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve issue: %w", err)
 	}
+	if statusChanged {
+		if err := requireIssueReviewPR(ctx, client, issueRef.ID, statusFlag); err != nil {
+			return err
+		}
+	}
 
 	body := map[string]any{}
 	if cmd.Flags().Changed("title") {
@@ -1958,6 +2001,9 @@ func runIssueStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve issue: %w", err)
 	}
+	if err := requireIssueReviewPR(ctx, client, issueRef.ID, status); err != nil {
+		return err
+	}
 
 	body := map[string]any{"status": status}
 	if duplicateOf != "" {
@@ -1990,6 +2036,39 @@ func runIssueStatus(cmd *cobra.Command, args []string) error {
 		return cli.PrintJSON(os.Stdout, result)
 	}
 	return nil
+}
+
+func requireIssueReviewPR(ctx context.Context, client *cli.APIClient, issueID, status string) error {
+	if strings.ToLower(strings.TrimSpace(status)) != "in_review" {
+		return nil
+	}
+	var issue struct {
+		Metadata struct {
+			Branch string `json:"git_branch"`
+		} `json:"metadata"`
+	}
+	path := "/api/issues/" + url.PathEscape(issueID)
+	if err := client.GetJSON(ctx, path, &issue); err != nil {
+		return fmt.Errorf("check issue branch before review: %w", err)
+	}
+	if issue.Metadata.Branch == "" {
+		return nil
+	}
+	var result struct {
+		PullRequests []struct {
+			URL    string `json:"html_url"`
+			Branch string `json:"branch"`
+		} `json:"pull_requests"`
+	}
+	if err := client.GetJSON(ctx, path+"/pull-requests", &result); err != nil {
+		return fmt.Errorf("check linked PR before review: %w", err)
+	}
+	for _, pr := range result.PullRequests {
+		if pr.Branch == issue.Metadata.Branch && strings.TrimSpace(pr.URL) != "" {
+			return nil
+		}
+	}
+	return fmt.Errorf("link your branch's PR to this issue before switching to in_review (branch: %s)", issue.Metadata.Branch)
 }
 
 // duplicateOfFlag returns the --duplicate-of reference, or "" when the flag is

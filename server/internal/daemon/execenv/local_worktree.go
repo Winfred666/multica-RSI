@@ -102,15 +102,23 @@ type LocalWorktreeParams struct {
 	// WorkspaceID, AgentID and ConversationID identify the conversation
 	// itself. They are recorded with the branch and re-checked before any
 	// later task continues it, so a same-named branch belonging to the user,
-	// to another agent, or to another workspace is never adopted. All three
+	// to another conversation or workspace is never adopted. All three
 	// empty means "no conversation": the task gets a task-scoped branch.
 	WorkspaceID    string
 	AgentID        string
 	ConversationID string
+	// Issue worktrees keep one branch across tasks and assignees. IssueBranch
+	// is the existing metadata binding; BaseBranch is the direct parent's branch.
+	IssueID     string
+	IssueBranch string
+	BaseBranch  string
 }
 
 // owner is the identity a branch created for this task is recorded under.
 func (p LocalWorktreeParams) owner() branchOwner {
+	if p.IssueID != "" {
+		return branchOwner{WorkspaceID: p.WorkspaceID, ConversationID: p.IssueID}
+	}
 	return branchOwner{WorkspaceID: p.WorkspaceID, AgentID: p.AgentID, ConversationID: p.ConversationID}
 }
 
@@ -150,6 +158,9 @@ type LocalWorktree struct {
 	WorkDir string
 	// Branch is the branch created for this task, in the user's repo.
 	Branch string
+	// IssueBound branches outlive read-only runs and cannot fork on contention.
+	IssueBound bool
+	BaseBranch string
 	// BaseCommit is the commit the worktree started from — this turn's baseline
 	// when one was committed, otherwise the branch tip it continued. Finalize
 	// compares the delivered tip against it twice: to decide whether the task
@@ -357,29 +368,43 @@ func PrepareLocalWorktree(params LocalWorktreeParams, logger *slog.Logger) (*Loc
 			"(worktree mode needs at least one commit; make an initial commit or switch the resource back to in_place): %w", gitRoot, err)
 	}
 
-	// Refuse an untracked payload too large to reproduce BEFORE snapshotting it:
-	// the snapshot writes every one of those bytes into the user's own object
-	// database, which is not something to do by accident on a directory full of
-	// un-ignored build output.
-	if err := checkUntrackedReplayable(gitRoot, logger); err != nil {
-		return nil, err
-	}
+	var plan taskBranchPlan
+	userState := headSHA
+	if params.IssueID != "" {
+		if params.BaseBranch == "" {
+			params.BaseBranch = "main"
+		}
+		plan, err = resolveIssueBranch(gitRoot, params, logger)
+		if err != nil {
+			return nil, err
+		}
+		// Issue scope comes from the parent branch, never the seed checkout's WIP.
+		userState = plan.base
+	} else {
+		// Refuse an untracked payload too large to reproduce BEFORE snapshotting it:
+		// the snapshot writes every one of those bytes into the user's own object
+		// database, which is not something to do by accident on a directory full of
+		// un-ignored build output.
+		if err := checkUntrackedReplayable(gitRoot, logger); err != nil {
+			return nil, err
+		}
 
-	// The commit describing the user's directory as this task sees it — their
-	// tracked edits and their untracked files in one tree. Everything below
-	// reasons about the user's state through this single object.
-	userState, err := captureUserSnapshot(gitRoot, params.EnvRoot, headSHA, logger)
-	if err != nil {
-		// Fail closed. The promise of this mode is that the agent reasons about
-		// the code the user actually has; silently starting from HEAD instead
-		// would have it review a tree the user never saw and report confidently
-		// on it. A task that does not start is recoverable — one that answers
-		// from the wrong sources is not.
-		return nil, fmt.Errorf("execenv: could not capture the uncommitted changes in %q, "+
-			"so the worktree would not match what you have on disk: %w", gitRoot, err)
-	}
+		// The commit describing the user's directory as this task sees it — their
+		// tracked edits and their untracked files in one tree. Everything below
+		// reasons about the user's state through this single object.
+		userState, err = captureUserSnapshot(gitRoot, params.EnvRoot, headSHA, logger)
+		if err != nil {
+			// Fail closed. The promise of this mode is that the agent reasons about
+			// the code the user actually has; silently starting from HEAD instead
+			// would have it review a tree the user never saw and report confidently
+			// on it. A task that does not start is recoverable — one that answers
+			// from the wrong sources is not.
+			return nil, fmt.Errorf("execenv: could not capture the uncommitted changes in %q, "+
+				"so the worktree would not match what you have on disk: %w", gitRoot, err)
+		}
 
-	plan := resolveTaskBranch(gitRoot, params, headSHA, logger)
+		plan = resolveTaskBranch(gitRoot, params, headSHA, logger)
+	}
 	actualBranch, createdBranch, err := addLocalWorktree(gitRoot, worktreePath, plan, params.TaskID)
 	if err != nil {
 		return nil, err
@@ -390,6 +415,8 @@ func PrepareLocalWorktree(params LocalWorktreeParams, logger *slog.Logger) (*Loc
 		Path:          worktreePath,
 		WorkDir:       filepath.Join(worktreePath, rel),
 		Branch:        actualBranch,
+		IssueBound:    params.IssueID != "",
+		BaseBranch:    params.BaseBranch,
 		BaseCommit:    plan.base,
 		Continued:     plan.continues,
 		createdBranch: createdBranch,
@@ -421,19 +448,23 @@ func PrepareLocalWorktree(params LocalWorktreeParams, logger *slog.Logger) (*Loc
 	// in. A continued branch already carries the snapshot the previous turn
 	// recorded, and the agent's commits sit on top of it, so only what the user
 	// changed after that is new information there.
-	replay, replayErr := replayUserState(worktreePath, plan, userState, logger)
-	if replayErr != nil {
-		rollback()
-		return nil, replayErr
+	var replay replayResult
+	if !wt.IssueBound {
+		var replayErr error
+		replay, replayErr = replayUserState(worktreePath, plan, userState, logger)
+		if replayErr != nil {
+			rollback()
+			return nil, replayErr
+		}
+		wt.ReplayConflicts = replay.conflicts
+		// An unresolved merge means the branch does not carry this turn's snapshot
+		// yet; only a commit after the agent resolves can put it there.
+		wt.snapshotPending = len(replay.conflicts) > 0
+		// Whether the user has uncommitted work at all — replayed by this turn or
+		// already carried by the branch it continued.
+		_, diffErr := runGit(gitRoot, "diff", "--quiet", headSHA, userState)
+		wt.DirtyBaseCaptured = diffErr != nil
 	}
-	wt.ReplayConflicts = replay.conflicts
-	// An unresolved merge means the branch does not carry this turn's snapshot
-	// yet; only a commit after the agent resolves can put it there.
-	wt.snapshotPending = len(replay.conflicts) > 0
-	// Whether the user has uncommitted work at all — replayed by this turn or
-	// already carried by the branch it continued.
-	_, diffErr := runGit(gitRoot, "diff", "--quiet", headSHA, userState)
-	wt.DirtyBaseCaptured = diffErr != nil
 
 	// Commit the replayed state as a baseline so "did this task change
 	// anything?" has an exact answer later. Without it the user's own
@@ -476,9 +507,21 @@ func PrepareLocalWorktree(params LocalWorktreeParams, logger *slog.Logger) (*Loc
 		// owner, which is what lets the next task prove this branch is its own
 		// before continuing it. Recorded here as well as at Finalize so a turn
 		// that never reaches Finalize still leaves the branch identifiable.
-		if err := wt.recordState(wt.BaseCommit, logger); err != nil && logger != nil {
-			logger.Warn("execenv: could not record the task branch before the run (non-fatal; Finalize records the delivered tip)",
-				"branch", wt.Branch, "error", err)
+		if err := wt.recordState(wt.BaseCommit, logger); err != nil {
+			if wt.IssueBound {
+				rollback()
+				return nil, fmt.Errorf("execenv: record issue branch: %w", err)
+			}
+			if logger != nil {
+				logger.Warn("execenv: could not record the task branch before the run (non-fatal; Finalize records the delivered tip)",
+					"branch", wt.Branch, "error", err)
+			}
+		}
+	}
+	if wt.IssueBound {
+		if err := publishIssueBranch(gitRoot, wt.Branch); err != nil {
+			rollback()
+			return nil, err
 		}
 	}
 
@@ -618,7 +661,7 @@ func (w *LocalWorktree) Finalize(logger *slog.Logger) (LocalWorktreeOutcome, err
 	// would take their work with it.
 	tip, err := runGitTrimmed(w.Path, "rev-parse", "--verify", "HEAD")
 	producedWork := err != nil || tip != w.BaseCommit
-	dropped := !producedWork && w.createdBranch
+	dropped := !producedWork && w.createdBranch && !w.IssueBound
 
 	// A turn that started mid-merge only gets to advance the branch's recorded
 	// state if it committed something after resolving. When the branch is still
@@ -678,6 +721,12 @@ func (w *LocalWorktree) Finalize(logger *slog.Logger) (LocalWorktreeOutcome, err
 					"task worktree is preserved at %s (listed by `git worktree list` in %s) — a follow-up run will start "+
 					"a new branch instead of continuing this one",
 				w.Branch, recErr, w.Path, w.GitRoot)
+		}
+	}
+	if w.IssueBound {
+		if err := publishIssueBranch(w.GitRoot, w.Branch); err != nil {
+			outcome.PreservedPath = w.Path
+			return outcome, err
 		}
 	}
 
@@ -1025,7 +1074,8 @@ func snapshotExcludes() []string {
 }
 
 // branchOwner is the conversation a task branch belongs to. Recorded with the
-// branch's snapshot and compared before any later task continues it: the branch
+// branch's snapshot and compared before any later task continues it. AgentID is
+// empty for issue bindings, whose ownership survives agent reassignment. The branch
 // NAME carries a human-readable issue key, which the user can also type and
 // which two workspaces can mint identically, so the name alone can never
 // establish that a branch is ours to append to (MUL-6881 review).
@@ -1036,7 +1086,7 @@ type branchOwner struct {
 }
 
 func (o branchOwner) valid() bool {
-	return o.WorkspaceID != "" && o.AgentID != "" && o.ConversationID != ""
+	return o.WorkspaceID != "" && o.ConversationID != ""
 }
 
 // fingerprint is the stable, collision-resistant form of the same identity,
@@ -1084,6 +1134,14 @@ func writeBranchRecord(gitRoot, branch, userState, checkpoint string, owner bran
 	if checkpoint == "" {
 		return "", fmt.Errorf("no checkpoint to record for branch %s", branch)
 	}
+	// Git deduplicates equal parents, but ownership requires a second-parent checkpoint.
+	if userState == checkpoint {
+		var err error
+		userState, err = runGitTrimmed(gitRoot, append(commitIdentityArgs(gitRoot), "commit-tree", userState+"^{tree}", "-p", userState, "-m", "multica: branch snapshot")...)
+		if err != nil {
+			return "", fmt.Errorf("git commit-tree snapshot: %w", err)
+		}
+	}
 	args := append(commitIdentityArgs(gitRoot), "commit-tree", userState+"^{tree}",
 		"-p", userState, "-p", checkpoint, "-m", branchRecordMessage(owner))
 	record, err := runGitTrimmed(gitRoot, args...)
@@ -1110,9 +1168,8 @@ func branchRecordMessage(owner branchOwner) string {
 	return b.String()
 }
 
-// readBranchRecord reads back what a branch is recorded as carrying. A commit
-// without all three trailers or without a second parent — anything not written
-// by writeBranchRecord — yields a record that can never match a valid owner.
+// readBranchRecord reads the ownership and checkpoint written by writeBranchRecord.
+// Issue bindings intentionally have an empty agent trailer.
 func readBranchRecord(gitRoot, commit string) (branchRecord, error) {
 	body, err := runGitTrimmed(gitRoot, "log", "-1", "--format=%B", commit)
 	if err != nil {
@@ -1173,6 +1230,92 @@ type taskBranchPlan struct {
 	tracksState bool
 	// owner is the identity the branch is recorded under.
 	owner branchOwner
+	// bound forbids a sibling task from silently creating an alternate branch.
+	bound bool
+}
+
+// PrepareIssueBranch reserves an issue's branch without checking it out or running an agent.
+func PrepareIssueBranch(params LocalWorktreeParams, logger *slog.Logger) (string, error) {
+	if params.IssueID == "" {
+		return "", errors.New("execenv: issue branch requires an issue ID")
+	}
+	gitRoot, err := resolveGitRoot(params.LocalPath)
+	if err != nil {
+		return "", err
+	}
+	unlock, err := lockGitRoot(gitRoot, logger)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	plan, err := resolveIssueBranch(gitRoot, params, logger)
+	if err != nil {
+		return "", err
+	}
+	if !plan.continues {
+		if out, err := runGit(gitRoot, "branch", "--no-track", plan.name, plan.base); err != nil {
+			return "", fmt.Errorf("create issue branch: %s: %w", strings.TrimSpace(out), err)
+		}
+		if _, err := writeBranchRecord(gitRoot, plan.name, plan.base, plan.base, plan.owner); err != nil {
+			dropBranch(gitRoot, plan.name, logger)
+			return "", err
+		}
+	}
+	if err := publishIssueBranch(gitRoot, plan.name); err != nil {
+		return "", err
+	}
+	return plan.name, nil
+}
+
+func publishIssueBranch(gitRoot, branch string) error {
+	// Local-only project directories have no remote to publish to.
+	if _, err := runGit(gitRoot, "remote", "get-url", "origin"); err != nil {
+		return nil
+	}
+	if out, err := runGit(gitRoot, "push", "--set-upstream", "origin", "refs/heads/"+branch+":refs/heads/"+branch); err != nil {
+		return fmt.Errorf("execenv: publish issue branch %q: %s: %w", branch, strings.TrimSpace(out), err)
+	}
+	return nil
+}
+
+func resolveIssueBranch(gitRoot string, params LocalWorktreeParams, logger *slog.Logger) (taskBranchPlan, error) {
+	owner := params.owner()
+	if !owner.valid() {
+		return taskBranchPlan{}, errors.New("execenv: issue worktree requires a workspace and issue ID")
+	}
+	name := params.IssueBranch
+	if name == "" {
+		name = "issue/" + sanitizeName(params.ConversationKey) + "-" + owner.fingerprint()
+	}
+	if _, err := runGit(gitRoot, "check-ref-format", "refs/heads/"+name); err != nil {
+		return taskBranchPlan{}, fmt.Errorf("execenv: invalid issue branch %q", name)
+	}
+	plan := taskBranchPlan{name: name, bound: true, tracksState: true, owner: owner}
+	tip, err := runGitTrimmed(gitRoot, "rev-parse", "--verify", "--quiet", "refs/heads/"+name)
+	if err == nil {
+		record, owned := branchOwnedBy(gitRoot, name, owner, logger)
+		if !owned {
+			return taskBranchPlan{}, fmt.Errorf("execenv: branch %q is not owned by issue %s", name, params.IssueID)
+		}
+		plan.base, plan.continues = tip, true
+		plan.priorState, plan.priorCheckpoint = record.state, record.checkpoint
+		return plan, nil
+	}
+	if params.IssueBranch != "" {
+		return taskBranchPlan{}, fmt.Errorf("execenv: bound issue branch %q is missing from this runtime repository", name)
+	}
+	base := params.BaseBranch
+	if base == "" {
+		base = "main"
+	}
+	if _, err := runGit(gitRoot, "check-ref-format", "refs/heads/"+base); err != nil {
+		return taskBranchPlan{}, fmt.Errorf("execenv: invalid parent branch %q", base)
+	}
+	plan.base, err = runGitTrimmed(gitRoot, "rev-parse", "--verify", "refs/heads/"+base+"^{commit}")
+	if err != nil {
+		return taskBranchPlan{}, fmt.Errorf("execenv: parent branch %q is unavailable in this runtime repository: %w", base, err)
+	}
+	return plan, nil
 }
 
 // altName disambiguates a branch a live sibling already holds.
@@ -1210,7 +1353,7 @@ func resolveTaskBranch(gitRoot string, params LocalWorktreeParams, headSHA strin
 	taskScoped := taskBranchPlan{name: fmt.Sprintf("agent/%s/%s", agentSegment, taskKey(params.TaskID)), base: headSHA}
 
 	owner := params.owner()
-	if params.ConversationKey == "" || !owner.valid() {
+	if params.ConversationKey == "" || params.AgentID == "" || !owner.valid() {
 		return taskScoped
 	}
 	preferred := fmt.Sprintf("agent/%s/%s", agentSegment, sanitizeName(params.ConversationKey))
@@ -1317,6 +1460,9 @@ func addLocalWorktree(gitRoot, worktreePath string, plan taskBranchPlan, taskID 
 	out, err := runGit(gitRoot, args...)
 	if err == nil {
 		return plan.name, !plan.continues, nil
+	}
+	if plan.bound {
+		return "", false, fmt.Errorf("execenv: cannot check out bound issue branch %q (another task may be using it): %s: %w", plan.name, strings.TrimSpace(out), err)
 	}
 	if !branchUnavailable(out) {
 		return "", false, fmt.Errorf("execenv: git worktree add: %s: %w", strings.TrimSpace(out), err)

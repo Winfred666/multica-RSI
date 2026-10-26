@@ -82,6 +82,41 @@ issue — so nobody reconstructs context, and nothing ships without a human sayi
 - **[Chat](https://multica.ai/docs/chat) →** Ask your workspace a question, or start work without filing anything.
 - **[Projects](https://multica.ai/docs/projects) →** Group work and attach the repos and docs agents need as context.
 
+### Issue branches and pull requests
+
+For a project directory in **worktree mode**, the daemon prepares one branch per
+issue at startup and every 30 seconds, independently of agent assignment. The
+first task also prepares its binding before starting. It branches from the direct
+parent's `git_branch`, or `main` when absent, and records `git_branch` and
+`git_base_branch` metadata. Runs and assignees continue the same local branch.
+Concurrent runs cannot silently fork it, and a missing bound branch stops preparation.
+
+When the repository has an `origin`, branch preparation publishes it with local
+Git. Task finalization commits remaining work, pushes the issue branch, and removes
+the task worktree. A failed push preserves the worktree for recovery.
+
+The CLI uses the existing `gh` on the **daemon host**, resolved from the task's
+`PATH` with local GitHub credentials. Install it and run `gh auth login` there only
+if needed. Connect the repository's GitHub App in **Settings → Code** for
+`pull_request` webhooks to mirror PRs and update issue status after merges.
+
+```sh
+gh pr create --base <parent-branch> --head <issue-branch> --title "<issue-key>: <title>" --body "<summary>"
+multica issue prs <issue> --link <PR-URL>
+multica issue status <issue> in_review
+```
+
+`--link` fills missing branch metadata before linking an existing PR and rejects
+conflicting bindings. If the webhook has not mirrored the PR yet, retry after
+its delivery. The CLI requires a linked branch PR before entering `in_review`.
+
+From its own branch, the direct parent accepts a child's reviewed commit with
+`multica issue prs <child> --merge <PR-URL> --head <reviewed-SHA>` or rejects it
+with `--close` instead. Acceptance uses local `gh pr merge --delete-branch`, then
+fetches and merges the updated parent branch into its checkout. Root branches
+are excluded from this cleanup. Issue completion follows the existing merge
+webhook and workspace settings.
+
 ## Stay in the loop.
 
 *Which agent touched this? What did it run? What did it cost? Open the run.*

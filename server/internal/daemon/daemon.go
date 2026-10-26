@@ -2149,6 +2149,7 @@ func (d *Daemon) run(ctx context.Context, healthLn net.Listener) error {
 
 	// Start workspace sync loop to discover newly created workspaces.
 	go d.workspaceSyncLoop(ctx)
+	go d.issueWorktreeLoop(ctx)
 	go d.terminalReportReplayLoop(ctx)
 
 	// Discover agent CLIs installed after startup (MUL-5439). Separate from the
@@ -2169,7 +2170,7 @@ func (d *Daemon) run(ctx context.Context, healthLn net.Listener) error {
 	// readiness wait blocks on, so success is reported only after startup
 	// actually completed, not merely because the health port came up.
 	d.ready.Store(true)
-	d.logger.Debug("background loops launched (workspace-sync, terminal-report-replay, task-wakeup, heartbeat, gc, auto-update, token-renewal); health now reporting ready")
+	d.logger.Debug("background loops launched (workspace-sync, issue-worktree, terminal-report-replay, task-wakeup, heartbeat, gc, auto-update, token-renewal); health now reporting ready")
 	err = d.pollLoop(ctx, taskWakeups)
 	d.logger.Debug("daemon main loop returning", "error", err)
 	return err
@@ -8207,7 +8208,10 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 			Task:                  taskCtx,
 		}
 		if localAssignment.UsesWorktree() {
-			prepParams.LocalWorktree = &execenv.LocalWorktreeParams{LocalPath: localAssignment.AbsPath}
+			prepParams.LocalWorktree, err = d.issueWorktreeParams(prepareCtx, task, localAssignment.AbsPath)
+			if err != nil {
+				return TaskResult{}, asEnvironmentSetupFailure(err)
+			}
 			// Take the per-path mutex for the snapshot alone, then hand it
 			// straight back — long enough to read a consistent tree, short
 			// enough that worktree tasks still overlap for the run itself.
@@ -8408,6 +8412,9 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 					"could not remove the runtime's own files from the worktree before committing: %w", cleanupErr))
 			}
 		}()
+	}
+	if err := d.bindIssueWorktree(prepareCtx, task, env.LocalWorktree); err != nil {
+		return TaskResult{}, asEnvironmentSetupFailure(err)
 	}
 	taskTempDir, taskTempLock, err := ensureTaskTempDir(env.RootDir, task.WorkspaceID, task.ID)
 	if err != nil {
