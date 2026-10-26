@@ -334,10 +334,8 @@ func buildPromptBody(task Task, provider string) string {
 // buildQuickCreatePrompt constructs a prompt for quick-create tasks. The
 // user typed a single natural-language sentence in the create-issue modal;
 // the agent's job is to translate it into one `multica issue create` CLI
-// invocation, using its judgment to decide whether fetching referenced URLs
-// would produce a better issue. No issue exists yet, so the agent must NOT
-// call `multica issue get` or attempt to comment — there's nothing to read
-// or reply to.
+// invocation, preserving external references as links. No issue exists yet, so
+// the agent must NOT call `multica issue get` or attempt to comment.
 func buildQuickCreatePrompt(task Task) string {
 	var b strings.Builder
 	b.WriteString("You are running as a quick-create assistant for a Multica workspace.\n\n")
@@ -357,13 +355,13 @@ func buildQuickCreatePrompt(task Task) string {
 	b.WriteString("Field rules:\n\n")
 
 	// title
-	b.WriteString("- **title**: required. A concise but semantically rich summary. If the input references external resources (PRs, issues, URLs), use your judgment on whether fetching the resource would produce a meaningfully better title — e.g. \"review PR #123\" → \"Review PR #123: Refactor auth module to OAuth2\". Strip filler words but preserve key semantic information.\n\n")
+	b.WriteString("- **title**: required. Summarize the user's request concisely, preserving key identifiers and technical terms.\n\n")
 
 	// description — the core optimization
-	b.WriteString("- **description**: The description is the executing agent's primary context. Aim for high fidelity — they should grasp the user's intent as if they had read the raw input themselves. Use a two-section structure:\n\n")
+	b.WriteString("- **description**: Preserve the user's intent and details in the following sections:\n\n")
 	b.WriteString("  1. **User request** — Faithfully restate what the user wants in their own words. Preserve specific names, identifiers, file paths, code snippets, and technical terms verbatim. Strip non-spec material before writing it (this is removal, not paraphrasing): verbal routing wrappers about creating the issue or routing it (e.g. \"create an issue\", \"分配给 X\", \"让 @X 处理\") and pure conversational fillers (e.g. \"对吧？\"). When in doubt, keep it.\n\n")
 	b.WriteString("     CC exception: `multica issue create` has no `--subscriber` flag, and the platform auto-subscribes members whose `[@Name](mention://member/<uuid>)` link appears in the description. When the user wrote \"cc @Y\", strip the verbal \"cc\" wrapper from the User request body and append a final `CC: <mention link(s)>` line to the description so the cc routing still fires.\n\n")
-	b.WriteString("  2. **Context** — include ONLY when the input cited external resources AND you successfully fetched them AND they produced verifiable facts worth recording. Summarize facts only (e.g. \"PR #45 changes auth to JWT\"), not interpretation or unsolicited reference implementations. If you have nothing factual to add, omit the section entirely — never use it as an apology log for resources you could not fetch.\n\n")
+	b.WriteString("  2. **References** — link external resources cited in the input without fetching or expanding them. Omit links already present in User request and omit this section when none remain.\n\n")
 	b.WriteString("  Hard rules: never invent requirements, implementation details, or acceptance criteria the user did not express; never reduce multi-sentence input to a single vague sentence; never echo the title.\n\n")
 
 	// priority

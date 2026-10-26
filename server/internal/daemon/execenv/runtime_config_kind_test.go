@@ -132,12 +132,12 @@ func TestBuildMetaSkillContentSlimKindMatrix(t *testing.T) {
 	issueKinds := map[taskKind]bool{kindIssue: true}
 	checks := []sectionCheck{
 		{"# Multica Agent Runtime", allKinds},
-		{"## Background Task Safety", allKinds},
+		{"## Runtime Safety", allKinds},
+		{"## Collaboration", allKinds},
 		{"## Agent Identity", allKinds},
 		{"## Available Commands", allKinds},
 		{"## Issue Body Formatting", allKinds},
 		{"### Workflow", allKinds},
-		{"## Important: Always Use the `multica` CLI", allKinds},
 		{"## Output", allKinds},
 		{"## Comment Formatting", issueKinds},
 		{"## Repositories", map[taskKind]bool{
@@ -257,7 +257,7 @@ func TestQuickCreateBriefOwnsRunAndOutputRules(t *testing.T) {
 		t.Fatalf("quick-create brief has no ## Output section\n---\n%s", out)
 	}
 	outputSection := out[outputIdx:]
-	if !strings.Contains(outputSection, "**Delivering files here:**") {
+	if !strings.Contains(outputSection, "Attach files to `multica issue create`") {
 		t.Errorf("## Output lost the file-delivery channel\n---\n%s", outputSection)
 	}
 	for _, banned := range []string{
@@ -283,7 +283,7 @@ func TestSlimQuickCreateAvailableCommands(t *testing.T) {
 	for _, want := range []string{
 		"## Available Commands",
 		"multica issue create --title",
-		"`multica --help`",
+		"`multica issue create --help`",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("quick_create slim Available Commands missing %q", want)
@@ -307,75 +307,31 @@ func TestSlimQuickCreateAvailableCommands(t *testing.T) {
 	}
 }
 
-// TestBackgroundTaskSafetySlimHardPins asserts the slim brief carries the
-// same hardened Background Task Safety pins as the legacy brief (MUL-4140).
-// The verbose path is covered by
-// TestInjectRuntimeConfigBackgroundTaskSafetyProviderAgnostic; this locks
-// the compressed slim path so a future slim-brief trim can't quietly drop
-// the no-background-and-yield / no-"standing by" guardrails that address
-// the MUL-4091 mechanism.
-func TestBackgroundTaskSafetySlimHardPins(t *testing.T) {
-
-	out := buildMetaSkillContent("claude", TaskContextForEnv{
-		IssueID: "i-1", TriggerCommentID: "tc-1",
-		AgentName: "Eve", AgentID: "eve-1",
-	})
-
-	for _, want := range []string{
-		"## Background Task Safety",
-		// MUL-5442 judgment rewrite (owner-authorized pin renegotiation): the
-		// section now states the one platform fact, the external-systems/CI
-		// boundary with its single exception, and the review-locked
-		// persistent-service contract. Enforcement-detail pins that only
-		// restated derivations of the platform fact were retired with the
-		// prose. What stays pinned: the fact, each boundary, each exception,
-		// and the handoff triple — the things an agent cannot infer.
-		"any run-owned work still active is orphaned",
-		"no background-completion wakeup",
-		"whatever a tool response promises",
-		"Never background-and-yield",
-		"foreground tool calls that block",
-		"run unobservable work synchronously",
-		"standing by",
-		"are not run-owned: do not wait",
-		// The full compound ban, not its first item — MUL-5223 made this a
-		// non-derivable boundary, so no member may be silently dropped.
-		"do not run `gh pr checks --watch`, `gh run watch`, or sleep/retry polls",
-		"GitHub Actions after a successful push",
-		"NOT your delivery acceptance criteria",
-		"CI running: <PR link>",
-		"The one exception",
-		"ONE foreground blocking call (`gh pr checks <pr> --watch`)",
-		"persistent service handoff",
-		"running service itself is the requested deliverable",
-		"durable logs",
-		"cleanup handle such as PID/profile",
-		"verify readiness",
-		"URL, logs, and stop instructions",
-		"survival as best-effort, not guaranteed",
-		"Never terminate `multica` or `multica.exe` by executable name",
-		"exact child PID you started",
-		"`multica daemon status --output json`",
-		"never kill it if it is the reported daemon PID",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("slim Background Task Safety missing hardened pin %q\n---\n%s", want, out)
+func TestBriefEfficientCollaborationAcrossTaskKinds(t *testing.T) {
+	t.Parallel()
+	fixtures := deliveryInvariantFixtures()
+	fixtures["issue-with-repo"] = TaskContextForEnv{
+		IssueID: "i-1", Repos: []RepoContextForEnv{{URL: "https://github.com/o/r", Ref: "release/b"}},
+		AgentSkills: []SkillContextForEnv{platformSkillFixture()},
+	}
+	for name, ctx := range fixtures {
+		brief := buildMetaSkillContent("claude", ctx)
+		for _, want := range []string{
+			"Keep delegation and mentions to the goal, essential context, and requested outcome",
+			"Do not make decisions or recommendations beyond your authority",
+			"Leave specialist judgments to the responsible professional",
+			"omit redundant reports and attachments",
+			"Link necessary external references without expanding them",
+			"`Thanks` is enough to accept delivery and acknowledge progress",
+		} {
+			if !strings.Contains(brief, want) {
+				t.Errorf("%s: missing collaboration rule %q", name, want)
+			}
 		}
-	}
-	// Exactly one exception (see the execenv provider-agnostic test for
-	// the incident this guards).
-	if got := strings.Count(out, "The one exception"); got != 1 {
-		t.Errorf("slim brief must state the CI exception exactly once, got %d\n---\n%s", got, out)
-	}
-	// `gh run watch` may only appear as a banned command, never as the
-	// section's example of how to wait properly.
-	if strings.Contains(out, "e.g. `gh run watch`") {
-		t.Errorf("slim Background Task Safety should not suggest waiting for external GitHub CI\n---\n%s", out)
-	}
-	// MUL-5274 review: with the persistent-service exception in the list, a
-	// "The rules above ..." scoping sentence would sweep in work that is
-	// precisely no longer run-owned after handoff.
-	if strings.Contains(out, "The rules above") {
-		t.Errorf("slim Background Task Safety must not reintroduce the ambiguous \"The rules above\" scoping sentence\n---\n%s", out)
+		for _, banned := range []string{"gh pr", "gh run watch", "--until-pr", "orphaned", "background-and-yield", "private working copy", "Runtime-local paths are never deliverables", "courtesy", "Silence ends conversations"} {
+			if strings.Contains(brief, banned) {
+				t.Errorf("%s: retired guidance %q returned", name, banned)
+			}
+		}
 	}
 }

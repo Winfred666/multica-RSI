@@ -10,14 +10,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/service"
 )
 
-// TestBuildQuickCreatePromptRules locks in the rules that govern how the
-// quick-create agent is allowed to translate raw user input into the issue
-// description body. Each substring corresponds to a concrete failure mode
-// observed in production output:
-//   - meta-instructions ("create an issue", "cc @X") leaking into the body
-//   - the Context section being misused as an apology log when no external
-//     references were actually fetched
-//   - hard-line rules being silently dropped on prompt rewrites
+// Quick-create preserves the request and routing without expanding references.
 func TestBuildQuickCreatePromptRules(t *testing.T) {
 	out := buildQuickCreatePrompt(Task{QuickCreatePrompt: "fix the login button color"})
 
@@ -32,9 +25,10 @@ func TestBuildQuickCreatePromptRules(t *testing.T) {
 		// auto-subscribe path fires (multica issue create has no --subscriber flag)
 		"CC exception",
 		"auto-subscribes members",
-		// context section is conditional and must not be an apology log
-		"include ONLY when the input cited external resources",
-		"never use it as an apology log",
+		// external references stay as links and are not repeated
+		"link external resources cited in the input without fetching or expanding them",
+		"Omit links already present in User request",
+		"omit this section when none remain",
 		// hard rules
 		"never invent requirements",
 		"never reduce multi-sentence input",
@@ -68,6 +62,8 @@ func TestBuildQuickCreatePromptRules(t *testing.T) {
 		"Created <identifier-or-id>: <title>",
 		"Passing the description:",
 		"never `/tmp` or any machine-shared path",
+		"whether fetching the resource would produce",
+		"Summarize facts only",
 	} {
 		if strings.Contains(out, moved) {
 			t.Errorf("buildQuickCreatePrompt restates brief-owned rule %q\n--- output ---\n%s", moved, out)
@@ -1666,7 +1662,6 @@ func TestBuildCommentPromptCrossThreadFansOutReplies(t *testing.T) {
 	for _, want := range []string{
 		"3 DISTINCT threads",
 		"Post ONE reply per thread",
-		"OVERRIDES",
 		"--parent c1",
 		"--parent c2",
 		"--parent c3",
@@ -1902,7 +1897,7 @@ func TestBriefCarriesNoModeRouter(t *testing.T) {
 			t.Errorf("brief still references the retired turn-mode split via %q (MUL-6417)\n---\n%s", banned, brief)
 		}
 	}
-	if !strings.Contains(brief, "**Issue status — write the state the issue is in, whenever it changes**") {
+	if !strings.Contains(brief, "**Issue status**") {
 		t.Errorf("brief lost the unified status rule\n---\n%s", brief)
 	}
 }

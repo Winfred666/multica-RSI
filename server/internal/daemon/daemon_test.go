@@ -6782,7 +6782,7 @@ func TestBuildPromptSquadLeaderMultiThreadCarvesOutNoAction(t *testing.T) {
 		},
 	}
 	prompt := BuildPrompt(leaderTask, "claude")
-	scope := strings.Index(prompt, "skip this ENTIRE fan-out block")
+	scope := strings.Index(prompt, "skip all replies and follow your Squad Operating Protocol")
 	if scope < 0 {
 		t.Fatalf("leader multi-thread prompt missing the whole-block scope sentence\n---\n%s", prompt)
 	}
@@ -6794,7 +6794,7 @@ func TestBuildPromptSquadLeaderMultiThreadCarvesOutNoAction(t *testing.T) {
 	// ("DISTINCT body file per thread"). The assertion shape is unchanged:
 	// every obligation must sit AFTER the no_action scope sentence.
 	for _, obligation := range []string{
-		"multiple replies are required and correct",
+		"Otherwise, post ONE reply per thread",
 		"OLDEST thread first",
 		"DISTINCT body file per thread",
 	} {
@@ -6817,7 +6817,7 @@ func TestBuildPromptSquadLeaderMultiThreadCarvesOutNoAction(t *testing.T) {
 	if !strings.Contains(ordinary, ". Post ONE reply per thread") {
 		t.Fatalf("ordinary multi-thread prompt missing the unconditional imperative\n---\n%s", ordinary)
 	}
-	if strings.Contains(ordinary, "Unless your outcome is") || strings.Contains(ordinary, "skip this ENTIRE fan-out block") {
+	if strings.Contains(ordinary, "Unless your outcome is") || strings.Contains(ordinary, "skip all replies and follow your Squad Operating Protocol") {
 		t.Fatalf("ordinary multi-thread prompt leaked the leader carve-out\n---\n%s", ordinary)
 	}
 }

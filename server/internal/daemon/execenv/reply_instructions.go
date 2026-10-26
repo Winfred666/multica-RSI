@@ -173,72 +173,29 @@ func BuildCommentReplyInstructions(provider, issueID, triggerCommentID string, s
 	return buildCommentReplyInstructionsSlim(provider, issueID, triggerCommentID, squadLeader)
 }
 
-// buildCommentReplyInstructionsSlim is the compressed reply-instructions
-// block used by BuildCommentReplyInstructions. It was introduced in
-// MUL-3560 as the slim alternative to a legacy verbose form; the
-// `runtime_brief_slim` flag has since been retired (MUL-4297) and this is
-// now the only form.
-//
-// The slim block carries only the trigger-specific cookbook (the exact
-// `--parent` UUID, the file path, the cleanup line) plus the two
-// behavioural rules tests pin ("do NOT reuse --parent" and "do not rely
-// on `\n` escapes"). The detailed shell-hazard rationale lives in the
-// canonical `## Comment Formatting` section the same brief carries, so
-// repeating it inline at every comment-triggered step 7 would be
-// duplication, not signal.
+// Keep the current reply target and safe shell commands next to the trigger.
 func buildCommentReplyInstructionsSlim(provider, issueID, triggerCommentID string, squadLeader bool) string {
-	// The squad leader's `no_action` exit (recorded via `squad activity`) is
-	// the one path where posting no comment is correct — the imperative must
-	// carry its own carve-out so a later line never contradicts the
-	// no_action rule injected above it (MUL-5442 #6493 review).
-	lead := "Post your reply as a comment — always use the trigger comment ID below, "
+	lead := "Post your reply as a comment using this turn's target."
 	if squadLeader {
-		lead = "Unless your outcome is `no_action`, post your reply as a comment — always use the trigger comment ID below, "
+		lead = "Unless your outcome is `no_action`, post your reply as a comment using this turn's target."
 	}
-	// Cleanup is GATED on the post succeeding, never a separate statement.
-	// Agents hand the whole snippet to one shell call, and an unconditional
-	// cleanup line runs — and SUCCEEDS — after a failed post, so the call's
-	// exit status becomes the cleanup's 0. Under `--output table` a failed
-	// and a successful post both write nothing to stdout, which leaves the
-	// exit status as the only machine-checkable signal; masking it lets an
-	// agent end its turn believing an unposted result was delivered. The
-	// gate also keeps ./reply.md on disk after a failure, so the retry does
-	// not have to regenerate the body.
+	lead += " Write the body file first (## Comment Formatting).\n\n"
+	// Windows agents may use PowerShell 5.1 or Git Bash. Both variants must
+	// preserve a failed post's exit status and body file.
 	if runtimeGOOS == "windows" {
-		// The daemon knows the host OS, not the shell behind the agent's
-		// command tool: Codex runs PowerShell on Windows, Claude Code runs
-		// Git Bash for its Bash tool and (by default on claude.ai accounts)
-		// a PowerShell tool the user can turn off with
-		// CLAUDE_CODE_USE_POWERSHELL_TOOL=0 (#8627). A PowerShell-only
-		// cookbook pasted into Git Bash fails at the `if (` line AFTER the
-		// post succeeded, so the agent sees a failure and may re-post. Offer
-		// one variant per shell and let the agent pick.
-		//
-		// PowerShell 5.1 has no `&&` (it landed in PowerShell 7), so that
-		// variant checks $LASTEXITCODE — which carries the exit code of the
-		// last NATIVE command — and propagates it instead.
 		return fmt.Sprintf(
 			lead+
-				"do NOT reuse --parent values from previous turns in this session.\n\n"+
-				"Write the body file first — never pipe via `--content-stdin` (PowerShell drops non-ASCII; full rules: ## Comment Formatting above). Use the variant for the shell your command tool runs:\n\n"+
 				"PowerShell:\n\n"+
 				"    multica issue comment add %[1]s --parent %[2]s --content-file ./reply.md --output table\n"+
 				"    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"+
 				"    Remove-Item ./reply.md\n\n"+
 				"Git Bash:\n\n"+
-				"    multica issue comment add %[1]s --parent %[2]s --content-file ./reply.md --output table && rm ./reply.md\n\n"+
-				"Do NOT drop the exit-code check or the `&&`: a bare cleanup after a failed post reports success and deletes the body.\n\n"+
-				"Do NOT write literal `\\n` escapes to simulate line breaks; the file preserves real newlines.\n",
+				"    multica issue comment add %[1]s --parent %[2]s --content-file ./reply.md --output table && rm ./reply.md\n",
 			issueID, triggerCommentID,
 		)
 	}
-	return fmt.Sprintf(
-		lead+
-			"do NOT reuse --parent values from previous turns in this session.\n\n"+
-			"Write the body file first (rules: ## Comment Formatting above — MUL-2904 / #4182):\n\n"+
-			"    multica issue comment add %s --parent %s --content-file ./reply.md --output table && rm ./reply.md\n\n"+
-			"Keep the `&&`: as two separate statements a failed post is masked by the cleanup's success, and the body file is deleted.\n\n"+
-			"Do NOT write literal `\\n` escapes to simulate line breaks; the file preserves real newlines.\n",
+	return fmt.Sprintf(lead+
+		"    multica issue comment add %s --parent %s --content-file ./reply.md --output table && rm ./reply.md\n",
 		issueID, triggerCommentID,
 	)
 }
@@ -251,33 +208,9 @@ type ThreadReplyTarget struct {
 	ParentID string
 }
 
-// BuildMultiThreadCommentReplyInstructions is the reply fan-out block for a run
-// whose coalesced comments span MORE THAN ONE root thread (MUL-4348). It
-// deliberately overrides the general "post exactly one comment per run"
-// guidance for this specific run: three unrelated questions raised in three
-// separate threads must land as three in-thread answers, not one merged blob
-// posted under a single thread (or as a stray root comment).
-//
-// The grouping is computed server-side, so same-thread follow-ups never reach
-// here — they collapse to a single target upstream and take the ordinary
-// single-parent path. That is why the agent is told, unconditionally, to post
-// exactly one reply per listed thread and never more than one reply in the same
-// thread: the "multiple @mentions in one thread" case is already consolidated
-// before this instruction is emitted, so a per-thread fan-out cannot split it.
-//
-// The block carries only what is multi-thread-SPECIFIC: the fan-out
-// announcement + override, the posting order, the per-thread `--parent`
-// targets, and the one mechanical delta (a DISTINCT body file per thread).
-// The posting mechanism itself — body file → `--content-file` → cleanup, the
-// inline/`--content-stdin` bans, the `\n`-escape rule, and the OS-specific
-// cleanup command — lives once in the brief's `## Comment Formatting`; this
-// block used to restate all of it plus two example command pairs, triple-
-// writing the same cookbook for ~1KB extra per multi-thread turn (MUL-5825).
-// Dropping the embedded commands also removes the only OS-dependent text, so
-// the block no longer branches on runtimeGOOS: `## Comment Formatting` keeps
-// the OS split.
-//
-// Returns "" for fewer than two targets; callers keep the single-parent path.
+// BuildMultiThreadCommentReplyInstructions supplies one reply target per thread.
+// Fewer than two targets use the single-thread path. Files must stay distinct
+// so one thread's reply cannot overwrite another's.
 func BuildMultiThreadCommentReplyInstructions(issueID string, targets []ThreadReplyTarget, squadLeader bool) string {
 	if issueID == "" || len(targets) < 2 {
 		return ""
@@ -288,22 +221,14 @@ func BuildMultiThreadCommentReplyInstructions(issueID string, targets []ThreadRe
 		targetLines += fmt.Sprintf("%d. thread %s → reply with `--parent %s`\n", i+1, tgt.ThreadID, tgt.ParentID)
 	}
 
-	// Same carve-out as the single-thread cookbook (MUL-5442 #6493 review):
-	// the leader's no_action exit must not be contradicted by this later
-	// imperative, and the scope sentence must govern the ENTIRE fan-out
-	// block — every obligation below ("multiple replies are required", the
-	// posting order, the per-thread file rule) sits under the "Otherwise" —
-	// not just the first verb. Ordinary agents keep the unconditional form
-	// byte-for-byte.
-	lead := "This run coalesced comments from %d DISTINCT threads. Post ONE reply per thread"
+	lead := "Post ONE reply per thread."
 	if squadLeader {
-		lead = "This run coalesced comments from %d DISTINCT threads. **If your outcome is `no_action`, skip this ENTIRE fan-out block — post no replies at all and exit via `multica squad activity` as your leader rules direct; everything below applies only otherwise.** Otherwise, post ONE reply per thread"
+		lead = "For `no_action`, skip all replies and follow your Squad Operating Protocol. Otherwise, post ONE reply per thread."
 	}
 	return fmt.Sprintf(
-		lead+" — %d in total. This OVERRIDES the \"post exactly one comment per run\" rule: for THIS run multiple replies are required and correct. Do NOT merge separate threads into one comment or post twice in the same thread.\n\n"+
-			"Reply targets, in posting order — OLDEST thread first, the newest (triggering) thread LAST. Use the exact `--parent` for each; never reuse a `--parent` from an earlier turn:\n"+
-			"%s\n"+
-			"Write and post each reply exactly as `## Comment Formatting` above directs, with ONE multi-thread delta: use a DISTINCT body file per thread (./reply-1.md, ./reply-2.md, …) so one reply's content can never leak into another's.\n",
-		len(targets), len(targets), targetLines,
+		"This run covers %d DISTINCT threads. "+lead+"\n\n"+
+			"Reply targets, OLDEST thread first. Use this turn's exact `--parent` values:\n%s\n"+
+			"Follow `## Comment Formatting` with a DISTINCT body file per thread (./reply-1.md, ./reply-2.md, …).\n",
+		len(targets), targetLines,
 	)
 }

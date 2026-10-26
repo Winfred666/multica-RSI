@@ -1,8 +1,7 @@
 # Mentions and delegation
 
-What a mention link DOES. WHETHER to mention at all — loop avoidance, staying
-silent on acknowledgements — is in your runtime brief's Mentions section; follow
-that and do not re-derive it here.
+This reference covers mention syntax and dispatch. Follow the runtime brief's
+Collaboration rules for delegation and acknowledgements.
 
 - [A mention link is built from a real UUID](#a-mention-link-is-built-from-a-real-uuid)
 - [Step 1 — look up the UUID](#step-1--look-up-the-uuid)

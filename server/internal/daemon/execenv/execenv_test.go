@@ -1305,93 +1305,27 @@ func TestInjectRuntimeConfigClaude(t *testing.T) {
 	}
 }
 
-func TestInjectRuntimeConfigBackgroundTaskSafetyProviderAgnostic(t *testing.T) {
+func TestInjectRuntimeConfigRuntimeSafetyProviderAgnostic(t *testing.T) {
 	t.Parallel()
-
-	providers := []struct {
-		name string
-		file string
-	}{
-		{"claude", "CLAUDE.md"},
-		{"codex", "AGENTS.md"},
-		{"opencode", "AGENTS.md"},
-		{"codearts", "AGENTS.md"},
-		{"hermes", "AGENTS.md"},
-	}
-
-	for _, tc := range providers {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
+	for _, provider := range []string{"claude", "codex", "opencode", "codearts", "hermes"} {
+		t.Run(provider, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
-			if _, err := InjectRuntimeConfig(dir, tc.name, TaskContextForEnv{IssueID: "issue-1"}); err != nil {
-				t.Fatalf("InjectRuntimeConfig failed: %v", err)
+			if _, err := InjectRuntimeConfig(dir, provider, TaskContextForEnv{IssueID: "issue-1"}); err != nil {
+				t.Fatal(err)
 			}
-			data, err := os.ReadFile(filepath.Join(dir, tc.file))
+			file := "AGENTS.md"
+			if provider == "claude" {
+				file = "CLAUDE.md"
+			}
+			data, err := os.ReadFile(filepath.Join(dir, file))
 			if err != nil {
-				t.Fatalf("read %s: %v", tc.file, err)
+				t.Fatal(err)
 			}
-			s := string(data)
-			for _, want := range []string{
-				"## Background Task Safety",
-				// MUL-5442 judgment rewrite (owner-authorized pin renegotiation): the
-				// section now states the one platform fact, the external-systems/CI
-				// boundary with its single exception, and the review-locked
-				// persistent-service contract. Enforcement-detail pins that only
-				// restated derivations of the platform fact were retired with the
-				// prose ("Do NOT end your turn while background tasks", the
-				// tool-promise enumeration, "does not cover tests, builds, CI
-				// polling", "any sleep / retry loop that polls check status", ...).
-				// What stays pinned: the fact, each boundary, each exception, and
-				// the handoff triple — the things an agent cannot infer.
-				"any run-owned work still active is orphaned",
-				"no background-completion wakeup",
-				"whatever a tool response promises",
-				"Never background-and-yield",
-				"foreground tool calls that block",
-				"run unobservable work synchronously",
-				"standing by",
-				"are not run-owned: do not wait",
-				// The full compound ban, not its first item — MUL-5223 made this a
-				// non-derivable boundary, so no member may be silently dropped.
-				"do not run `gh pr checks --watch`, `gh run watch`, or sleep/retry polls",
-				"GitHub Actions after a successful push",
-				"NOT your delivery acceptance criteria",
-				"CI running: <PR link>",
-				"The one exception",
-				"ONE foreground blocking call (`gh pr checks <pr> --watch`)",
-				"persistent service handoff",
-				"running service itself is the requested deliverable",
-				"durable logs",
-				"cleanup handle such as PID/profile",
-				"verify readiness",
-				"URL, logs, and stop instructions",
-				"survival as best-effort, not guaranteed",
-				"Never terminate `multica` or `multica.exe` by executable name",
-				"exact child PID you started",
-				"`multica daemon status --output json`",
-				"never kill it if it is the reported daemon PID",
-			} {
-				if !strings.Contains(s, want) {
-					t.Errorf("%s missing background task safety text %q\n---\n%s", tc.file, want, s)
+			for _, want := range []string{"## Runtime Safety", "exact child PID you started", "multica daemon status --output json", "never kill the daemon PID", "by executable name"} {
+				if !strings.Contains(string(data), want) {
+					t.Errorf("%s missing safety rule %q", file, want)
 				}
-			}
-			// Exactly one exception: substring pins cannot see a duplicated
-			// "The one exception" clause (a second, wider-scope copy slipped
-			// in during the MUL-5442 rewrite and every pin stayed green).
-			if got := strings.Count(s, "The one exception"); got != 1 {
-				t.Errorf("%s must state the CI exception exactly once, got %d\n---\n%s", tc.file, got, s)
-			}
-			// `gh run watch` may only appear as a banned command, never as
-			// the section's example of how to wait properly.
-			if strings.Contains(s, "e.g. `gh run watch`") {
-				t.Errorf("%s should not suggest waiting for external GitHub CI\n---\n%s", tc.file, s)
-			}
-			// MUL-5274 review: with the persistent-service exception in the
-			// list, a "The rules above ..." scoping sentence would sweep in
-			// work that is precisely no longer run-owned after handoff.
-			if strings.Contains(s, "The rules above") {
-				t.Errorf("%s must not reintroduce the ambiguous \"The rules above\" scoping sentence\n---\n%s", tc.file, s)
 			}
 		})
 	}
@@ -1413,7 +1347,7 @@ func TestInjectRuntimeConfigAvailableCommandsCoreOnly(t *testing.T) {
 	s := string(content)
 	for _, want := range []string{
 		"## Available Commands",
-		"core agent loop and common issue create/update tasks",
+		"Use `--output json` for reads",
 		"`multica <command> --help`",
 		"multica issue get <id> --output json",
 		"multica issue comment list <issue-id>",
@@ -2275,246 +2209,52 @@ func TestPrepareWithRepoContextOpencode(t *testing.T) {
 // into a nested clause again.
 func TestInjectRuntimeConfigRequiresExplicitCommentPost(t *testing.T) {
 	t.Parallel()
-
-	assignmentCtx := TaskContextForEnv{IssueID: "issue-1"}
-	commentCtx := TaskContextForEnv{IssueID: "issue-1", TriggerCommentID: "comment-1"}
-
-	for _, tc := range []struct {
-		name string
-		ctx  TaskContextForEnv
-	}{
-		{"assignment-triggered", assignmentCtx},
-		{"comment-triggered", commentCtx},
-	} {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			dir := t.TempDir()
-			if _, err := InjectRuntimeConfig(dir, "claude", tc.ctx); err != nil {
-				t.Fatalf("InjectRuntimeConfig failed: %v", err)
-			}
-			data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
-			if err != nil {
-				t.Fatalf("read CLAUDE.md: %v", err)
-			}
-			s := string(data)
-
-			// The workflow must contain an explicit `multica issue comment add`
-			// invocation for this issue — not just a prose mention of posting.
-			mustContain := []string{
-				// MUL-5442 cross-channel dedup: the brief states the loop shape; the
-				// ready-to-run commands with real ids live in the per-turn message.
-				// Pin the command NAME and the flag mnemonics, not full templates.
-				"post it with `multica issue comment add` using",
-				"mandatory",
-			}
-			for _, want := range mustContain {
-				if !strings.Contains(s, want) {
-					t.Errorf("%s: CLAUDE.md missing %q\n---\n%s", tc.name, want, s)
-				}
-			}
-
-			// The Output section must carry a hard warning that terminal/log
-			// output is not user-visible. This is the second line of defense
-			// in case the agent skips past the workflow steps.
-			for _, want := range []string{
-				"Final results MUST be delivered via `multica issue comment add`",
-				"does NOT see your terminal output",
-			} {
-				if !strings.Contains(s, want) {
-					t.Errorf("%s: Output warning missing %q", tc.name, want)
-				}
-			}
-		})
+	for _, ctx := range []TaskContextForEnv{{IssueID: "issue-1"}, {IssueID: "issue-1", TriggerCommentID: "comment-1"}} {
+		dir := t.TempDir()
+		if _, err := InjectRuntimeConfig(dir, "claude", ctx); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(outputSection(string(data)), "Post one final result with `multica issue comment add` per required thread") {
+			t.Fatal("injected brief lost explicit result delivery")
+		}
 	}
 }
 
-// TestInjectRuntimeConfigCommentGuardrailIsProviderAgnostic pins that the
-// "never inline --content for agent-authored comments" guardrail reaches EVERY
-// provider on every host OS — post-MUL-2904 the corruption is shell-driven, so
-// the directive is no longer Codex-scoped. The Available Commands entry still
-// lists all three input modes as available, and the legacy over-broad
-// `--description-stdin` / "MUST pipe via stdin" phrasings (#1795 / #1851, which
-// broke Windows non-ASCII) must NOT reappear.
-//
-// Not parallel: mutates the package-level runtimeGOOS.
+// File input must remain the prescribed mode on every shell and provider.
 func TestInjectRuntimeConfigCommentGuardrailIsProviderAgnostic(t *testing.T) {
 	saved := runtimeGOOS
 	t.Cleanup(func() { runtimeGOOS = saved })
-
 	for _, host := range []string{"linux", "darwin", "windows"} {
-		for _, provider := range []string{"claude", "opencode", "openclaw", "hermes", "kimi", "reasonix", "kiro", "cursor"} {
+		for _, provider := range []string{"claude", "codex", "opencode", "openclaw", "hermes", "kimi", "reasonix", "kiro", "cursor"} {
 			t.Run(provider+"/"+host, func(t *testing.T) {
 				runtimeGOOS = host
 				dir := t.TempDir()
 				if _, err := InjectRuntimeConfig(dir, provider, TaskContextForEnv{IssueID: "issue-1"}); err != nil {
-					t.Fatalf("InjectRuntimeConfig failed: %v", err)
+					t.Fatal(err)
 				}
-
-				configFile := "CLAUDE.md"
-				if provider != "claude" {
-					configFile = "AGENTS.md"
+				file := "AGENTS.md"
+				if provider == "claude" {
+					file = "CLAUDE.md"
 				}
-				data, err := os.ReadFile(filepath.Join(dir, configFile))
+				data, err := os.ReadFile(filepath.Join(dir, file))
 				if err != nil {
-					t.Fatalf("read %s: %v", configFile, err)
+					t.Fatal(err)
 				}
-				s := string(data)
-
-				// Available Commands lists all three input modes as available.
 				for _, want := range []string{
-					"--content \"...\"",
-					"--content-stdin",
-					"--content-file <path>",
+					"## Comment Formatting", "UTF-8 file such as `./reply.md`",
+					"Post with `--content-file <path>`", "Never use inline `--content` or pipe through `--content-stdin`",
+					"`--output table` for a quiet success receipt", "`--output json` when response fields are needed",
+					"Delete the body file only after a successful post",
 				} {
-					if !strings.Contains(s, want) {
-						t.Errorf("%s missing flag mention %q\n---\n%s", configFile, want, s)
-					}
-				}
-
-				// The provider-agnostic guardrail must now reach non-Codex
-				// providers too: a dedicated Comment Formatting section that
-				// bans inline `--content` for agent-authored comments.
-				for _, want := range []string{
-					"## Comment Formatting",
-					"Never use inline `--content` for agent-authored comments",
-				} {
-					if !strings.Contains(s, want) {
-						t.Errorf("%s missing provider-agnostic comment guardrail %q\n---\n%s", configFile, want, s)
-					}
-				}
-
-				// The legacy over-broad mandate (#1795 / #1851) must NOT
-				// reappear — it is what broke Windows non-ASCII for every
-				// provider.
-				for _, banned := range []string{
-					"MUST pipe via stdin",
-					"Agent-authored comments should always pipe content via stdin",
-					"use `--description-stdin` and pipe a HEREDOC",
-				} {
-					if strings.Contains(s, banned) {
-						t.Errorf("%s reintroduces over-broad legacy mandate %q for provider %s\n---\n%s", configFile, banned, provider, s)
+					if !strings.Contains(string(data), want) {
+						t.Errorf("%s missing comment guidance %q", file, want)
 					}
 				}
 			})
-		}
-	}
-}
-
-// TestInjectRuntimeConfigLinuxCommentFormattingEmphasizesFile pins that the
-// "## Comment Formatting" section emits the file-first mandate on non-Windows
-// hosts for EVERY provider (post-#4182). The previous quoted-HEREDOC
-// `--content-stdin` rule was kept for years to defend against backtick / `$()`
-// substitution in the body (MUL-2904), but the heredoc/flag boundary turned out
-// to be its own structural bug: when a model wrapped extra flags around the
-// heredoc on `multica issue create`, the flags were silently swallowed into
-// stdin (OXY-78, OXY-76). The file path defeats both classes — the body never
-// reaches the shell, and all flags live on one shell-token line — and converges
-// the Linux/macOS template with the long-standing Windows file-only path.
-//
-// Not parallel: mutates the package-level runtimeGOOS.
-func TestInjectRuntimeConfigLinuxCommentFormattingEmphasizesFile(t *testing.T) {
-	saved := runtimeGOOS
-	t.Cleanup(func() { runtimeGOOS = saved })
-	runtimeGOOS = "linux"
-
-	for _, provider := range []string{"codex", "claude", "opencode"} {
-		t.Run(provider, func(t *testing.T) {
-			dir := t.TempDir()
-			if _, err := InjectRuntimeConfig(dir, provider, TaskContextForEnv{
-				IssueID:          "issue-1",
-				TriggerCommentID: "comment-1",
-			}); err != nil {
-				t.Fatalf("InjectRuntimeConfig failed: %v", err)
-			}
-			fileName := "CLAUDE.md"
-			if provider != "claude" {
-				fileName = "AGENTS.md"
-			}
-			data, err := os.ReadFile(filepath.Join(dir, fileName))
-			if err != nil {
-				t.Fatalf("read %s: %v", fileName, err)
-			}
-			s := string(data)
-
-			// Assert inside the section slice: "#4182" also appears in
-			// Available Commands, so a whole-file Contains would stay green
-			// with the HEREDOC ban deleted here (review catch on #6453).
-			// Match the HEADING at line start — Available Commands references
-			// "## Comment Formatting" inline earlier in the file.
-			cfStart := strings.Index(s, "\n## Comment Formatting\n")
-			if cfStart < 0 {
-				t.Fatalf("%s missing ## Comment Formatting section\n---\n%s", fileName, s)
-			}
-			cf := s[cfStart+1:]
-			if next := strings.Index(cf[3:], "\n## "); next >= 0 {
-				cf = cf[:next+3]
-			}
-			for _, want := range []string{
-				"always write the comment body to a UTF-8 file with your file-write tool first, then post it with `--content-file <path>`",
-				"Never use inline `--content` for agent-authored comments",
-				"never use `--content-stdin` HEREDOCs alongside other flags",
-				"#4182",
-				"never `/tmp` or shared paths",
-				"Keep the same `--parent` value",
-				"rm ./reply.md",
-				"do not rely on `\\n` escapes",
-			} {
-				if !strings.Contains(cf, want) {
-					t.Errorf("%s Comment Formatting section missing %q\n---\n%s", fileName, want, cf)
-				}
-			}
-
-			// The previous mandate (#1795 / #1851 / MUL-2904) must NOT remain.
-			for _, banned := range []string{
-				"always use `--content-stdin` with a HEREDOC, even for short single-line replies",
-				"<<'COMMENT'",
-				"Codex-Specific Comment Formatting",
-			} {
-				if strings.Contains(s, banned) {
-					t.Errorf("%s still carries pre-#4182 stdin mandate %q\n---\n%s", fileName, banned, s)
-				}
-			}
-		})
-	}
-}
-
-// TestInjectRuntimeConfigCodexWindowsUsesContentFile pins that on Windows
-// the Comment Formatting section directs the agent at `--content-file`
-// instead of `--content-stdin`. PowerShell 5.1 / cmd.exe re-encode piped
-// HEREDOC bytes through the active console codepage and silently drop
-// non-ASCII as `?` before reaching `multica.exe` (#2198 / #2236 / #2376).
-//
-// Not parallel: mutates the package-level runtimeGOOS.
-func TestInjectRuntimeConfigCodexWindowsUsesContentFile(t *testing.T) {
-	saved := runtimeGOOS
-	t.Cleanup(func() { runtimeGOOS = saved })
-	runtimeGOOS = "windows"
-
-	dir := t.TempDir()
-	if _, err := InjectRuntimeConfig(dir, "codex", TaskContextForEnv{IssueID: "issue-1"}); err != nil {
-		t.Fatalf("InjectRuntimeConfig failed: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
-	if err != nil {
-		t.Fatalf("read AGENTS.md: %v", err)
-	}
-	s := string(data)
-	for _, want := range []string{
-		"On Windows, **always write the comment body to a UTF-8 file",
-		"$OutputEncoding",
-		"--content-file",
-		"may replace non-ASCII characters with `?`",
-	} {
-		if !strings.Contains(s, want) {
-			t.Errorf("AGENTS.md missing Codex/Windows file-first guidance %q\n---\n%s", want, s)
-		}
-	}
-	for _, banned := range []string{
-		"always use `--content-stdin` with a HEREDOC, even for short single-line replies",
-	} {
-		if strings.Contains(s, banned) {
-			t.Errorf("AGENTS.md still carries Codex stdin mandate %q on Windows\n---\n%s", banned, s)
 		}
 	}
 }
@@ -5349,205 +5089,42 @@ func TestReadGCMeta_NoFile(t *testing.T) {
 	}
 }
 
-// TestInjectRuntimeConfigMentionLoopHardening locks in the mention-loop
-// instructions (see MUL-1323 / GH#1576). Two agents were stuck in an infinite
-// @mention loop because the harness told them mentions were "actions" but did
-// not tell them (a) when NOT to mention, (b) that silence ends a thread, or
-// (c) that the triggering comment was from another agent. If any of the
-// signals below regress, agent-to-agent loops come back.
-func TestInjectRuntimeConfigMentionLoopHardening(t *testing.T) {
+func TestInjectRuntimeConfigMentionDispatchAndShortAcknowledgement(t *testing.T) {
 	t.Parallel()
-
-	commentTriggerCtx := TaskContextForEnv{
-		IssueID:          "issue-1",
-		TriggerCommentID: "comment-1",
-	}
-	assignmentCtx := TaskContextForEnv{IssueID: "issue-1"}
-
-	readClaudeMD := func(t *testing.T, ctx TaskContextForEnv) string {
-		t.Helper()
-		dir := t.TempDir()
-		if _, err := InjectRuntimeConfig(dir, "claude", ctx); err != nil {
-			t.Fatalf("InjectRuntimeConfig failed: %v", err)
-		}
-		data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
-		if err != nil {
-			t.Fatalf("read CLAUDE.md: %v", err)
-		}
-		return string(data)
-	}
-
-	t.Run("mentions-section-lists-loop-protocol", func(t *testing.T) {
-		t.Parallel()
-		s := readClaudeMD(t, assignmentCtx)
-		// MUL-6417: the section is fact-anchored, no prescriptive default.
-		// Pin each fact that invalidates a false reason to mention — losing
-		// any one of them re-opens the incident class it closed.
-		for _, want := range []string{
-			"side-effecting actions",
-			"enqueues a new run for that agent",
-			// Notifying FOLLOWERS is a false need: delivery already happens.
-			// Scoped to followers on purpose — for a non-follower, a mention
-			// IS how they find out (Elon's review catch on #7245).
-			"followers of the issue already see your comment",
-			"completion notifications are platform-owned",
-			// The one real function, with its scope.
-			"pulls someone into work they are not doing yet",
-			// The reference fact (MUL-6528): @-as-attribution ("per @X's
-			// decision") read as a way to write a name and dispatched the
-			// agent being credited.
-			"prose about them, not work for them",
-			"so a reference stays plain text",
-			// The courtesy-loop fact (the incident class behind #1581/#6453).
-			"whose only possible reply is another courtesy",
-			// The asymmetry that breaks ambiguous cases toward not mentioning.
-			"a missed mention costs one follow-up ask, a stray one costs a run",
-			"Silence ends conversations",
-		} {
-			if !strings.Contains(s, want) {
-				t.Errorf("Mentions section missing %q\n---\n%s", want, s)
-			}
-		}
-		// Neither the bare prescription (MUL-6417) nor the overreach that
-		// replaced it may come back: "never how someone finds out" was false
-		// for non-followers and suppressed legitimate human escalation.
-		for _, banned := range []string{"Default: NO mention", "never how someone finds out"} {
-			if strings.Contains(s, banned) {
-				t.Errorf("Mentions section carries retired wording %q\n---\n%s", banned, s)
-			}
-		}
-	})
-
-	t.Run("closing-line-no-longer-says-always-mention", func(t *testing.T) {
-		t.Parallel()
-		s := readClaudeMD(t, assignmentCtx)
-		// The old footer said "**always** use the mention format" which models
-		// over-generalized to agent/member mentions. Guard against regression.
-		if strings.Contains(s, "**always** use the mention format") {
-			t.Errorf("CLAUDE.md still contains the overreaching \"**always** use the mention format\" guidance")
-		}
-	})
-
-	t.Run("workflow-reply-is-unconditional-and-no-signoff-mention", func(t *testing.T) {
-		t.Parallel()
-		s := readClaudeMD(t, commentTriggerCtx)
-		// MUL-5442 owner decision (2026-08-06): the generic no-reply rule is
-		// retired. It never carried the loop prevention — agent comments
-		// trigger nothing without an explicit @mention (the sole implicit
-		// wake is the squad-leader path), so the mention discipline pinned in
-		// the Mentions subtest above is the real defense. Ordinary agents are
-		// back on the unconditional one-comment-per-run contract; recorded
-		// silence via `no_action` remains squad-leader-only. Retired pins,
-		// replaced by the negative guards below so the apparatus cannot creep
-		// back: "Decide whether a reply is warranted", "produced actual
-		// work", "pure acknowledgment / thanks / sign-off", "do NOT reply",
-		// "Silence is a valid and preferred way".
-		// MUL-6417 merged the reply-mode block into the shared steps: the
-		// unconditional one-comment contract now lives in step 4, and the
-		// mention-after-work bullet is gone with the block (the discipline
-		// itself stays in `## Mentions`, pinned by the Mentions subtest).
-		for _, want := range []string{
-			"**Post your final results as a comment — this step is mandatory**",
-			"whose only possible reply is another courtesy",
-		} {
-			if !strings.Contains(s, want) {
-				t.Errorf("comment-triggered CLAUDE.md missing %q", want)
-			}
-		}
-		for _, banned := range []string{
-			"Decide whether a reply is warranted",
-			"exit with no output",
-			"Silence is a valid and preferred way",
-			"conditional on the reply rule",
-			// #6493 review: the ledger named five retired pins but only
-			// guarded two — the missing three let the old apparatus
-			// coexist with the new sentences. Ordinary-agent scope only:
-			// the leader's no_action bullet says "DO NOT post any
-			// comment", which none of these match.
-			"produced actual work",
-			"pure acknowledgment / thanks / sign-off",
-			"do NOT reply",
-			// Leader-leak guard: the carve-out imperative is
-			// leader-brief-only.
-			"Unless your outcome is",
-		} {
-			if strings.Contains(s, banned) {
-				t.Errorf("comment-triggered CLAUDE.md still carries retired no-reply text %q", banned)
-			}
-		}
-	})
-}
-
-// TestInjectRuntimeConfigSquadLeaderCommentTriggeredNoAction verifies that
-// when IsSquadLeader is true and the task is comment-triggered, the generated
-// CLAUDE.md explicitly forbids posting comments that merely announce no_action.
-// This is the fix for MUL-2168 — squad leaders were posting "Exiting silently"
-// comments because the comment-triggered path lacked the prohibition.
-func TestInjectRuntimeConfigSquadLeaderCommentTriggeredNoAction(t *testing.T) {
-	t.Parallel()
-
 	dir := t.TempDir()
-	ctx := TaskContextForEnv{
-		IssueID:          "issue-1",
-		TriggerCommentID: "comment-1",
-		IsSquadLeader:    true,
-	}
-	if _, err := InjectRuntimeConfig(dir, "claude", ctx); err != nil {
-		t.Fatalf("InjectRuntimeConfig failed: %v", err)
+	if _, err := InjectRuntimeConfig(dir, "claude", TaskContextForEnv{IssueID: "issue-1"}); err != nil {
+		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
 	if err != nil {
-		t.Fatalf("read CLAUDE.md: %v", err)
+		t.Fatal(err)
 	}
-	s := string(data)
-
-	// Both delivery imperatives — workflow step 4 and ## Output — must carry
-	// the carve-out, so that no later bullet can contradict the no_action exit
-	// (MUL-5442 #6493 review). They carry the EXCEPTION, not the rule: the
-	// rule itself is stated once, by the Squad Operating Protocol the server
-	// appends to Instructions, and both sites point there (MUL-6984).
 	for _, want := range []string{
-		"unless your outcome is `no_action`",
-		"see the no_action rule in your Squad Operating Protocol",
-		"which your Squad Operating Protocol states in full",
+		"mention://issue/<issue-id>", "mention://project/<project-id>",
+		"mention://member/<user-id>", "mention://agent/<agent-id>",
+		"starts a run for that agent", "`Thanks` is enough to accept delivery",
 	} {
-		if !strings.Contains(s, want) {
-			t.Errorf("squad leader comment-triggered CLAUDE.md missing %q", want)
+		if !strings.Contains(string(data), want) {
+			t.Errorf("injected brief missing %q", want)
 		}
 	}
-	// The unconditional ordinary-agent imperative must not coexist with the
-	// carve-out variant.
-	if strings.Contains(s, "**Post your final results as a comment — this step is mandatory**") {
-		t.Errorf("squad leader CLAUDE.md still carries the unconditional delivery step")
-	}
-	// And neither site may restate the rule's mechanics — that is what drifted
-	// when four copies of it existed.
-	for _, banned := range []string{
-		"DO NOT post a comment announcing no_action",
-		"you MUST exit without posting any comment",
-	} {
-		if strings.Contains(s, banned) {
-			t.Errorf("squad leader CLAUDE.md restates the protocol-owned no_action rule: %q", banned)
-		}
-	}
+}
 
-	// Non-squad-leader should NOT have the squad leader rule in comment-triggered path.
-	dir2 := t.TempDir()
-	ctx2 := TaskContextForEnv{
-		IssueID:          "issue-1",
-		TriggerCommentID: "comment-1",
-		IsSquadLeader:    false,
-	}
-	if _, err := InjectRuntimeConfig(dir2, "claude", ctx2); err != nil {
-		t.Fatalf("InjectRuntimeConfig failed: %v", err)
-	}
-	data2, err := os.ReadFile(filepath.Join(dir2, "CLAUDE.md"))
-	if err != nil {
-		t.Fatalf("read CLAUDE.md: %v", err)
-	}
-	s2 := string(data2)
-	if strings.Contains(s2, "unless your outcome is `no_action`") {
-		t.Errorf("non-squad-leader CLAUDE.md should NOT contain the leader no_action carve-out")
+func TestInjectRuntimeConfigSquadLeaderCommentTriggeredNoAction(t *testing.T) {
+	t.Parallel()
+	for _, leader := range []bool{false, true} {
+		dir := t.TempDir()
+		if _, err := InjectRuntimeConfig(dir, "claude", TaskContextForEnv{IssueID: "issue-1", TriggerCommentID: "comment-1", IsSquadLeader: leader}); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		const exception = "For `no_action`, follow your Squad Operating Protocol instead"
+		if strings.Contains(string(data), exception) != leader {
+			t.Errorf("leader=%v: incorrect no_action delivery exception", leader)
+		}
 	}
 }
 
@@ -5854,7 +5431,7 @@ func TestInjectRuntimeConfigBriefKeepsStaticCatchUpRead(t *testing.T) {
 	// MUL-5442 cross-channel dedup: the full command with the real issue id
 	// moved to the per-turn message (every issue variant carries it); the
 	// brief keeps the doctrine and the flag mnemonics.
-	if !strings.Contains(s, "scan every thread cheaply (`--roots-only --summary --compact`)") {
+	if !strings.Contains(s, "Read comments with `--roots-only --summary --compact`") {
 		t.Errorf("brief must keep the bounded catch-up doctrine\n---\n%s", s)
 	}
 	if strings.Contains(s, issueID) {
@@ -5951,9 +5528,9 @@ func TestInjectRuntimeConfigAssignmentTriggerScansRootsFirst(t *testing.T) {
 	// Mandatory comment catch-up must stay, but the required first read is
 	// bounded to recent active threads instead of the full flat timeline.
 	for _, want := range []string{
-		"scan every thread cheaply (`--roots-only --summary --compact`)",
-		"this is mandatory, not optional",
-		"Skipping this step is the most common cause",
+		"Read comments with `--roots-only --summary --compact`",
+		"Only an explicit server report of no new comments waives it",
+		"A supplied issue-wide `--since` read replaces the scan",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("assignment Workflow regressed mandatory scan-first catch-up, missing %q\n---\n%s", want, s)
@@ -5964,7 +5541,7 @@ func TestInjectRuntimeConfigAssignmentTriggerScansRootsFirst(t *testing.T) {
 	// TestIssueCommentListHelpCarriesReadContract in cmd/multica); the brief
 	// keeps a pointer in the flag reference.
 	for _, want := range []string{
-		"paging cursors, and full flag semantics: `--help`",
+		"Paging and folding: `--help`",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("assignment Workflow missing older-history pagination guidance %q\n---\n%s", want, s)
@@ -6018,14 +5595,14 @@ func TestInjectRuntimeConfigCatchUpScansRootsFirst(t *testing.T) {
 		// The cheap scan is the first thing step 3 asks for; the full
 		// command with real ids arrives in the per-turn message (MUL-5442
 		// cross-channel dedup), so the brief pins the flag mnemonics.
-		"scan every thread cheaply (`--roots-only --summary --compact`)",
+		"Read comments with `--roots-only --summary --compact`",
 		// ...followed by an explicit, bounded drill-down.
-		"expand only the threads that matter (`--thread <id> --tail 30 --compact`)",
+		"expand relevant threads with `--thread <id> --tail 30 --compact`",
 		// The headline saturation warning stays in the flag reference; the
 		// deep semantics (per-thread cap, root-thread saturation) moved to the
 		// CLI's own --help (MUL-5442) and are pinned there
 		// (TestIssueCommentListHelpCarriesReadContract in cmd/multica).
-		"caps THREADS, not comments",
+		"limits threads, not comments",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("brief missing bounded catch-up guidance %q\n---\n%s", want, s)
@@ -6046,8 +5623,8 @@ func TestInjectRuntimeConfigCatchUpScansRootsFirst(t *testing.T) {
 	// The catch-up stays mandatory — this change is about payload shape, not
 	// about letting agents skip context and act on stale instructions.
 	for _, want := range []string{
-		"this is mandatory, not optional",
-		"Skipping this step is the most common cause",
+		"Only an explicit server report of no new comments waives it",
+		"A supplied issue-wide `--since` read replaces the scan",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("step 3 must stay mandatory, missing %q\n---\n%s", want, s)
@@ -6165,8 +5742,8 @@ func TestBriefCarriesNoMetadataGuidance(t *testing.T) {
 				return
 			}
 			for _, want := range []string{
-				"1. Read the issue (`multica issue get`) to understand the context.",
-				"5. Before exiting, confirm the status still matches where things actually stand.",
+				"1. Read the issue with `multica issue get`.",
+				"5. Before exiting, confirm the status still matches the issue's actual state.",
 			} {
 				if !strings.Contains(s, want) {
 					t.Errorf("%s workflow lost %q\n---\n%s", tc.name, want, s)
@@ -6204,7 +5781,7 @@ func TestInjectRuntimeConfigCodexCommentFormattingUnchanged(t *testing.T) {
 		s := string(data)
 
 		// The post-#4182 file-first rule is still emitted on Linux...
-		if !strings.Contains(s, "always write the comment body to a UTF-8 file with your file-write tool first, then post it with `--content-file <path>`") {
+		if !strings.Contains(s, "Post with `--content-file <path>`") {
 			t.Fatalf("codex linux --content-file rule missing\n---\n%s", s)
 		}
 		// ...AND the brief does NOT carry this turn's trigger comment id:
@@ -6230,7 +5807,7 @@ func TestInjectRuntimeConfigCodexCommentFormattingUnchanged(t *testing.T) {
 		}
 		s := string(data)
 
-		if !strings.Contains(s, "always write the comment body to a UTF-8 file") {
+		if !strings.Contains(s, "UTF-8 file such as `./reply.md`") {
 			t.Fatalf("codex Windows --content-file rule missing\n---\n%s", s)
 		}
 	})

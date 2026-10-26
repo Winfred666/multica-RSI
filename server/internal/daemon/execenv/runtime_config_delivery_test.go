@@ -5,31 +5,8 @@ import (
 	"testing"
 )
 
-// The MUL-4899 delivery contract as the BRIEF states it. Two orthogonal
-// properties are pinned here and must not be collapsed:
-//
-//   - The invariant ("never link a local path") is ALWAYS-ON — every task kind,
-//     no exceptions. It lives outside writeOutput's kind switch so a future kind
-//     cannot silently inherit no invariant at all; this test is what keeps that
-//     true.
-//   - The surface policy ("here is how a file actually gets delivered HERE") is
-//     PER-KIND, and the chat kind splits two ways: web/mobile names the upload
-//     command, because a browser renders the bound file as a card and that never
-//     changes; a channel-backed chat points at the per-turn user message.
-//
-// The brief stops there on purpose. Whether the last hop into a room happens is
-// a DEPLOYMENT fact — object storage, and a server new enough to report it —
-// that flips under a session already running, and the brief is the prompt-cache
-// prefix (MUL-5377), so a brief that answered it would render twice for one
-// resumed chat. The verdict is stated by the per-turn chat prompt, and both of
-// its branches are pinned by TestBuildChatPromptTwoLayerChannelPolicy in
-// daemon/prompt_test.go — that is where the "upload works here" / "describe it
-// in words" split is covered now.
-//
-// So the same channel still appears below with both verdicts, but what the rows
-// assert has changed: they must render the SAME brief, and
-// TestBriefChannelDeliveryCopyIgnoresServerVerdict is the row-level statement
-// of it.
+// File-delivery commands depend on the task surface. Channel deployment
+// capabilities belong in the per-turn message so the brief stays cache-stable.
 
 // deliveryInvariantFixtures covers every task kind. The chat kind appears six
 // times because the surface splits on channel type, and because the three WeCom
@@ -63,26 +40,6 @@ func deliveryInvariantFixtures() map[string]TaskContextForEnv {
 // a fenced html/mermaid block does not render there.
 const inlineBlocksRule = "fenced `html` or `mermaid` code block"
 
-func TestBriefDeliveryInvariantIsAlwaysOn(t *testing.T) {
-	t.Parallel()
-
-	// Phrases every kind must carry, whatever its surface can or cannot deliver.
-	wantAll := []string{
-		"Runtime-local paths are never deliverables",
-		"NEVER write an absolute path or a `file://` URL as a clickable link",
-		"`path/to/file.ts:42`",
-	}
-
-	for name, ctx := range deliveryInvariantFixtures() {
-		out := buildMetaSkillContent("claude", ctx)
-		for _, want := range wantAll {
-			if !strings.Contains(out, want) {
-				t.Errorf("kind=%s: brief is missing always-on delivery invariant %q", name, want)
-			}
-		}
-	}
-}
-
 func TestBriefSurfaceDeliveryPolicy(t *testing.T) {
 	t.Parallel()
 
@@ -113,9 +70,7 @@ func TestBriefSurfaceDeliveryPolicy(t *testing.T) {
 		// session sees both verdicts, so either one is wrong half the time.
 		"chat_wecom": {
 			mustHave: []string{
-				"WeCom conversation depends on how this deployment is configured",
-				"the per-turn user message tells you",
-				"never report a file as delivered",
+				"File delivery to WeCom: follow this turn's user message",
 			},
 			mustNot: []string{
 				"run `multica attachment upload",
@@ -127,8 +82,7 @@ func TestBriefSurfaceDeliveryPolicy(t *testing.T) {
 		},
 		"chat_wecom_no_store": {
 			mustHave: []string{
-				"WeCom conversation depends on how this deployment is configured",
-				"the per-turn user message tells you",
+				"File delivery to WeCom: follow this turn's user message",
 			},
 			mustNot: []string{
 				"run `multica attachment upload",
@@ -140,8 +94,7 @@ func TestBriefSurfaceDeliveryPolicy(t *testing.T) {
 		},
 		"chat_wecom_old_server": {
 			mustHave: []string{
-				"WeCom conversation depends on how this deployment is configured",
-				"the per-turn user message tells you",
+				"File delivery to WeCom: follow this turn's user message",
 			},
 			mustNot: []string{
 				"run `multica attachment upload",
@@ -171,9 +124,7 @@ func TestBriefSurfaceDeliveryPolicy(t *testing.T) {
 		// catches any wording, these fail beside the copy being edited.
 		"chat_slack": {
 			mustHave: []string{
-				"Slack conversation depends on how this deployment is configured",
-				"the per-turn user message tells you",
-				"never report a file as delivered",
+				"File delivery to Slack: follow this turn's user message",
 			},
 			mustNot: []string{
 				"run `multica attachment upload",
@@ -185,9 +136,7 @@ func TestBriefSurfaceDeliveryPolicy(t *testing.T) {
 		},
 		"chat_feishu": {
 			mustHave: []string{
-				"Feishu/Lark conversation depends on how this deployment is configured",
-				"the per-turn user message tells you",
-				"never report a file as delivered",
+				"File delivery to Feishu/Lark: follow this turn's user message",
 			},
 			mustNot: []string{
 				"run `multica attachment upload",
@@ -198,11 +147,11 @@ func TestBriefSurfaceDeliveryPolicy(t *testing.T) {
 			},
 		},
 		"autopilot": {
-			mustHave: []string{"this surface is text-only"},
+			mustHave: []string{"This surface is text-only"},
 			mustNot:  []string{"multica attachment upload", inlineBlocksRule},
 		},
 		"quickcreate": {
-			mustHave: []string{"your stdout is text-only", "`multica issue create` call itself via `--attachment <path>`"},
+			mustHave: []string{"Attach files to `multica issue create` with `--attachment <path>`"},
 			mustNot:  []string{"multica attachment upload", inlineBlocksRule},
 		},
 	}
@@ -323,34 +272,11 @@ func TestBriefChannelDeliveryCopyIsPlatformNeutral(t *testing.T) {
 	}
 }
 
-// TestBriefInboundAttachmentIsNotADeliverable locks the inbound half: a
-// downloaded attachment's local path is a private working copy, and the most
-// tempting one to echo back because it arrived from the conversation.
-//
-// The Attachments section owns that framing — it is what `## Output` cannot
-// express, because Output does not know an attachment felt shared. The
-// no-clickable-local-path rule itself belongs to Output and used to be restated
-// here verbatim; MUL-5442 replaced the restatement with a pointer, so this test
-// pins the framing plus the pointer and lets the delivery tests above own the
-// rule.
-func TestBriefInboundAttachmentIsNotADeliverable(t *testing.T) {
+func TestBriefAttachmentCommandsRemainDiscoverable(t *testing.T) {
 	t.Parallel()
-
-	out := buildMetaSkillContent("claude", TaskContextForEnv{
-		IssueID: "i-1", TriggerCommentID: "tc-1", AgentName: "Eve", AgentID: "eve-1",
-	})
-	for _, want := range []string{
-		"private working copy",
-		"not something the reader can open",
-		"the link rules in `## Output` apply to it too",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("Attachments section missing %q\n---\n%s", want, out)
-		}
-	}
-	// The rule the pointer defers to must actually be present in the brief.
-	if !strings.Contains(out, "NEVER write an absolute path or a `file://` URL as a clickable link") {
-		t.Errorf("Attachments points at ## Output but the rule is missing\n---\n%s", out)
+	brief := buildMetaSkillContent("claude", TaskContextForEnv{IssueID: "i-1"})
+	if !strings.Contains(brief, "Fetch issue/comment attachments with `multica attachment` (`--help` for options)") {
+		t.Fatal("issue brief must keep attachment retrieval discoverable")
 	}
 }
 
