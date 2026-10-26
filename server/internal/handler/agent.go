@@ -2462,6 +2462,10 @@ func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if updated.MaxConcurrentTasks > existing.MaxConcurrentTasks {
+		h.TaskService.NotifyRuntimeMayHaveWork(updated.RuntimeID, "")
+	}
+
 	resp := h.agentToResponse(updated)
 	if err := h.enrichAgentResponseWithTargets(r.Context(), &resp, updated.ID); err != nil {
 		slog.Warn("update agent: load invocation targets for response failed", append(logger.RequestAttrs(r), "error", err, "agent_id", id)...)

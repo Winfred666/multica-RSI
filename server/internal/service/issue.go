@@ -528,7 +528,7 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 		if assignedTaskID.Valid {
 			// The deferred task became durable with the issue at commit. Refresh the
 			// daemon's schedule only now so a wakeup can never race uncommitted data.
-			s.TaskService.notifyRuntimeMayHaveWork(assignedTask.RuntimeID, "")
+			s.TaskService.NotifyRuntimeMayHaveWork(assignedTask.RuntimeID, "")
 			if err := s.TaskService.hydrateDeferredChannelIssueTaskOverlay(ctx, assignedTask); err != nil {
 				// Runtime overlays are best-effort on every enqueue path. The task is
 				// already durable and safely deferred, so an optional integration

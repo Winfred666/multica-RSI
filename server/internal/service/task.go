@@ -1170,7 +1170,7 @@ func (s *TaskService) EnqueueDeferredChannelIssueTask(ctx context.Context, issue
 	}
 	// The task is durable but not claimable yet. Wake once without a task ID so
 	// the daemon refreshes its deferred schedule without treating it as ready.
-	s.notifyRuntimeMayHaveWork(task.RuntimeID, "")
+	s.NotifyRuntimeMayHaveWork(task.RuntimeID, "")
 	return task, nil
 }
 
@@ -4040,7 +4040,7 @@ func (s *TaskService) RequeueTaskAfterClaimFailure(ctx context.Context, task db.
 //     invalidation version for the rest BEFORE the candidate SELECT;
 //  4. list queued candidates across the non-empty set (one SELECT);
 //  5. mark still-empty runtimes so their next idle poll skips Postgres;
-//  6. claim per distinct agent via the runtime-scoped helper, preserving
+//  6. fill capacity via the runtime-scoped helper, preserving
 //     per-(issue, agent) serialization, the agent concurrency cap, and every
 //     dispatch side effect until maxTasks is reached.
 //
@@ -4213,9 +4213,9 @@ func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pg
 		return claimed, nil
 	}
 
-	// 6. Claim per distinct agent through the runtime-scoped helper, preserving
+	// 6. Fill capacity through the runtime-scoped helper, preserving
 	// per-(issue, agent) serialization, capacity caps, and dispatch side effects.
-	triedAgents := make(map[string]struct{}, len(candidates))
+	blockedAgents := make(map[string]struct{}, len(candidates))
 	// Candidate rows per agent for the claim-decision scope; see the singular
 	// path above for why it is counted before the loop.
 	candidatesByAgent := make(map[string]int, len(candidates))
@@ -4231,10 +4231,9 @@ func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pg
 			break
 		}
 		agentKey := util.UUIDToString(candidates[i].AgentID)
-		if _, tried := triedAgents[agentKey]; tried {
+		if _, blocked := blockedAgents[agentKey]; blocked {
 			continue
 		}
-		triedAgents[agentKey] = struct{}{}
 
 		task, err := s.claimTask(ctx, candidates[i].AgentID, candidates[i].RuntimeID, claimScope{
 			claimPath:  claimPathBatch,
@@ -4254,6 +4253,7 @@ func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pg
 			return nil, fmt.Errorf("claim task: %w", err)
 		}
 		if task == nil {
+			blockedAgents[agentKey] = struct{}{}
 			continue
 		}
 		// The SQL claim is scoped to the candidate runtime. Retain this guard as
@@ -7353,7 +7353,7 @@ func (s *TaskService) NotifyTaskEnqueued(ctx context.Context, task db.AgentTaskQ
 // become claimable because an agent-capacity or serialization barrier cleared.
 func (s *TaskService) NotifyTaskFinished(task db.AgentTaskQueue) {
 	s.forgetTaskReclaim(task)
-	s.notifyRuntimeMayHaveWork(task.RuntimeID, "")
+	s.NotifyRuntimeMayHaveWork(task.RuntimeID, "")
 }
 
 // notifyTasksFinished is the batch form used by bulk terminal transitions.
@@ -7371,7 +7371,7 @@ func (s *TaskService) notifyTasksFinished(tasks []db.AgentTaskQueue) {
 			continue
 		}
 		seen[runtimeKey] = struct{}{}
-		s.notifyRuntimeMayHaveWork(task.RuntimeID, "")
+		s.NotifyRuntimeMayHaveWork(task.RuntimeID, "")
 	}
 }
 
@@ -7383,12 +7383,12 @@ func (s *TaskService) notifyTasksFinished(tasks []db.AgentTaskQueue) {
 // otherwise the wakeup-driven claim could read the still-current
 // empty verdict and return null.
 func (s *TaskService) notifyTaskAvailable(task db.AgentTaskQueue) {
-	s.notifyRuntimeMayHaveWork(task.RuntimeID, util.UUIDToString(task.ID))
+	s.NotifyRuntimeMayHaveWork(task.RuntimeID, util.UUIDToString(task.ID))
 }
 
-// notifyRuntimeMayHaveWork is the shared bump-before-wakeup primitive for both
-// fresh enqueues and terminal transitions that can unblock queued work.
-func (s *TaskService) notifyRuntimeMayHaveWork(runtimeID pgtype.UUID, taskID string) {
+// NotifyRuntimeMayHaveWork invalidates the empty-queue cache and wakes the
+// daemon when an enqueue, terminal transition, or capacity increase unblocks work.
+func (s *TaskService) NotifyRuntimeMayHaveWork(runtimeID pgtype.UUID, taskID string) {
 	if !runtimeID.Valid {
 		return
 	}

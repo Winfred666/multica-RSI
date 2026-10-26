@@ -55,15 +55,15 @@ func (f candidateFailDBTX) QueryRow(ctx context.Context, sql string, args ...int
 	return f.inner.QueryRow(ctx, sql, args...)
 }
 
-// TestClaimTasksForRuntimes_PartialSuccessOnSecondAgentClaimFailure is the
-// MUL-4257 review regression: ClaimTask runs per agent in its own transaction,
-// so when a later agent's claim fails the already-committed (dispatched) tasks
+// TestClaimTasksForRuntimes_PartialSuccessOnSecondClaimFailure is the
+// MUL-4257 review regression: ClaimTask runs in its own transaction,
+// so when a later claim fails the already-committed (dispatched) tasks
 // must be RETURNED, not dropped with an error. Dropping them would 500 the
 // handler and make the daemon HTTP-fall-back and double-claim the same slots.
-func TestClaimTasksForRuntimes_PartialSuccessOnSecondAgentClaimFailure(t *testing.T) {
+func TestClaimTasksForRuntimes_PartialSuccessOnSecondClaimFailure(t *testing.T) {
 	ctx := context.Background()
 	pool := newTaskClaimRacePool(t)
-	tx := &failNthBeginTxStarter{inner: pool, failOn: 2} // 1st agent claims, 2nd errors
+	tx := &failNthBeginTxStarter{inner: pool, failOn: 2}
 	svc := NewTaskService(db.New(pool), tx, nil, events.New())
 
 	rt1, rt2 := batchClaimFixture(t, ctx, pool)
