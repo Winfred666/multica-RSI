@@ -38,6 +38,8 @@ class FakeAPI(runtime.API):
         self.writes = []
         self.fail_storage = False
         self.denied = set()
+        self.timeline = {}
+        self.timeline_headers = {}
 
     @staticmethod
     def row(issue_id, status, parent=None):
@@ -46,11 +48,14 @@ class FakeAPI(runtime.API):
                 "updated_at": "2026-01-01T00:00:00Z"}
 
     def status(self, issue, status):
+        old = self.rows[issue]["status"]
         self.rows[issue]["status"] = status
         self.rows[issue]["status_category"] = status
         self.rows[issue]["updated_at"] += "1"
+        rows = self.timeline.setdefault(issue, [])
+        rows.append({"id": str(len(rows)), "action": "status_changed", "details": {"from": old, "to": status}})
 
-    def request(self, method, path, body=None, missing=None):
+    def request(self, method, path, body=None, missing=None, response_headers=None):
         parsed = urlsplit(path)
         parts = parsed.path.split("/")
         if parsed.path == "/api/issues":
@@ -73,6 +78,10 @@ class FakeAPI(runtime.API):
             return {"issues": [copy.deepcopy(row) for row in self.rows.values() if row.get("parent_issue_id") == issue_id]}
         if parts[4] == "task-runs":
             return self.tasks.get(issue_id, [])
+        if parts[4] == "timeline":
+            if response_headers is not None:
+                response_headers.update(self.timeline_headers.get(issue_id, {}))
+            return self.timeline.get(issue_id, [])
         if parts[4] == "comments" and method == "POST":
             self.writes.append(dict(body, issue_id=issue_id))
             return self.writes[-1]
@@ -138,6 +147,64 @@ class ChildWakeupTests(unittest.TestCase):
                 self.assertEqual(self.api.writes[0]["kind"], "at")
                 self.assertEqual(self.api.writes[0]["after_seconds"], 1)
                 self.assertTrue(self.api.writes[0]["instruction"].endswith("Configured instruction"))
+
+    def test_unobserved_departure_and_return_delivers_new_review(self):
+        self.api.status("child", "in_review")
+        self.check("in_review")
+        self.api.status("child", "in_progress")
+        self.api.status("child", "in_review")
+        self.check("in_review")
+        self.check("in_review", event=False)
+        self.assertEqual(len(self.api.writes), 2)
+        self.api.rows["child"]["updated_at"] += "metadata edit"
+        self.check("in_review")
+        self.assertEqual(len(self.api.writes), 2)
+
+    def test_unobserved_reopen_and_finish_rearms_all_finished(self):
+        self.api.status("child", "done")
+        self.check("all_finished")
+        self.api.status("child", "in_progress")
+        self.api.status("child", "done")
+        self.check("all_finished")
+        self.check("all_finished")
+        self.assertEqual(len(self.api.writes), 2)
+
+    def test_truncated_history_does_not_rearm_delivered_transitions(self):
+        for status, hook in (("in_review", "in_review"), ("blocked", "blocked"), ("done", "all_finished")):
+            with self.subTest(hook=hook):
+                self.api = FakeAPI()
+                self.api.status("child", status)
+                self.check(hook)
+                self.api.timeline["child"] = []
+                self.api.timeline_headers["child"] = {"X-Timeline-Truncated": "activity"}
+                self.check(hook)
+                self.check(hook, event=False)
+                self.assertEqual(len(self.api.writes), 1)
+                self.api.status("child", "in_progress")
+                self.api.status("child", status)
+                self.check(hook)
+                self.check(hook)
+                self.assertEqual(len(self.api.writes), 2)
+
+    def test_new_finished_child_rearms_with_truncated_sibling_history(self):
+        self.api.status("child", "done")
+        self.check("all_finished")
+        self.api.timeline["child"] = []
+        self.api.timeline_headers["child"] = {"X-Timeline-Truncated": "activity"}
+        self.api.rows["second"] = self.api.row("second", "done", "parent")
+        self.check("all_finished")
+        self.check("all_finished")
+        self.assertEqual(len(self.api.writes), 2)
+
+    def test_truncated_history_after_state_failure_does_not_duplicate(self):
+        self.api.status("child", "in_review")
+        self.api.fail_storage = True
+        with self.assertRaises(RuntimeError):
+            self.check("in_review")
+        self.api.timeline["child"] = []
+        self.api.timeline_headers["child"] = {"X-Timeline-Truncated": "activity"}
+        self.check("in_review")
+        self.assertEqual(len(self.api.writes), 1)
 
     def test_uninvocable_parent_does_not_stop_other_parents(self):
         self.api.status("child", "blocked")
