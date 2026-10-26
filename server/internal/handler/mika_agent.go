@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/agentconfig"
 	"github.com/multica-ai/multica/server/internal/logger"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/service"
@@ -24,7 +25,6 @@ import (
 // the onboarding gate. Letting it would both forge a "Mika" and break the
 // one-per-workspace invariant.
 const (
-	mikaAgentMaxConcurrency = 3
 	mikaAgentVisibility     = "workspace"
 	mikaAgentPermissionMode = "public_to"
 	// Placeholder until Mika has real artwork. Uses the same `emoji:` marker
@@ -207,7 +207,7 @@ func (h *Handler) resolveMikaAgent(w http.ResponseWriter, r *http.Request, works
 		Model:              pgtype.Text{String: strings.TrimSpace(req.Model), Valid: strings.TrimSpace(req.Model) != ""},
 		Visibility:         mikaAgentVisibility,
 		PermissionMode:     mikaAgentPermissionMode,
-		MaxConcurrentTasks: mikaAgentMaxConcurrency,
+		MaxConcurrentTasks: agentconfig.DefaultMaxConcurrentTasks,
 		OwnerID:            parseUUID(userID),
 		SystemKey:          pgtype.Text{String: service.MikaSystemKey, Valid: true},
 	})
