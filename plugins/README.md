@@ -96,9 +96,11 @@ Sub-issue wakeup creation uses `idempotency_key` (at most 256 bytes): retries un
 the same issue and account return the existing rule, even after that one-shot was
 consumed. This covers concurrent deliveries and a crash between queueing and
 saving state for sub-issue wakeups.
-Repeated review/block/completion cycles rearm when a check observes the condition
-become false. A brief transition missed by event delivery is not guaranteed
-delivery. Ralph events are best-effort; there is no polling
+Review/block/completion cycles use the latest matching status activity ID, so
+re-entry is detected even when no check observed the intermediate status.
+Saved transition IDs remain stable when older timeline activity is truncated.
+An unavailable transition with no saved ID is skipped. Metadata edits do not
+rearm a delivered transition. Ralph events are best-effort; there is no polling
 recovery. Its comment and deduplication write are separate requests, so concurrent
 delivery or a failed storage write can produce duplicate comments.
 
