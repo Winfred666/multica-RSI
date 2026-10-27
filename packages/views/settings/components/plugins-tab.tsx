@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, CalendarClock, Loader2, Trash2, Upload } from "lucide-react";
+import { AlertCircle, CalendarClock, ChevronRight, Loader2, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrentMember } from "@multica/core/permissions";
 import {
@@ -29,6 +29,7 @@ import type {
 import { Alert, AlertDescription, AlertTitle } from "@multica/ui/components/ui/alert";
 import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@multica/ui/components/ui/collapsible";
 import { IconButton } from "@multica/ui/components/common/icon-button";
 import { Input } from "@multica/ui/components/ui/input";
 import {
@@ -500,10 +501,34 @@ function PublishedPackage({
   onDelete: (packageId: string) => void;
 }) {
   const { t } = useT("settings");
-  // Versions arrive newest first, and the installed one is marked rather than
-  // inferred: after a publish those are different rows, and that difference is
-  // the whole reason an upgrade is a decision somebody makes.
   const installed = pluginPackage.versions.find((version) => version.installed === true);
+  // Keep the installed release visible when a newer publish is awaiting approval.
+  const visibleVersions = pluginPackage.versions.filter((version, index) => index === 0 || version.installed === true);
+  const olderVersions = pluginPackage.versions.filter((version, index) => index > 0 && version.installed !== true);
+
+  const renderVersion = (version: PluginPackage["versions"][number]) => (
+    <li key={version.id} className="flex flex-wrap items-center gap-2 text-caption">
+      <code className="rounded-xs bg-muted px-1.5 py-0.5 font-mono">{version.version}</code>
+      {version.installed === true ? (
+        <Badge variant="secondary">{t(($) => $.plugins.publish.installed_version)}</Badge>
+      ) : null}
+      <span className="text-muted-foreground">{version.published_at.slice(0, 10)}</span>
+      <span className="font-mono text-muted-foreground" title={version.digest}>
+        {version.digest.slice(0, 12)}
+      </span>
+      {version.installed === true ? null : (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="ml-auto"
+          disabled={!canManage || busy}
+          onClick={() => onReview(version.id)}
+        >
+          {installed ? t(($) => $.plugins.publish.review_upgrade) : t(($) => $.plugins.publish.review_install)}
+        </Button>
+      )}
+    </li>
+  );
 
   return (
     <div className="space-y-3 border-t border-surface-border px-4 py-4">
@@ -524,30 +549,19 @@ function PublishedPackage({
       </div>
 
       <ul className="space-y-1.5">
-        {pluginPackage.versions.map((version) => (
-          <li key={version.id} className="flex flex-wrap items-center gap-2 text-caption">
-            <code className="rounded-xs bg-muted px-1.5 py-0.5 font-mono">{version.version}</code>
-            {version.installed === true ? (
-              <Badge variant="secondary">{t(($) => $.plugins.publish.installed_version)}</Badge>
-            ) : null}
-            <span className="text-muted-foreground">{version.published_at.slice(0, 10)}</span>
-            <span className="font-mono text-muted-foreground" title={version.digest}>
-              {version.digest.slice(0, 12)}
-            </span>
-            {version.installed === true ? null : (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="ml-auto"
-                disabled={!canManage || busy}
-                onClick={() => onReview(version.id)}
-              >
-                {installed ? t(($) => $.plugins.publish.review_upgrade) : t(($) => $.plugins.publish.review_install)}
-              </Button>
-            )}
-          </li>
-        ))}
+        {visibleVersions.map(renderVersion)}
       </ul>
+      {olderVersions.length > 0 ? (
+        <Collapsible>
+          <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="group" />}>
+            <ChevronRight className="size-3.5 transition-transform group-data-[panel-open]:rotate-90" />
+            {t(($) => $.plugins.publish.older_versions, { count: olderVersions.length })}
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ul className="mt-2 space-y-1.5">{olderVersions.map(renderVersion)}</ul>
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
     </div>
   );
 }

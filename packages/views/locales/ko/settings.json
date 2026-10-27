@@ -528,7 +528,8 @@
       "deleted": "게시된 플러그인을 삭제했습니다",
       "installed_version": "사용 중",
       "review_install": "확인 후 설치",
-      "review_upgrade": "확인 후 업그레이드"
+      "review_upgrade": "확인 후 업그레이드",
+      "older_versions": "이전 버전 ({{count}})"
     }
   },
   "properties": {

@@ -532,7 +532,8 @@
       "deleted": "Plugin publié supprimé",
       "installed_version": "Utilisés",
       "review_install": "Vérifier et installer",
-      "review_upgrade": "Vérifier et mettre à niveau"
+      "review_upgrade": "Vérifier et mettre à niveau",
+      "older_versions": "Anciennes versions ({{count}})"
     }
   },
   "properties": {

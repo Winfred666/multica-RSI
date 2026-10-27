@@ -230,6 +230,7 @@ describe("PluginsTab", () => {
     expect(screen.getByText("1.0.0")).toBeInTheDocument();
     expect(screen.getByText("2.0.0")).toBeInTheDocument();
     expect(screen.getByText("In use")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Older versions/ })).not.toBeInTheDocument();
 
     const upgrade = screen.getAllByRole("button", { name: "Review and upgrade" });
     expect(upgrade).toHaveLength(1);
@@ -237,6 +238,29 @@ describe("PluginsTab", () => {
     mockPreview.mockResolvedValue({ ...PREVIEW, version_id: "version-2", version: "2.0.0", installed: true, installed_version: "1.0.0" });
     await user.click(upgrade[0]!);
     await waitFor(() => expect(mockPreview).toHaveBeenCalledWith({ version_id: "version-2" }));
+  });
+
+  it("collapses older releases while keeping the latest and installed versions available", async () => {
+    data.packages.packages = [{
+      ...PACKAGE,
+      versions: [...PACKAGE.versions, {
+        ...PACKAGE.versions[1], id: "version-old", version: "0.9.0", installed: false,
+      }],
+    }];
+    const user = userEvent.setup();
+    render(<PluginsTab />, { wrapper: Wrapper });
+
+    expect(screen.getByText("2.0.0")).toBeVisible();
+    expect(screen.getByText("1.0.0")).toBeVisible();
+    expect(screen.queryByText("0.9.0")).not.toBeInTheDocument();
+    const history = screen.getByRole("button", { name: "Older versions (1)" });
+    expect(history).toHaveAttribute("aria-expanded", "false");
+    await user.click(history);
+    expect(screen.getByText("0.9.0")).toBeVisible();
+    await user.click(screen.getAllByRole("button", { name: "Review and upgrade" })[1]!);
+    await waitFor(() => expect(mockPreview).toHaveBeenCalledWith({ version_id: "version-old" }));
+    await user.click(history);
+    await waitFor(() => expect(screen.queryByText("0.9.0")).not.toBeInTheDocument());
   });
 
   it("publishes an uploaded package", async () => {
