@@ -127,6 +127,10 @@ API update can be retried with the same decision. Merges performed outside this
 wrapper need another wrapper invocation or the optional existing GitHub App
 webhook. CLI metadata links do not populate the GitHub App's PR cards.
 
+Failed PR commands return diagnostics and a ready-to-run command carrying
+`--retry 1`, then `2` and `3`. After retry 3, no further retry is offered.
+Each invocation runs once; authentication failures retain their stop guidance.
+
 ## Stay in the loop.
 
 *Which agent touched this? What did it run? What did it cost? Open the run.*

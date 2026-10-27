@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,8 +11,10 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/multica-ai/multica/server/internal/cli"
 	"github.com/spf13/cobra"
@@ -210,7 +213,128 @@ func newIssuePRTestCmd() *cobra.Command {
 	}
 	cmd.Flags().String("output", "json", "")
 	cmd.Flags().Bool("review", false, "")
+	cmd.Flags().Int("retry", 0, "")
 	return cmd
+}
+
+func TestIssuePRFailureReturnsBoundedRetry(t *testing.T) {
+	decision := `{"action":"resteer","pr":"` + issueTestPRURL + `","head":"reviewed-head","prompt":"Don't expand scope; keep $(feedback) literal."}`
+	for _, tc := range []struct {
+		name      string
+		retry     int
+		review    bool
+		apiStatus int
+		next      string
+	}{
+		{"review", 0, true, 0, "1"},
+		{"decision", 2, false, 0, "3"},
+		{"API failure", 1, true, http.StatusServiceUnavailable, "2"},
+		{"expired task token", 0, true, http.StatusUnauthorized, ""},
+		{"exhausted", 3, true, 0, ""},
+		{"negative", -1, true, 0, ""},
+		{"over quota", 4, true, 0, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			log := fakeIssueGH(t, "")
+			dir := filepath.Dir(log)
+			if err := os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$GH_TEST_LOG\"\nprintf '%s\\n' 'GraphQL: GitHub request timed out' >&2\nexit 1\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tc.apiStatus != 0 {
+					http.Error(w, "test backend unavailable", tc.apiStatus)
+				} else if strings.HasSuffix(r.URL.Path, "/pull-requests") {
+					_, _ = w.Write([]byte(`{"pull_requests":[]}`))
+				} else {
+					_ = json.NewEncoder(w).Encode(map[string]any{"parent_issue_id": "parent", "metadata": map[string]string{
+						"git_branch": "issue/child", "git_base_branch": "issue/parent", "git_pr_urls": `["` + issueTestPRURL + `"]`}})
+				}
+			}))
+			defer srv.Close()
+			t.Setenv("MULTICA_SERVER_URL", srv.URL)
+			t.Setenv("MULTICA_TOKEN", "human-token")
+			if tc.apiStatus == http.StatusUnauthorized {
+				t.Setenv("MULTICA_TOKEN", cli.TaskTokenPrefix+"test")
+			}
+			cmd := newIssuePRTestCmd()
+			cmd.Flags().String("workspace-id", "", "")
+			_ = cmd.Flags().Set("workspace-id", "workspace")
+			_ = cmd.Flags().Set("output", "json")
+			_ = cmd.Flags().Set("retry", strconv.Itoa(tc.retry))
+			if tc.review {
+				_ = cmd.Flags().Set("review", "true")
+			} else {
+				_ = cmd.Flags().Set("decision", decision)
+			}
+			err := runIssuePullRequests(cmd, []string{testIssueUUID})
+			if err == nil {
+				t.Fatal("failure was reported as success")
+			}
+			message := cli.FormatError(err, false)
+			calls, _ := os.ReadFile(log)
+			if tc.retry < 0 || tc.retry > 3 {
+				if !strings.Contains(message, "--retry must be between 0 and 3") || len(calls) != 0 {
+					t.Fatalf("invalid retry executed: %s; %s", message, calls)
+				}
+				return
+			}
+			if tc.apiStatus != 0 {
+				if !strings.Contains(message, "test backend unavailable") || len(calls) != 0 {
+					t.Fatalf("lost API diagnostics: %s; %s", message, calls)
+				}
+			} else if !strings.Contains(message, "gh pr view") || !strings.Contains(message, "GraphQL: GitHub request timed out") || strings.Count(string(calls), "\n") != 1 {
+				t.Fatalf("lost debug output or automatically retried: %s; %s", message, calls)
+			}
+			if tc.apiStatus == http.StatusUnauthorized {
+				if cli.ExitCodeFor(err) != cli.ExitAuth || strings.Contains(message, "\nRetry ") {
+					t.Fatalf("authentication failure offered a retry or lost its exit code: %s", message)
+				}
+				return
+			}
+			if tc.next == "" {
+				if !strings.Contains(message, "retry quota exhausted") || strings.Contains(message, "\nRetry ") {
+					t.Fatalf("offered an exhausted retry: %s", message)
+				}
+				return
+			}
+			_, retryCommand, ok := strings.Cut(message, "\nRetry "+tc.next+"/3: ")
+			if !ok {
+				t.Fatalf("missing ready-to-run retry: %s", message)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "multica"), []byte("#!/bin/sh\nprintf '%s\\000' \"$@\"\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			out, err := exec.Command("sh", "-c", retryCommand).CombinedOutput()
+			if err != nil {
+				t.Fatalf("retry command is not callable: %v: %s", err, out)
+			}
+			want := []string{"issue", "prs", testIssueUUID}
+			if !tc.review {
+				want = append(want, "--decision="+decision)
+			}
+			want = append(want, "--output=json")
+			if tc.review {
+				want = append(want, "--review=true")
+			}
+			want = append(want, "--workspace-id=workspace", "--retry", tc.next)
+			if got := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00"); !reflect.DeepEqual(got, want) {
+				t.Fatalf("retry changed its arguments: got %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestLocalPRCommandReportsTimeout(t *testing.T) {
+	log := fakeIssueGH(t, "")
+	if err := os.WriteFile(filepath.Join(filepath.Dir(log), "gh"), []byte("#!/bin/sh\necho 'waiting for GitHub' >&2\nsleep 60\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err := localPRCommand(ctx, "gh", "pr", "view", issueTestPRURL)
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "waiting for GitHub") {
+		t.Fatalf("lost timeout diagnostics: %v", err)
+	}
 }
 
 func fakeIssueGH(t *testing.T, response string) string {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,8 +11,10 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/multica-ai/multica/server/internal/cli"
+	"github.com/multica-ai/multica/server/internal/daemon/processtree"
 )
 
 type issuePRBinding struct {
@@ -58,13 +61,14 @@ var githubPullRequestURL = regexp.MustCompile(`^https://github\.com/[^/?#]+/[^/?
 
 // Commands inherit the daemon task's local PATH and credentials.
 func localPRCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stderr = os.Stderr
-	data, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("run local %s: %w", name, err)
+	cmd := exec.Command(name, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := processtree.Run(ctx, cmd, 5*time.Second); err != nil {
+		return nil, fmt.Errorf("run local %s %s: %w\n%s", name, strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
-	return data, nil
+	_, _ = os.Stderr.Write(stderr.Bytes())
+	return stdout.Bytes(), nil
 }
 
 func runIssuePullRequestAction(ctx context.Context, client *cli.APIClient, issueID string, decision issuePRDecision) error {

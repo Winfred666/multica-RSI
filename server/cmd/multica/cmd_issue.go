@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/multica-ai/multica/server/internal/cli"
 	"github.com/multica-ai/multica/server/internal/util"
@@ -634,6 +635,7 @@ func init() {
 	issuePullRequestsCmd.Flags().String("head", "", "Reviewed PR head SHA; required with --merge or --close")
 	issuePullRequestsCmd.Flags().Bool("review", false, "Read linked PRs, diffs, and the three JSON decision choices")
 	issuePullRequestsCmd.Flags().String("decision", "", `Apply a JSON decision: {"action":"merge|resteer|reject","pr":"URL","head":"SHA","prompt":"feedback for resteer"}`)
+	issuePullRequestsCmd.Flags().Int("retry", 0, "Retry number from the previous failure (0–3); never retries automatically")
 
 	issueChildrenCmd.Flags().String("output", "table", "Output format: table or json")
 	issueChildrenCmd.Flags().Bool("full-id", false, "Show full UUIDs in table output")
@@ -1044,7 +1046,29 @@ func runIssueList(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runIssuePullRequests(cmd *cobra.Command, args []string) error {
+func runIssuePullRequests(cmd *cobra.Command, args []string) (returnErr error) {
+	retry, _ := cmd.Flags().GetInt("retry")
+	if retry < 0 || retry > 3 {
+		return fmt.Errorf("--retry must be between 0 and 3")
+	}
+	defer func() {
+		if returnErr == nil {
+			return
+		}
+		message := fmt.Sprintf("PR command failed (retry %d/3): %s", retry, cli.FormatError(returnErr, true))
+		if retry == 3 {
+			message += "\nPR retry quota exhausted; resolve the reported failure before starting another operation."
+		} else if cli.ExitCodeFor(returnErr) != cli.ExitAuth {
+			retryArgs := []string{"multica", "issue", "prs", shellQuoteArg(args[0])}
+			cmd.Flags().Visit(func(flag *pflag.Flag) {
+				if flag.Name != "retry" {
+					retryArgs = append(retryArgs, "--"+flag.Name+"="+shellQuoteArg(flag.Value.String()))
+				}
+			})
+			message += fmt.Sprintf("\nRetry %d/3: %s --retry %d", retry+1, strings.Join(retryArgs, " "), retry+1)
+		}
+		returnErr = cli.WithUserMessage(message, returnErr)
+	}()
 	linkURL, _ := cmd.Flags().GetString("link")
 	closeURL, _ := cmd.Flags().GetString("close")
 	mergeURL, _ := cmd.Flags().GetString("merge")
