@@ -528,8 +528,7 @@
       "deleted": "已删除发布的插件",
       "installed_version": "使用中",
       "review_install": "查看并安装",
-      "review_upgrade": "查看并升级",
-      "older_versions": "历史版本（{{count}}）"
+      "review_upgrade": "查看并升级"
     }
   },
   "properties": {

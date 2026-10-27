@@ -532,8 +532,7 @@
       "deleted": "Published Plugin deleted",
       "installed_version": "In use",
       "review_install": "Review and install",
-      "review_upgrade": "Review and upgrade",
-      "older_versions": "Older versions ({{count}})"
+      "review_upgrade": "Review and upgrade"
     }
   },
   "properties": {

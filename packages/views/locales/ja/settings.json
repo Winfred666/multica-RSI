@@ -528,8 +528,7 @@
       "deleted": "公開したプラグインを削除しました",
       "installed_version": "使用中",
       "review_install": "確認してインストール",
-      "review_upgrade": "確認してアップグレード",
-      "older_versions": "以前のバージョン（{{count}}）"
+      "review_upgrade": "確認してアップグレード"
     }
   },
   "properties": {
