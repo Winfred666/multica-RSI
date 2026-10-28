@@ -128,6 +128,8 @@ type PrepareParams struct {
 
 // TaskContextForEnv is the subset of task context used for writing context files.
 type TaskContextForEnv struct {
+	TaskID           string
+	WorkspaceID      string
 	IssueID          string
 	TriggerCommentID string // comment that triggered this task (empty for on_assign)
 	TriggerThreadID  string // root comment ID for the triggering thread; falls back to TriggerCommentID when empty
@@ -184,8 +186,7 @@ type TaskContextForEnv struct {
 	// resumes across the change, and the brief is the prompt-cache prefix
 	// (MUL-5377). The agent-facing verdict is emitted by the per-turn chat
 	// prompt (daemon.buildChatPrompt) instead, and
-	// TestBriefByteIdenticalAcrossRunsForEveryKind is what keeps this field out
-	// of the brief.
+	// startup templates should omit this field to keep the prefix stable.
 	ChatChannelDeliversFiles bool
 
 	AutopilotRunID          string // non-empty for autopilot run_only tasks
@@ -196,19 +197,11 @@ type TaskContextForEnv struct {
 	AutopilotTriggerPayload string
 	QuickCreatePrompt       string // non-empty for quick-create tasks
 	IsSquadLeader           bool   // true when THIS TASK runs the agent in the squad-leader role (may exit silently on no_action); derived from the claim's is_leader_task / squad_id, never sniffed from instructions text (MUL-5811)
-	// WorkspaceContext is the workspace-level system prompt (workspace.context
-	// in the DB). Rendered into the brief as `## Workspace Context` when
-	// non-empty so every agent in the workspace sees the same shared context,
-	// regardless of issue / chat / autopilot / quick-create.
+	// WorkspaceContext is the complete startup text/template stored in workspace.context.
+	// It renders against TaskContextForEnv plus OS and Provider; no instructions are appended.
 	WorkspaceContext string
-	// IssueStatuses is the workspace's active CUSTOM status catalog from the
-	// claim payload (MUL-6460), in catalog order. Rendered into the brief's
-	// status-command line so agents can see and use statuses beyond the seven
-	// built-ins. Like WorkspaceContext, this is durable workspace configuration,
-	// not per-turn state: it may legitimately change brief bytes when an admin
-	// edits the catalog between runs of a resumed session, exactly as a
-	// Workspace Context edit does. Empty — including on old servers that never
-	// send the field — renders the built-in-only line byte-identical to before.
+	// IssueStatuses is the active custom status catalog supplied by the claim,
+	// in catalog order. Startup templates decide how to display it.
 	IssueStatuses []IssueStatusForEnv
 	// IssueStatusesOmitted is the count of active custom statuses the server's
 	// cap dropped from IssueStatuses, so the brief can disclose truncation

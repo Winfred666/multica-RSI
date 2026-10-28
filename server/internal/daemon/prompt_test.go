@@ -1887,26 +1887,6 @@ func TestTurnModeMarkersRetired(t *testing.T) {
 	}
 }
 
-// The brief must not carry the retired mode router either — end-to-end through
-// InjectRuntimeConfig, so a reintroduction anywhere in the assembled brief
-// fails here even if the workflow section itself stays clean.
-func TestBriefCarriesNoModeRouter(t *testing.T) {
-	t.Parallel()
-
-	brief, err := execenv.InjectRuntimeConfig(t.TempDir(), "claude", execenv.TaskContextForEnv{IssueID: "issue-1"})
-	if err != nil {
-		t.Fatalf("InjectRuntimeConfig: %v", err)
-	}
-	for _, banned := range []string{"Turn mode", "Ownership mode", "Reply mode", "mode block"} {
-		if strings.Contains(brief, banned) {
-			t.Errorf("brief still references the retired turn-mode split via %q (MUL-6417)\n---\n%s", banned, brief)
-		}
-	}
-	if !strings.Contains(brief, "**Issue status — write the state the issue is in, whenever it changes**") {
-		t.Errorf("brief lost the unified status rule\n---\n%s", brief)
-	}
-}
-
 // TestChatChannelDeliversFilesDefaultsOffAcrossVersions pins the mixed-version
 // half of the delivery capability at the wire, where it is actually decided.
 //

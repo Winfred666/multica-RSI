@@ -123,3 +123,48 @@ func TestEveryKnownChannelHasADisplayName(t *testing.T) {
 		}
 	}
 }
+
+func TestAudienceOf(t *testing.T) {
+	t.Parallel()
+
+	if got := ChatAudience(0); got != ChatAudienceUnknown {
+		t.Fatalf("zero-value audience = %v, want unknown", got)
+	}
+
+	cases := []struct {
+		name        string
+		channelType string
+		chatType    string
+		want        ChatAudience
+	}{
+		{name: "group binding", channelType: ChannelTypeSlack, chatType: ChatTypeGroup, want: ChatAudienceGroup},
+		{name: "direct binding", channelType: ChannelTypeFeishu, chatType: ChatTypeP2P, want: ChatAudienceDirect},
+		{name: "web chat", want: ChatAudienceDirect},
+		{name: "old server", channelType: ChannelTypeSlack, want: ChatAudienceUnknown},
+		{name: "future discriminator", channelType: ChannelTypeSlack, chatType: "broadcast", want: ChatAudienceUnknown},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := AudienceOf(tc.channelType, tc.chatType); got != tc.want {
+				t.Errorf("AudienceOf(%q, %q) = %v, want %v", tc.channelType, tc.chatType, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestChannelDisplayName(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		ChannelTypeSlack:  "Slack",
+		ChannelTypeFeishu: "Feishu/Lark",
+		"":                "",
+		// An unmapped channel names itself rather than reading as "unknown".
+		"discord": "discord",
+	}
+	for in, want := range cases {
+		if got := ChannelDisplayName(in); got != want {
+			t.Errorf("ChannelDisplayName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

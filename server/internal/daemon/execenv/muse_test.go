@@ -27,7 +27,8 @@ func TestMusePrepareDeliversBriefAndSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := InjectRuntimeConfig(env.WorkDir, "muse", TaskContextForEnv{
-		IssueID: "11111111-2222-3333-4444-555555555555",
+		IssueID:          "11111111-2222-3333-4444-555555555555",
+		WorkspaceContext: "## Output\nmultica issue comment add {{.IssueID}}",
 	}); err != nil {
 		t.Fatal(err)
 	}

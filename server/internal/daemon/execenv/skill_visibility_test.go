@@ -89,11 +89,7 @@ func TestRenderedSkillListsHideDisableModelInvocationSkills(t *testing.T) {
 	t.Parallel()
 
 	ctx := TaskContextForEnv{
-		IssueID:           "issue-1",
-		QuickCreatePrompt: "create something",
-		AutopilotRunID:    "run-1",
-		AgentName:         "Eve",
-		AgentID:           "eve-1",
+		WorkspaceContext: "{{range .AgentSkills}}{{.Name}}\n{{end}}",
 		AgentSkills: []SkillContextForEnv{
 			{
 				Name:        "Visible Skill",
@@ -117,24 +113,19 @@ Hidden body.`,
 		},
 	}
 
-	// The brief is now the only Multica-rendered skill listing, for every kind.
-	for _, kind := range []TaskContextForEnv{
-		{IssueID: ctx.IssueID, AgentName: ctx.AgentName, AgentID: ctx.AgentID, AgentSkills: ctx.AgentSkills},
-		{QuickCreatePrompt: ctx.QuickCreatePrompt, AgentName: ctx.AgentName, AgentID: ctx.AgentID, AgentSkills: ctx.AgentSkills},
-		{AutopilotRunID: ctx.AutopilotRunID, AgentName: ctx.AgentName, AgentID: ctx.AgentID, AgentSkills: ctx.AgentSkills},
-		{ChatSessionID: "c-1", AgentName: ctx.AgentName, AgentID: ctx.AgentID, AgentSkills: ctx.AgentSkills},
-	} {
-		out := buildMetaSkillContent("codex", kind)
-		// Listings carry the on-disk slug, not the display name (MUL-5529).
-		if !strings.Contains(out, "visible-skill") {
-			t.Errorf("brief missing visible skill:\n%s", out)
-		}
-		if strings.Contains(out, "Visible Skill") {
-			t.Errorf("brief lists the display name instead of the slug:\n%s", out)
-		}
-		if strings.Contains(out, "hidden-skill") || strings.Contains(out, "hidden description") {
-			t.Errorf("brief advertised disable-model-invocation skill:\n%s", out)
-		}
+	out, err := renderStartupPrompt("codex", ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Listings carry the on-disk slug, not the display name (MUL-5529).
+	if !strings.Contains(out, "visible-skill") {
+		t.Errorf("brief missing visible skill:\n%s", out)
+	}
+	if strings.Contains(out, "Visible Skill") {
+		t.Errorf("brief lists the display name instead of the slug:\n%s", out)
+	}
+	if strings.Contains(out, "hidden-skill") || strings.Contains(out, "hidden description") {
+		t.Errorf("brief advertised disable-model-invocation skill:\n%s", out)
 	}
 }
 
@@ -244,7 +235,11 @@ Hidden body.`,
 		},
 	}
 
-	runtimeConfig := buildMetaSkillContent("codex", ctx)
+	ctx.WorkspaceContext = "{{if .AgentSkills}}## Skills{{end}}"
+	runtimeConfig, err := renderStartupPrompt("codex", ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if strings.Contains(runtimeConfig, "## Skills") {
 		t.Errorf("runtime config should omit Skills section when every skill disables model invocation:\n%s", runtimeConfig)
 	}

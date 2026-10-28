@@ -1,6 +1,7 @@
 package execenv
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"text/template"
 
 	"github.com/multica-ai/multica/server/pkg/agent"
 )
@@ -54,7 +56,7 @@ const (
 	runtimeManagedSeparator = "\n\n"
 )
 
-// runtimeGOOS is the host-platform string used by buildMetaSkillContent and
+// runtimeGOOS is the host-platform string exposed to startup templates and
 // BuildCommentReplyInstructions to emit Windows-specific guidance. Defaults
 // to runtime.GOOS; tests override it to exercise the cross-platform branches
 // deterministically without having to run on every target OS.
@@ -158,7 +160,7 @@ func formatProjectResource(r ProjectResourceForEnv) string {
 	}
 }
 
-// InjectRuntimeConfig writes the meta skill content into the runtime-specific
+// InjectRuntimeConfig renders the workspace startup template into the runtime-specific
 // config file so the agent discovers its environment through its native mechanism.
 //
 // For Claude:   writes {workDir}/CLAUDE.md  (skills discovered natively from .claude/skills/)
@@ -183,7 +185,10 @@ func formatProjectResource(r ProjectResourceForEnv) string {
 // For Grok:        writes {workDir}/AGENTS.md  (Grok Build CLI reads AGENTS.md natively from the workdir)
 // For Qwen:        writes {workDir}/QWEN.md (Qwen Code's native context file; it also reads AGENTS.md, but QWEN.md avoids cross-runtime ambiguity)
 func InjectRuntimeConfig(workDir, provider string, ctx TaskContextForEnv) (string, error) {
-	content := buildMetaSkillContent(provider, ctx)
+	content, err := renderStartupPrompt(provider, ctx)
+	if err != nil {
+		return "", err
+	}
 	path := runtimeConfigPath(workDir, provider)
 	if path == "" {
 		// Unknown provider — skip config injection, prompt-only mode.
@@ -531,14 +536,39 @@ func CleanupRuntimeConfig(workDir, provider string) error {
 	return os.WriteFile(path, []byte(remainder), 0o644)
 }
 
-// buildMetaSkillContent generates the meta skill markdown that teaches the
-// agent about the Multica runtime environment and available CLI tools.
-//
-// The brief is assembled by buildMetaSkillContentSlim (runtime_config_sections.go),
-// which applies kind-driven section gating + per-section prose compression.
-// This used to be gated behind the `runtime_brief_slim` feature flag against a
-// legacy verbose brief; the flag has been retired (MUL-4297) and the slim brief
-// is now the only path.
-func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
-	return buildMetaSkillContentSlim(provider, ctx)
+func parseStartupTemplate(source string) (*template.Template, error) {
+	tmpl, err := template.New("workspace startup prompt").Option("missingkey=error").Funcs(template.FuncMap{
+		"trim":      strings.TrimSpace,
+		"trimRight": strings.TrimRight,
+		"replace":   strings.ReplaceAll,
+		"split":     strings.Split,
+		"markdown":  sanitizeNameForBriefMarkdown,
+		"token":     sanitizeBriefCodeToken,
+		"resource":  formatProjectResource,
+		"channel":   ChannelDisplayName,
+	}).Parse(source)
+	if err != nil {
+		return nil, fmt.Errorf("parse workspace startup prompt: %w", err)
+	}
+	return tmpl, nil
+}
+
+// renderStartupPrompt renders workspace.context as the complete startup prompt.
+// Template data contains the claim context plus the daemon's OS and provider.
+func renderStartupPrompt(provider string, ctx TaskContextForEnv) (string, error) {
+	tmpl, err := parseStartupTemplate(ctx.WorkspaceContext)
+	if err != nil {
+		return "", err
+	}
+	ctx.AgentSkills = modelVisibleSkills(ctx.AgentSkills)
+	data := struct {
+		TaskContextForEnv
+		OS       string
+		Provider string
+	}{ctx, runtimeGOOS, provider}
+	var output bytes.Buffer
+	if err := tmpl.Execute(&output, data); err != nil {
+		return "", fmt.Errorf("render workspace startup prompt: %w", err)
+	}
+	return output.String(), nil
 }

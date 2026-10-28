@@ -1,8 +1,6 @@
 package execenv
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -183,58 +181,6 @@ func TestBuildCommentReplyInstructionsEmptyWhenNoTrigger(t *testing.T) {
 	}
 }
 
-// The brief must never carry this turn's trigger comment id; it points the
-// agent at the per-turn user message instead (MUL-5377).
-func TestInjectRuntimeConfigKeepsTriggerCommentOutOfBrief(t *testing.T) {
-	saved := runtimeGOOS
-	t.Cleanup(func() { runtimeGOOS = saved })
-	runtimeGOOS = "linux"
-
-	dir := t.TempDir()
-	issueID := "11111111-1111-1111-1111-111111111111"
-	triggerID := "22222222-2222-2222-2222-222222222222"
-
-	if _, err := InjectRuntimeConfig(dir, "claude", TaskContextForEnv{
-		IssueID:          issueID,
-		TriggerCommentID: triggerID,
-	}); err != nil {
-		t.Fatalf("InjectRuntimeConfig failed: %v", err)
-	}
-	content, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
-	if err != nil {
-		t.Fatalf("read CLAUDE.md: %v", err)
-	}
-	s := string(content)
-
-	if strings.Contains(s, triggerID) {
-		t.Errorf("CLAUDE.md must not carry the trigger comment id (MUL-5377)\n---\n%s", s)
-	}
-	for _, want := range []string{
-		// MUL-6417 retired the turn-mode router: one workflow, delivery
-		// routed on what the per-turn message carries. Pin the routing RULE
-		// halves — a compression that drops either delivery case must fail
-		// here.
-		"**Every issue turn runs the same workflow.**",
-		"with the `--parent` value it gives you for THIS turn",
-		"never one from an earlier turn",
-		"With no triggering comment, post a new top-level comment",
-		// The no-write default that makes the un-routed workflow safe: a
-		// turn that moved nothing writes nothing (MUL-6300 → MUL-6417).
-		"questions, discussion, and acknowledgements never touch status",
-	} {
-		if !strings.Contains(s, want) {
-			t.Errorf("CLAUDE.md missing %q\n---\n%s", want, s)
-		}
-	}
-
-	// The retired router must not come back in any phrasing.
-	for _, banned := range []string{"Turn mode", "mode block", "No mode line"} {
-		if strings.Contains(s, banned) {
-			t.Errorf("CLAUDE.md still carries retired mode-router text %q (MUL-6417)\n---\n%s", banned, s)
-		}
-	}
-}
-
 // Windows reply instructions are file-first, never stdin. The instructions
 // now ship in the per-turn prompt, so pin the helper directly (MUL-5377).
 func TestWindowsCommentReplyInstructionsHaveNoStdin(t *testing.T) {
@@ -262,72 +208,6 @@ func TestWindowsCommentReplyInstructionsHaveNoStdin(t *testing.T) {
 			} {
 				if strings.Contains(s, banned) {
 					t.Errorf("%s reply instructions must not prescribe stdin on Windows: %q\n---\n%s", provider, banned, s)
-				}
-			}
-		})
-	}
-}
-
-// TestInjectRuntimeConfigWindowsAssignmentBriefStaysFileOnly pins the PR #3654
-// review fix: on Windows, the ASSIGNMENT-triggered brief must never *recommend*
-// `--content-stdin`. Unlike the comment-trigger path, the assignment workflow
-// has no BuildCommentReplyInstructions override, so an agent that follows the
-// "post your final results" step literally would pipe its final comment through
-// PowerShell and drop non-ASCII bytes (#2198 / #2236 / #2376). The OS-aware
-// ## Comment Formatting section (file-only on Windows) is the single source of
-// truth; the Available Commands entry and step 5 must defer to it, not re-offer
-// stdin. The flag synopsis may still *list* `--content-stdin` as available.
-//
-// Not parallel: mutates the package-level runtimeGOOS.
-func TestInjectRuntimeConfigWindowsAssignmentBriefStaysFileOnly(t *testing.T) {
-	saved := runtimeGOOS
-	t.Cleanup(func() { runtimeGOOS = saved })
-	runtimeGOOS = "windows"
-
-	// Assignment-triggered: IssueID set, no TriggerCommentID.
-	ctx := TaskContextForEnv{IssueID: "issue-1"}
-
-	for _, provider := range []string{"claude", "codex", "opencode"} {
-		t.Run(provider, func(t *testing.T) {
-			dir := t.TempDir()
-			if _, err := InjectRuntimeConfig(dir, provider, ctx); err != nil {
-				t.Fatalf("InjectRuntimeConfig failed: %v", err)
-			}
-			fileName := "CLAUDE.md"
-			if provider != "claude" {
-				fileName = "AGENTS.md"
-			}
-			data, err := os.ReadFile(filepath.Join(dir, fileName))
-			if err != nil {
-				t.Fatalf("read %s: %v", fileName, err)
-			}
-			s := string(data)
-
-			// The Windows Comment Formatting section is file-only.
-			for _, want := range []string{
-				"## Comment Formatting",
-				"On Windows, **always write the comment body to a UTF-8 file",
-				"do NOT pipe via `--content-stdin`",
-				"use `--output table` to confirm success without echoing the body",
-				"Use `--output json` instead when you need the returned comment ID, attachment details, or other response fields",
-				"Gate the cleanup on the post succeeding",
-				"empty stdout alone does not prove success",
-			} {
-				if !strings.Contains(s, want) {
-					t.Errorf("%s missing Windows file-only guidance %q\n---\n%s", fileName, want, s)
-				}
-			}
-
-			// No prose may RECOMMEND stdin on Windows. The flag synopsis may
-			// still list `--content-stdin`; only the prescriptive "file or
-			// stdin" phrasings are banned.
-			for _, banned := range []string{
-				"or `--content-stdin`",
-				"using `--content-file` or `--content-stdin`",
-				"use `--content-file <path>` or `--content-stdin`",
-			} {
-				if strings.Contains(s, banned) {
-					t.Errorf("%s recommends stdin on Windows: %q\n---\n%s", fileName, banned, s)
 				}
 			}
 		})

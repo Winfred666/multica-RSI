@@ -545,6 +545,7 @@ func TestTaskMulticaEnvironmentIncludesPrivateConfigRoot(t *testing.T) {
 	task := Task{
 		ID:          "task-test",
 		AgentID:     "agent-test",
+		IssueID:     "issue-test",
 		WorkspaceID: "workspace-test",
 	}
 	env := taskMulticaEnvironment(task, "codex", "agent-name", fakeToken, taskRoot, workspacesRoot, "https://task.example", 19514, 3, "/task/tmp")
@@ -559,6 +560,7 @@ func TestTaskMulticaEnvironmentIncludesPrivateConfigRoot(t *testing.T) {
 		"MULTICA_AGENT_NAME":           "agent-name",
 		"MULTICA_AGENT_ID":             "agent-test",
 		"MULTICA_TASK_ID":              "task-test",
+		"MULTICA_ISSUE_ID":             "issue-test",
 		"MULTICA_TASK_SLOT":            "3",
 		"TMPDIR":                       "/task/tmp",
 		"TMP":                          "/task/tmp",
