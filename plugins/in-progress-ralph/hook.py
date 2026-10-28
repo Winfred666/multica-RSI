@@ -9,6 +9,8 @@ def main(api, payload):
     issue = api.issue(issue_id)
     if not issue or category(issue) != "in_progress":
         return {"continued": 0}
+    if (issue.get("metadata") or {}).get("aide_managed_serial_review") is True:
+        return {"continued": 0}
     agent = api.target(issue)
     if not agent or api.runs(issue_id, active=True):
         return {"continued": 0}
