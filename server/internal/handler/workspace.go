@@ -256,11 +256,13 @@ func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "slug is reserved")
 		return
 	}
-	if req.Context != nil {
-		if err := execenv.ValidateStartupTemplate(*req.Context); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
+	if req.Context == nil {
+		prompt := execenv.DefaultStartupTemplate
+		req.Context = &prompt
+	}
+	if err := execenv.ValidateStartupTemplate(*req.Context); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	// Resolve the prefix before opening the transaction: an invalid one is a

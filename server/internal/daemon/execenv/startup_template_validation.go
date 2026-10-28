@@ -1,10 +1,16 @@
 package execenv
 
 import (
+	_ "embed"
 	"fmt"
 	"strings"
 	"text/template/parse"
 )
+
+// DefaultStartupTemplate is used only when a new workspace omits its prompt.
+//
+//go:embed default_startup.gotmpl
+var DefaultStartupTemplate string
 
 // ValidateStartupTemplate checks syntax and required startup context references without
 // prescribing template structure or evaluating task-dependent branches.

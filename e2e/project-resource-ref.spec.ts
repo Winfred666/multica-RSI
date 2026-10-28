@@ -30,7 +30,7 @@ test("pins, edits and clears a repository's checkout ref", async ({ page }) => {
   await expect(page.getByText("release/2026-09")).toBeVisible({ timeout: 15000 });
 
   // Editing an attached resource — the affordance the UI never had.
-  await page.getByTitle(/change the branch tasks work on/i).first().click();
+  await page.getByRole("button", { name: /change the branch tasks work on/i }).first().click();
   await expect(page.getByText(/which branch should tasks work on/i)).toBeVisible();
 
   // A ref git could not resolve is refused before it is stored, rather than
@@ -50,7 +50,7 @@ test("pins, edits and clears a repository's checkout ref", async ({ page }) => {
   await expect(page.getByText("multica-ai/multica")).toBeVisible();
 
   // Clearing goes back to the repository's default branch.
-  await page.getByTitle(/change the branch tasks work on/i).first().click();
+  await page.getByRole("button", { name: /change the branch tasks work on/i }).first().click();
   await page.getByLabel(/starting branch/i).fill("");
   await page.getByRole("button", { name: /^save$/i }).click();
   await expect(page.getByText("v1.4.0")).toHaveCount(0, { timeout: 10000 });

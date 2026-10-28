@@ -5,8 +5,30 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/multica-ai/multica/server/internal/daemon/execenv"
 	"github.com/multica-ai/multica/server/internal/testutil"
 )
+
+func TestCreateWorkspace_DefaultStartupTemplate(t *testing.T) {
+	for _, name := range []string{"default", "custom"} {
+		t.Run(name, func(t *testing.T) {
+			want := execenv.DefaultStartupTemplate
+			body := map[string]any{"name": "Startup prompt", "slug": "handler-tests-startup-" + name}
+			if name == "custom" {
+				want += "\nWorkspace-specific instructions."
+				body["context"] = want
+			}
+			var created WorkspaceResponse
+			testutil.Call(t, testHandler.CreateWorkspace, newRequest(http.MethodPost, "/api/workspaces", body)).Want(http.StatusCreated).JSON(&created)
+			dbfx.Cleanup(t, `DELETE FROM workspace WHERE id = $1`, created.ID)
+			dbfx.Cleanup(t, `DELETE FROM member WHERE workspace_id = $1`, created.ID)
+			dbfx.Cleanup(t, `DELETE FROM issue_status WHERE workspace_id = $1`, created.ID)
+			if created.Context == nil || *created.Context != want {
+				t.Fatalf("created context = %v, want supplied or bundled prompt", created.Context)
+			}
+		})
+	}
+}
 
 func TestCreateWorkspace_ValidatesStartupTemplate(t *testing.T) {
 	req := newRequest(http.MethodPost, "/api/workspaces", map[string]any{

@@ -490,7 +490,8 @@
       "storage_user": "為每位成員單獨儲存資料",
       "storage_workspace": "儲存工作區共享資料",
       "net": "向 {{domain}} 傳送資料",
-      "unknown": "無法識別的權限 — 請勿安裝"
+      "unknown": "無法識別的權限 — 請勿安裝",
+      "host_exec": "使用為此工作區提供的令牌，在 Multica 伺服器上執行不受沙箱隔離的程式碼。外掛權限範圍不限制其帳戶級存取權限。"
     },
     "hook_circuit_open": "連續失敗後已停止投遞該 hook。",
     "hook_recent_failures": "最近有 {{count}} 次 hook 呼叫失敗。",
@@ -515,6 +516,20 @@
       "installed_version": "使用中",
       "review_install": "檢視並安裝",
       "review_upgrade": "檢視並升級"
+    },
+    "execution": {
+      "title": "託管執行",
+      "enabled": "已啟用",
+      "disabled": "已停用",
+      "run_as": "執行帳戶：{{name}}",
+      "load_failed": "無法載入託管執行設定。",
+      "unavailable": "令牌無效、所有者已離開此工作區，或伺服器設定不可用。",
+      "consent": "此工作區的所有託管外掛共用此令牌。請提供所有者明確授權用於此用途的令牌。指令碼不受沙箱隔離，可存取該帳戶有權存取的所有工作區。",
+      "token": "個人存取令牌",
+      "enable": "啟用託管執行",
+      "replace": "更換令牌",
+      "disable": "停用託管執行",
+      "disconnect_help": "停用會刪除已儲存的副本。令牌的撤銷由其所有者控制。"
     }
   },
   "properties": {
@@ -687,6 +702,11 @@
       "granted": "當前瀏覽器可以彈出通知橫幅。",
       "denied": "已被瀏覽器攔截。請在瀏覽器設定中為本站點開啟通知權限。",
       "enabled_badge": "已啟用"
+    },
+    "following": {
+      "title": "關注",
+      "label": "自動關注智慧體建立的子任務",
+      "description": "當你讓智慧體處理任務時，自動關注它建立的子任務。"
     }
   },
   "tokens": {

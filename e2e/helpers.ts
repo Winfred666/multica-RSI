@@ -49,6 +49,7 @@ export async function loginAsDefault(page: Page): Promise<string> {
   }
 
   await page.addInitScript((t) => {
+    if (window !== window.top) return;
     localStorage.setItem("multica_token", t);
     localStorage.setItem("multica:chat:isOpen", "false");
   }, token);

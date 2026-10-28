@@ -97,18 +97,18 @@ test("renders assistant quick actions and sends the hidden prompt", async ({
     const token = api.getToken();
     if (!token) throw new Error("E2E token missing");
     await page.addInitScript(
-      ({ authToken, activeSessionId }) => {
+      (authToken) => {
         localStorage.setItem("multica_token", authToken);
-        localStorage.setItem("multica:chat:activeSessionId", activeSessionId);
         localStorage.setItem("multica:chat:isOpen", "false");
       },
-      { authToken: token, activeSessionId: sessionId },
+      token,
     );
 
     await page.setViewportSize({ width: 1440, height: 960 });
-    await page.goto(`/${workspace.slug}/chat?session=${sessionId}`, {
+    await page.goto(`/${workspace.slug}/chat`, {
       waitUntil: "domcontentloaded",
     });
+    await page.getByText("Plan a focused launch", { exact: true }).click();
 
     const primaryAction = page.getByRole("button", {
       name: "Draft the launch brief",

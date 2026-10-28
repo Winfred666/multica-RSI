@@ -236,7 +236,8 @@
     "card_project": "專案",
     "card_labels": "標籤",
     "card_child_progress": "子任務進度",
-    "show_sub_issues": "顯示子任務"
+    "show_sub_issues": "顯示子任務",
+    "card_collaborators": "協作者"
   },
   "view": {
     "tooltip_board": "看板檢視",
@@ -249,7 +250,9 @@
     "list": "列表",
     "table": "表格",
     "gantt": "甘特圖",
-    "swimlane": "泳道"
+    "swimlane": "泳道",
+    "tree": "樹狀圖",
+    "tooltip_tree": "樹狀圖檢視"
   },
   "table": {
     "select_all": "選擇所有可見任務",
@@ -1706,5 +1709,25 @@
   },
   "hover_card": {
     "created_updated": "建立於 {{created}} · 更新於 {{updated}}"
+  },
+  "tree": {
+    "input_trend": "目前上下文：{{tokens}} tokens",
+    "input_drops": "上下文壓縮次數：{{count}}",
+    "input_trend_hint": "根據已完成的執行估算；圓環預設按 256K token 上下文視窗顯示。",
+    "pan_hint": "拖動畫布以平移",
+    "loading": "正在載入樹狀圖...",
+    "load_failed": "部分分支載入失敗",
+    "hide_statuses": "摺疊狀態",
+    "collapse": "摺疊已隱藏的狀態",
+    "expand": "展開 {{count}} 個已隱藏任務",
+    "report": "智慧體最新報告",
+    "no_report": "暫無智慧體報告",
+    "description": "描述",
+    "no_description": "暫無描述",
+    "agent_reply": "回覆",
+    "message_count_other": "{{count}} 則訊息",
+    "loading_report": "正在載入報告...",
+    "create_child": "新建子任務",
+    "retry_agents": "重新載入協作者"
   }
 }

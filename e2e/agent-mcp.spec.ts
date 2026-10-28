@@ -80,6 +80,13 @@ function mockAgent(ownerId: string, workspaceId: string) {
  *  /api/agents/<id> body. Returns a getter for the last captured allowlist. */
 async function mockApis(page: Page, ownerId: string) {
   const captured: { allowlist?: unknown } = {};
+  await page.route("**/api/config", async (route) => {
+    const response = await route.fetch();
+    const config = await response.json();
+    await route.fulfill({ response, json: {
+      ...config, feature_flags: { ...config.feature_flags, composio_mcp_apps: true },
+    } });
+  });
 
   await page.route("**/api/integrations/composio/toolkits", (route) =>
     route.fulfill({
@@ -156,13 +163,13 @@ test.describe("Agent MCP tab (creator-only)", () => {
     const { slug, userId } = await loginCapturingUser(page);
     const getAllowlist = await mockApis(page, userId);
 
-    await page.goto(`/${slug}/agents/${AGENT_ID}`, {
+    await page.goto(`/${slug}/agents/${AGENT_ID}?view=composio_mcp`, {
       waitUntil: "domcontentloaded",
     });
     await waitForPageText(page, "MCP Test Agent");
 
     // The creator-only tab entry is present and opens the connection list.
-    const tab = page.getByRole("button", { name: "MCP Apps" });
+    const tab = page.getByRole("tab", { name: "MCP Apps" });
     await expect(tab).toBeVisible({ timeout: 15000 });
     await tab.click();
 
@@ -179,15 +186,15 @@ test.describe("Agent MCP tab (creator-only)", () => {
     // Agent owned by someone else → the creator gate hides the tab entry.
     await mockApis(page, OTHER_USER_ID);
 
-    await page.goto(`/${slug}/agents/${AGENT_ID}`, {
+    await page.goto(`/${slug}/agents/${AGENT_ID}?view=composio_mcp`, {
       waitUntil: "domcontentloaded",
     });
     await waitForPageText(page, "MCP Test Agent");
 
     // Other tabs render, but the creator-only MCP Apps entry must not.
-    await expect(page.getByRole("button", { name: "Activity" })).toBeVisible({
+    await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible({
       timeout: 15000,
     });
-    await expect(page.getByRole("button", { name: "MCP Apps" })).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "MCP Apps" })).toHaveCount(0);
   });
 });

@@ -22,10 +22,8 @@ test.describe("Settings", () => {
     const newName = "Renamed WS " + Date.now();
     await nameInput.fill(newName);
 
-    // Save
-    await page.locator("button", { hasText: "Save" }).click();
-
-    await expect(page.getByText("Workspace settings saved").first()).toBeVisible({ timeout: 5000 });
+    // Commit the edit through autosave.
+    await nameInput.press("Tab");
 
     // Sidebar should reflect the new name WITHOUT page refresh
     await expect(page.getByRole("button", { name: new RegExp(newName) }).first()).toBeVisible();
@@ -33,8 +31,7 @@ test.describe("Settings", () => {
     // Restore original name so other tests aren't affected
     await nameInput.clear();
     await nameInput.fill(originalName.trim());
-    await page.locator("button", { hasText: "Save" }).click();
-    await expect(page.getByText("Workspace settings saved").first()).toBeVisible({ timeout: 5000 });
+    await nameInput.press("Tab");
     await expect(page.getByRole("button", { name: new RegExp(originalName) }).first()).toBeVisible();
   });
 
@@ -46,8 +43,15 @@ test.describe("Settings", () => {
   test("connecting a Composio toolkit shows a toast and refreshes the list", async ({
     page,
   }) => {
+    await page.route("**/api/config", async (route) => {
+      const response = await route.fetch();
+      const config = await response.json();
+      await route.fulfill({ response, json: {
+        ...config, feature_flags: { ...config.feature_flags, composio_mcp_apps: true },
+      } });
+    });
     const workspaceSlug = await loginAsDefault(page);
-    const settingsUrl = `/${workspaceSlug}/settings?tab=integrations&integration=composio`;
+    const settingsUrl = `/${workspaceSlug}/settings?tab=apps`;
 
     // Stateful: connections is empty until the (mocked) connect flow lands.
     let connected = false;
@@ -95,19 +99,19 @@ test.describe("Settings", () => {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          redirect_url: `/settings?tab=integrations&connected=notion`,
+          redirect_url: `${settingsUrl}&connected=notion`,
         }),
       });
     });
 
     await page.goto(settingsUrl, { waitUntil: "domcontentloaded" });
-    await waitForPageText(page, "Composio");
+    await expect(page.getByText("Notion", { exact: true })).toBeVisible();
 
     // Notion starts disconnected → click Connect.
     await page.getByRole("button", { name: /^Connect$/ }).first().click();
 
     // Success toast from the simulated callback redirect.
-    await expect(page.getByText("Connected").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Connected", { exact: true }).first()).toBeVisible({ timeout: 10000 });
 
     // List refreshed without a manual reload: the Notion card now offers
     // Disconnect, and the one-shot ?connected param has been stripped.
