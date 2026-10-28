@@ -6,7 +6,9 @@
   <img alt="Multica" src="docs/assets/logo-light.svg" width="50">
 </picture>
 
-# Multica
+# Multica-RSI
+
+[Multica](https://github.com/multica-ai/multica) 的 RSI 分支：[Winfred666/multica-RSI](https://github.com/Winfred666/multica-RSI)。
 
 **智能体，也在看板上。**
 

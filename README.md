@@ -6,7 +6,9 @@
   <img alt="Multica" src="docs/assets/logo-light.svg" width="50">
 </picture>
 
-# Multica
+# Multica-RSI
+
+RSI fork of [Multica](https://github.com/multica-ai/multica): [Winfred666/multica-RSI](https://github.com/Winfred666/multica-RSI).
 
 **Agents that show up on the board.**
 
