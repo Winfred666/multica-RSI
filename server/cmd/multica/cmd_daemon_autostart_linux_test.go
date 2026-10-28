@@ -121,6 +121,8 @@ func useAutostartConfigHome(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	// Exercise offline unlinking without contacting the host user manager.
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+filepath.Join(dir, "no-user-bus"))
 	return dir
 }
 

@@ -200,6 +200,8 @@ func TestBuildSquadLeaderBriefing_FullSquad(t *testing.T) {
 	for _, want := range []string{
 		"## Squad Operating Protocol",
 		"## Squad Roster",
+		"Own the parent issue status",
+		"multica issue status <issue-id> in_review",
 		"Leader (you):",
 		leaderName,
 		"## Squad Instructions (Full Squad)",

@@ -90,7 +90,7 @@ func TestPrepareCursorMcpConfigWritesProjectConfigAndApprovals(t *testing.T) {
 
 	envRoot := t.TempDir()
 	workDir := filepath.Join(envRoot, "workdir")
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(workDir, ".git"), 0o755); err != nil {
 		t.Fatalf("mkdir workDir: %v", err)
 	}
 	manifest := &sidecarManifest{}
@@ -157,7 +157,7 @@ func TestPrepareCursorMcpConfigManagedEmptySet(t *testing.T) {
 
 	envRoot := t.TempDir()
 	workDir := filepath.Join(envRoot, "workdir")
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(workDir, ".git"), 0o755); err != nil {
 		t.Fatalf("mkdir workDir: %v", err)
 	}
 	cursorDataDir, err := prepareCursorMcpConfig(envRoot, workDir, json.RawMessage(`{"mcpServers":{}}`), "", &sidecarManifest{})
@@ -186,7 +186,7 @@ func TestPrepareCursorMcpConfigSeedsExplicitAuthSource(t *testing.T) {
 
 	envRoot := t.TempDir()
 	workDir := filepath.Join(envRoot, "workdir")
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(workDir, ".git"), 0o755); err != nil {
 		t.Fatalf("mkdir workDir: %v", err)
 	}
 	sourceProjectDir := filepath.Join(envRoot, "source-project")
@@ -218,7 +218,7 @@ func TestPrepareCursorMcpConfigRemovesPriorAuthOnOptOut(t *testing.T) {
 
 	envRoot := t.TempDir()
 	workDir := filepath.Join(envRoot, "workdir")
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(workDir, ".git"), 0o755); err != nil {
 		t.Fatalf("mkdir workDir: %v", err)
 	}
 	sourceProjectDir := filepath.Join(envRoot, "source-project")
@@ -256,7 +256,7 @@ func TestPrepareCursorMcpConfigRejectsArbitraryAuthSourceFile(t *testing.T) {
 
 	envRoot := t.TempDir()
 	workDir := filepath.Join(envRoot, "workdir")
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(workDir, ".git"), 0o755); err != nil {
 		t.Fatalf("mkdir workDir: %v", err)
 	}
 	source := filepath.Join(envRoot, "other.json")
@@ -275,7 +275,7 @@ func TestPrepareCursorMcpConfigNilDoesNotTakeOwnership(t *testing.T) {
 
 	envRoot := t.TempDir()
 	workDir := filepath.Join(envRoot, "workdir")
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(workDir, ".git"), 0o755); err != nil {
 		t.Fatalf("mkdir workDir: %v", err)
 	}
 	cursorDataDir, err := prepareCursorMcpConfig(envRoot, workDir, nil, "", &sidecarManifest{})
@@ -295,7 +295,7 @@ func TestPrepareCursorMcpConfigRejectsMalformedConfig(t *testing.T) {
 
 	envRoot := t.TempDir()
 	workDir := filepath.Join(envRoot, "workdir")
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(workDir, ".git"), 0o755); err != nil {
 		t.Fatalf("mkdir workDir: %v", err)
 	}
 	_, err := prepareCursorMcpConfig(envRoot, workDir, json.RawMessage(`{"mcpServers":{"bad":42}}`), "", &sidecarManifest{})

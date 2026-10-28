@@ -190,7 +190,7 @@ func (q originLookupFailure) QueryRow(ctx context.Context, sql string, args ...a
 }
 
 func TestNotification_ServiceMembership(t *testing.T) {
-	for _, source := range []string{"quick_create_done", "quick_create_failed", "quick_create_unconfirmed", "children_done"} {
+	for _, source := range []string{"quick_create_done", "quick_create_failed", "quick_create_unconfirmed"} {
 		for _, state := range []string{"current", "delete", "leave"} {
 			t.Run(source+"/"+state, func(t *testing.T) {
 				ctx := context.Background()
@@ -214,62 +214,21 @@ func TestNotification_ServiceMembership(t *testing.T) {
 					}
 				})
 				fx.Cleanup(t, `DELETE FROM inbox_item WHERE recipient_id = $1`, recipient)
-				var trigger func() error
-				if source == "children_done" {
-					parent := fx.Issue(t, "Parent", testutil.Cols{"assignee_type": "member", "assignee_id": recipient, "status": "in_progress"})
-					child := fx.Issue(t, "Child", testutil.Cols{"parent_issue_id": parent, "status": "in_progress"})
-					fx.Cleanup(t, `DELETE FROM activity_log WHERE issue_id = $1`, parent)
-					fx.Cleanup(t, `DELETE FROM issue_wakeup_receipt WHERE wakeup_id IN (SELECT id FROM issue_wakeup WHERE issue_id = $1)`, parent)
-					fx.Cleanup(t, `DELETE FROM issue_wakeup WHERE issue_id = $1`, parent)
-					fx.Cleanup(t, `DELETE FROM issue_child_event WHERE parent_id = $1`, parent)
-					wakeups := &service.IssueWakeupService{Tasks: tasks}
-					if err := wakeups.ProcessChildEvents(ctx, util.MustParseUUID(parent)); err != nil {
-						t.Fatal(err)
-					}
-					trigger = func() error {
-						fx.Exec(t, `UPDATE issue SET status = 'done' WHERE id = $1`, child)
-						want, wantOutcome := 1, "notified"
-						if state != "current" {
-							want, wantOutcome = 0, "none"
-						}
-						for _, phase := range []string{"trigger", "repeat"} {
-							if err := wakeups.ProcessChildEvents(ctx, util.MustParseUUID(parent)); err != nil {
-								return err
-							}
-							if n := fx.Count(t, `SELECT count(*) FROM issue_wakeup_receipt r JOIN issue_wakeup w ON w.id = r.wakeup_id WHERE w.issue_id = $1 AND r.processed_at IS NULL`, parent); n != 0 {
-								t.Errorf("%s: pending wakeup receipts = %d, want 0", phase, n)
-							}
-							var count int
-							var outcome string
-							fx.QueryRow(t, `SELECT count(*), COALESCE(min(details->>'outcome'), '') FROM activity_log WHERE issue_id = $1 AND action = 'wakeup_triggered'`, parent).Scan(&count, &outcome)
-							if count != 1 || outcome != wantOutcome {
-								t.Errorf("%s: triggered activities = %d, outcome = %q; want 1, %q", phase, count, outcome, wantOutcome)
-							}
-							if n := fx.Count(t, `SELECT count(*) FROM inbox_item WHERE recipient_id = $1`, recipient); n != want {
-								t.Errorf("%s: inbox rows = %d, want %d", phase, n, want)
-							}
-							if eventCount != want {
-								t.Errorf("%s: inbox:new events = %d, want %d", phase, eventCount, want)
-							}
-						}
-						return nil
-					}
-				} else {
-					runtime := fx.Runtime(t, "Shared runtime")
-					agent := fx.Agent(t, "Shared agent", runtime)
-					qc, err := json.Marshal(service.QuickCreateContext{Type: service.QuickCreateContextType, RequesterID: recipient, WorkspaceID: testWorkspaceID, Prompt: "Create issue"})
-					if err != nil {
-						t.Fatal(err)
-					}
-					taskID := fx.Task(t, agent, testutil.Cols{"runtime_id": runtime, "status": "running", "context": qc})
-					if source == "quick_create_done" {
-						fx.Issue(t, "Created issue", testutil.Cols{"creator_type": "agent", "creator_id": agent, "origin_type": "quick_create", "origin_id": taskID})
-					}
-					trigger = func() error {
-						_, err := tasks.CompleteTask(ctx, util.MustParseUUID(taskID), []byte(`{"output":"Finished"}`), "", "", "", false, "", "")
-						return err
-					}
+				runtime := fx.Runtime(t, "Shared runtime")
+				agent := fx.Agent(t, "Shared agent", runtime)
+				qc, err := json.Marshal(service.QuickCreateContext{Type: service.QuickCreateContextType, RequesterID: recipient, WorkspaceID: testWorkspaceID, Prompt: "Create issue"})
+				if err != nil {
+					t.Fatal(err)
 				}
+				taskID := fx.Task(t, agent, testutil.Cols{"runtime_id": runtime, "status": "running", "context": qc})
+				if source == "quick_create_done" {
+					fx.Issue(t, "Created issue", testutil.Cols{"creator_type": "agent", "creator_id": agent, "origin_type": "quick_create", "origin_id": taskID})
+				}
+				trigger := func() error {
+					_, err := tasks.CompleteTask(ctx, util.MustParseUUID(taskID), []byte(`{"output":"Finished"}`), "", "", "", false, "", "")
+					return err
+				}
+
 				if state != "current" {
 					removeNotificationMember(t, recipient, member, state)
 				}

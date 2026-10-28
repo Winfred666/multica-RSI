@@ -93,23 +93,8 @@ Your responsibilities, in order:
    it errors, responsibility 3 applies and the turn leaves one short
    comment instead.`
 
-// squadParentStatusOwned is responsibility 6 for the case where the issue this
-// leader was woken on is assigned to THIS squad. Only then does the leader own
-// the parent's status arc.
-//
-// Since MUL-6417 the runtime brief has no grant routing that consumes this
-// section by name: the unified workflow writes status as the work changes it
-// (in_progress when a turn starts advancing the issue's ask, the reached
-// state at turn end), and the leader's only brief-side special case is that a
-// dispatch turn leaves the parent in_progress. This section's
-// job is the owning/guest permission boundary, drawn at the Agent Identity
-// layer (Instruction Precedence puts it above the workflow). The owning
-// leader needs the standing wrap-up instruction below — the @mention-dispatch
-// shape (no child issues, so no sub-issue wakeup) never produces a
-// trigger that asks for in_review, so without it the parent would sit in
-// in_progress forever; the guest leader gets the prohibition instead
-// (squadParentStatusNotOwned). Both compositions are pinned by
-// handler/squad_parent_status_contract_test.go.
+// squadParentStatusOwned grants status ownership only when the issue belongs
+// to this squad; the guest variant keeps that authority with the assignee.
 const squadParentStatusOwned = `6. **Own the parent issue status.** This issue is assigned to your squad,
    so its status is yours to manage (unless Agent Identity forbids status
    changes). On the first assignment turn, move the parent to

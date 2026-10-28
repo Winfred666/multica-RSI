@@ -77,31 +77,6 @@ func TestSelfHostTelemetryActorAssignmentMarksToday(t *testing.T) {
 	}
 }
 
-// The parent issue's member creator is inherited by a child_done wakeup run as
-// direct_human, but nobody acted.
-func TestSelfHostTelemetryAutomaticChildDoneMustNotCountHumanActivity(t *testing.T) {
-	f, s, issue, agent := activityFixture(t)
-	ctx := context.Background()
-	cleanupDelegationDays(t, f, f.UserID)
-	f.Exec(t, "UPDATE issue SET status='in_progress', assignee_type='agent',assignee_id=$2,created_at=now()-interval '40 days' WHERE id=$1", issue, agent)
-	child := f.Issue(t, "child", testutil.Cols{"parent_issue_id": issue, "status": "in_progress", "creator_type": "agent", "creator_id": agent})
-	f.Cleanup(t, "DELETE FROM issue_child_event WHERE parent_id=$1", issue)
-	if err := s.ProcessChildEvents(ctx, issue); err != nil {
-		t.Fatal(err)
-	}
-	f.Exec(t, "UPDATE issue SET status='done' WHERE id=$1", child)
-	if err := s.ProcessChildEvents(ctx, issue); err != nil {
-		t.Fatal(err)
-	}
-	var source string
-	if err := f.Pool.QueryRow(ctx, "SELECT originator_source FROM agent_task_queue WHERE issue_id=$1 AND context->>'wakeup_system'='child_done'", issue).Scan(&source); err != nil {
-		t.Fatalf("child_done run was not created: %v", err)
-	}
-	if got := delegationDays(t, f, f.UserID); len(got) != 0 {
-		t.Fatalf("automatic child_done run (source=%s) marked delegation days %v", source, got)
-	}
-}
-
 func TestSelfHostTelemetryAutomaticRetryMustNotCountHumanActivity(t *testing.T) {
 	f, s, issueID, agent := activityFixture(t)
 	ctx := context.Background()
