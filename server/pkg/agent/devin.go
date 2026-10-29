@@ -390,6 +390,7 @@ func (b *devinBackend) Execute(ctx context.Context, prompt string, opts ExecOpti
 			DurationMs:     duration.Milliseconds(),
 			SessionID:      sessionID,
 			Usage:          usageMap,
+			ContextTokens:  c.currentContextTokens(),
 			ResumeRejected: resumeRejected,
 		}
 	}()

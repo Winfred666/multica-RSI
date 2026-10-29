@@ -362,6 +362,7 @@ func (b *qwenpawBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 			SessionID:      sessionID,
 			ResumeRejected: resumeRejected,
 			Usage:          usageMap,
+			ContextTokens:  c.currentContextTokens(),
 		}
 	}()
 
