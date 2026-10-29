@@ -1069,6 +1069,7 @@ func (b *hermesBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 			SessionID:      sessionID,
 			ResumeRejected: resumeRejected,
 			Usage:          usageMap,
+			ContextTokens:  c.currentContextTokens(),
 		}
 	}()
 
@@ -1238,8 +1239,9 @@ type hermesClient struct {
 	toolMu       sync.Mutex
 	pendingTools map[string]*pendingToolCall
 
-	usageMu sync.Mutex
-	usage   acpUsageAccumulator
+	usageMu       sync.Mutex
+	usage         acpUsageAccumulator
+	contextTokens int64
 
 	// terminalEnabled is only set for ACP runtimes whose client-side terminal
 	// calls are implemented below. Keeping it opt-in avoids advertising a
@@ -2433,11 +2435,23 @@ func extractACPToolCallText(blocks []json.RawMessage) string {
 func (c *hermesClient) handleUsageUpdate(data json.RawMessage) {
 	var msg struct {
 		Usage json.RawMessage `json:"usage"`
+		Used  *int64          `json:"used"`
 	}
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return
 	}
+	if msg.Used != nil && *msg.Used >= 0 {
+		c.usageMu.Lock()
+		c.contextTokens = *msg.Used
+		c.usageMu.Unlock()
+	}
 	c.mergeUsage(parseACPTokenUsageSnapshot(msg.Usage))
+}
+
+func (c *hermesClient) currentContextTokens() int64 {
+	c.usageMu.Lock()
+	defer c.usageMu.Unlock()
+	return c.contextTokens
 }
 
 func (c *hermesClient) mergeUsage(usage acpUsageSnapshot) {

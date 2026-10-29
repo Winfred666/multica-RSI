@@ -17,19 +17,20 @@ func TestAttachTaskInputTrends(t *testing.T) {
 		run("1", "a", "completed", 1200),
 		run("7", "a", "running", 1),
 	}
-	attachTaskInputTrends(rows)
+	attachTaskInputTrends(rows, []byte(`{"context_tokens":"{\"a\":[1500,2000,1000,1000],\"b\":[310]}"}`))
 	for index, want := range map[int]TaskInputTrend{
 		0: {CurrentContext: 1000, ContextCompressionCount: 1},
 		1: {CurrentContext: 1000, ContextCompressionCount: 1},
+		3: {CurrentContext: 1000, ContextCompressionCount: 1},
 		4: {CurrentContext: 310},
-		5: {CurrentContext: 2000},
-		6: {CurrentContext: 1500},
+		5: {CurrentContext: 1000, ContextCompressionCount: 1},
+		6: {CurrentContext: 1000, ContextCompressionCount: 1},
 	} {
 		if got := rows[index].InputTrend; got == nil || *got != want {
 			t.Errorf("run %s: got %+v, want %+v", rows[index].ID, got, want)
 		}
 	}
-	for _, index := range []int{2, 3, 7} {
+	for _, index := range []int{2, 7} {
 		if rows[index].InputTrend != nil {
 			t.Errorf("run %s should have no input trend", rows[index].ID)
 		}

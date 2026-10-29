@@ -701,12 +701,13 @@ func (b *opencodeBackend) executeACP(ctx context.Context, execPath, prompt strin
 		duration := time.Since(startTime)
 		b.cfg.Logger.Info("opencode finished", "pid", cmd.Process.Pid, "status", finalStatus, "duration", duration.Round(time.Millisecond).String())
 		resCh <- Result{
-			Status:     finalStatus,
-			Output:     finalOutput,
-			Error:      finalError,
-			DurationMs: duration.Milliseconds(),
-			SessionID:  sessionID,
-			Usage:      usageMap,
+			Status:        finalStatus,
+			Output:        finalOutput,
+			Error:         finalError,
+			DurationMs:    duration.Milliseconds(),
+			SessionID:     sessionID,
+			Usage:         usageMap,
+			ContextTokens: c.currentContextTokens(),
 		}
 	}()
 

@@ -1903,9 +1903,9 @@ func (b *codexBackend) executeOnce(ctx context.Context, prompt string, opts Exec
 
 		// Build usage map from accumulated codex usage.
 		// First check JSON-RPC notifications (often empty for Codex).
-		var usageMap map[string]TokenUsage
 		c.usageMu.Lock()
 		u := c.usage
+		contextSnapshot := c.contextTokens
 		c.usageMu.Unlock()
 
 		// Codex sometimes omits usage from JSON-RPC notifications, and can also
@@ -1913,7 +1913,7 @@ func (b *codexBackend) executeOnce(ctx context.Context, prompt string, opts Exec
 		// Scan the per-task session JSONL for either missing value. Session usage
 		// is only a fallback, so it must never replace a JSON-RPC usage sample.
 		taskCodexHome := strings.TrimSpace(b.cfg.Env["CODEX_HOME"])
-		usageMap = codexResultUsageMap(startTime, taskCodexHome, threadID, resumed, opts.Model, u)
+		usageMap, contextTokens := codexResultUsageMap(startTime, taskCodexHome, threadID, resumed, opts.Model, u, contextSnapshot)
 
 		resCh <- Result{
 			Status:                       finalStatus,
@@ -1922,6 +1922,7 @@ func (b *codexBackend) executeOnce(ctx context.Context, prompt string, opts Exec
 			SessionID:                    threadID,
 			DurationMs:                   duration.Milliseconds(),
 			Usage:                        usageMap,
+			ContextTokens:                contextTokens,
 			codexStartupRefreshRetrySafe: startupRefreshRetrySafe,
 		}
 	}()
@@ -2461,8 +2462,9 @@ type codexClient struct {
 	notificationProtocol string // "unknown", "legacy", "raw"
 	turnCompleted        bool
 
-	usageMu sync.Mutex
-	usage   TokenUsage // accumulated from turn events
+	usageMu       sync.Mutex
+	usage         TokenUsage // accumulated from turn events
+	contextTokens *int64     // latest native context occupancy; nil means unreported
 	// usageTotal is the last accepted cumulative v2 usage snapshot for the
 	// active turn. Comparing later snapshots against it makes replay and
 	// duplicate delivery idempotent while retaining multi-response turns.
@@ -3884,6 +3886,18 @@ func (c *codexClient) updateThreadTokenUsage(params map[string]any) {
 	total := codexRawTokenUsageFromV2(totalMap)
 	delta := codexRawTokenUsageFromV2(last)
 	c.usageMu.Lock()
+	// The native last-call total measures context; total is cumulative billing usage.
+	switch input := last["totalTokens"].(type) {
+	case float64:
+		if input >= 0 && input < 1<<63 && input == float64(int64(input)) {
+			value := int64(input)
+			c.contextTokens = &value
+		}
+	case int64:
+		if input >= 0 {
+			c.contextTokens = &input
+		}
+	}
 	if c.usageTotalSet {
 		delta = subtractCodexRawTokenUsage(total, c.usageTotal)
 	}
@@ -3988,8 +4002,9 @@ func codexInt64(m map[string]any, keys ...string) int64 {
 
 // codexSessionUsage holds usage extracted from a Codex session JSONL file.
 type codexSessionUsage struct {
-	usage TokenUsage
-	model string
+	usage         TokenUsage
+	model         string
+	contextTokens int64
 }
 
 // scanCodexSessionUsage extracts usage for threadID from its Codex rollout.
@@ -4042,12 +4057,19 @@ func scanCodexSessionUsage(startTime time.Time, codexHome, threadID string, resu
 // the session log fills only a missing model. Session usage is used only when the
 // JSON-RPC path reported no tokens. A default-model run therefore remains
 // attributable instead of being stored as "unknown".
-func codexResultUsageMap(startTime time.Time, codexHome, threadID string, resumed bool, model string, usage TokenUsage) map[string]TokenUsage {
+func codexResultUsageMap(startTime time.Time, codexHome, threadID string, resumed bool, model string, usage TokenUsage, contextSnapshot *int64) (map[string]TokenUsage, int64) {
 	usageEmpty := usage.InputTokens == 0 && usage.OutputTokens == 0 &&
 		usage.CacheReadTokens == 0 && usage.CacheWriteTokens == 0
 	var scanned *codexSessionUsage
-	if usageEmpty || model == "" {
+	if usageEmpty || model == "" || contextSnapshot == nil {
 		scanned = scanCodexSessionUsage(startTime, codexHome, threadID, resumed)
+	}
+	if contextSnapshot == nil && scanned != nil {
+		contextSnapshot = &scanned.contextTokens
+	}
+	var contextTokens int64
+	if contextSnapshot != nil {
+		contextTokens = *contextSnapshot
 	}
 	if usageEmpty && scanned != nil {
 		usage = scanned.usage
@@ -4056,12 +4078,12 @@ func codexResultUsageMap(startTime time.Time, codexHome, threadID string, resume
 		model = scanned.model
 	}
 	if usage.InputTokens == 0 && usage.OutputTokens == 0 && usage.CacheReadTokens == 0 && usage.CacheWriteTokens == 0 {
-		return nil
+		return nil, contextTokens
 	}
 	if model == "" {
 		model = "unknown"
 	}
-	return map[string]TokenUsage{model: usage}
+	return map[string]TokenUsage{model: usage}, contextTokens
 }
 
 // findCodexSessionRollouts returns uncompressed rollout files owned by threadID
@@ -4215,8 +4237,11 @@ type codexSessionTokenCount struct {
 		Type string `json:"type"`
 		Info *struct {
 			TotalTokenUsage *codexRawTokenUsage `json:"total_token_usage"`
-			LastTokenUsage  *codexRawTokenUsage `json:"last_token_usage"`
-			Model           string              `json:"model"`
+			LastTokenUsage  *struct {
+				codexRawTokenUsage
+				TotalTokens *int64 `json:"total_tokens"`
+			} `json:"last_token_usage"`
+			Model string `json:"model"`
 		} `json:"info"`
 		Model string `json:"model"`
 	} `json:"payload"`
@@ -4276,6 +4301,9 @@ func parseCodexSessionFileSince(path string, startTime time.Time, resumed bool) 
 		if evt.Payload.Type == "token_count" && evt.Payload.Info != nil {
 			afterStart := startTime.IsZero() || timestampAfterStart ||
 				(evt.Timestamp.IsZero() && (!resumed || afterStartBoundary))
+			if last := evt.Payload.Info.LastTokenUsage; afterStart && last != nil && last.TotalTokens != nil && *last.TotalTokens >= 0 {
+				result.contextTokens = *last.TotalTokens
+			}
 			if usage := evt.Payload.Info.TotalTokenUsage; usage != nil {
 				current := normalizeCodexRawTokenUsage(*usage)
 				if afterStart {
@@ -4292,7 +4320,7 @@ func parseCodexSessionFileSince(path string, startTime time.Time, resumed bool) 
 			} else if usage := evt.Payload.Info.LastTokenUsage; usage != nil && afterStart {
 				// Preserve event order: a later last_token_usage is the same
 				// fallback the old whole-file parser would have selected.
-				finalUsage = normalizeCodexRawTokenUsage(*usage)
+				finalUsage = normalizeCodexRawTokenUsage(usage.codexRawTokenUsage)
 				finalUsageFound = true
 			}
 			if evt.Payload.Info.Model != "" {

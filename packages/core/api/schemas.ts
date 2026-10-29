@@ -2084,7 +2084,7 @@ export const AgentTaskSchema = z.object({
   // the UI already renders as an em dash.
   usage: z.array(TaskUsageSchema).optional().catch(undefined),
   input_trend: z.object({
-    current_context: z.number().int().positive(),
+    current_context: z.number().int().nonnegative(),
     context_compression_count: z.number().int().nonnegative(),
   }).optional().catch(undefined),
 }).loose();

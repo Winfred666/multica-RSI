@@ -577,6 +577,7 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 		finalStatus := "completed"
 		var finalError string
 		usage := make(map[string]TokenUsage)
+		var contextTokens int64
 
 		// Pi message_update events can be large (they embed the full message
 		// partial on each delta); the shared stream bound covers that.
@@ -644,6 +645,9 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 					continue
 				}
 				if msg.Usage != nil {
+					if msg.StopReason != "error" && msg.StopReason != "aborted" && msg.Usage.TotalTokens > 0 {
+						contextTokens = msg.Usage.TotalTokens
+					}
 					model := msg.Model
 					if model == "" {
 						model = opts.Model
@@ -854,12 +858,13 @@ func (b *piBackend) Execute(ctx context.Context, prompt string, opts ExecOptions
 		releasePiSessionFileLock(sessionLock)
 		sessionLock = nil
 		resCh <- Result{
-			Status:     finalStatus,
-			Output:     output.String(),
-			Error:      finalError,
-			DurationMs: duration.Milliseconds(),
-			SessionID:  sessionPath,
-			Usage:      usage,
+			Status:        finalStatus,
+			Output:        output.String(),
+			Error:         finalError,
+			DurationMs:    duration.Milliseconds(),
+			SessionID:     sessionPath,
+			Usage:         usage,
+			ContextTokens: contextTokens,
 			// Only a run that asked to resume can have had a resume refused.
 			// On a cold run the phrase cannot appear anyway, but stating the
 			// precondition keeps this honest against Result.ResumeRejected's

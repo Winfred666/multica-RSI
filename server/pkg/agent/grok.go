@@ -617,6 +617,7 @@ func (b *grokBackend) Execute(ctx context.Context, prompt string, opts ExecOptio
 			SessionID:      sessionID,
 			ResumeRejected: resumeRejected,
 			Usage:          usageMap,
+			ContextTokens:  c.currentContextTokens(),
 		}
 	}()
 

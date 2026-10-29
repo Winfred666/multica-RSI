@@ -4788,10 +4788,11 @@ func (h *Handler) ReportTaskProgress(w http.ResponseWriter, r *http.Request) {
 
 // CompleteTask marks a running task as completed.
 type TaskCompleteRequest struct {
-	PRURL     string `json:"pr_url"`
-	Output    string `json:"output"`
-	SessionID string `json:"session_id"` // Claude session ID for future resumption
-	WorkDir   string `json:"work_dir"`   // working directory used during execution
+	ContextTokens int64  `json:"context_tokens"`
+	PRURL         string `json:"pr_url"`
+	Output        string `json:"output"`
+	SessionID     string `json:"session_id"` // Claude session ID for future resumption
+	WorkDir       string `json:"work_dir"`   // working directory used during execution
 	// DurableWorkDir is the configured project directory that replaces a
 	// disposable task worktree after the daemon confirms the worktree is gone.
 	DurableWorkDir string `json:"durable_work_dir,omitempty"`
@@ -4860,6 +4861,10 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 	// re-route below feeds req.Output into the failure classifier, and that
 	// classifier must see exactly the text we are going to persist.
 	sanitizeTaskCompleteRequest(&req)
+	if req.ContextTokens < 0 {
+		writeError(w, http.StatusBadRequest, "context_tokens must be nonnegative")
+		return
+	}
 
 	// GH #6402: a daemon whose backend does not (yet) read the provider's
 	// structured terminal reason reports a context-exhausted run as a clean
@@ -6304,7 +6309,7 @@ func (h *Handler) ListTasksByIssue(w http.ResponseWriter, r *http.Request) {
 	// for a column that is near-empty on runs that have not finished.
 	if !activeOnly {
 		h.hydrateTaskUsage(r.Context(), issue.ID, resp)
-		attachTaskInputTrends(resp)
+		attachTaskInputTrends(resp, issue.Metadata)
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -6394,34 +6399,29 @@ func appendTaskUsage(
 	})
 }
 
-func attachTaskInputTrends(resp []AgentTaskResponse) {
-	ordered := make([]*AgentTaskResponse, len(resp))
-	for i := range resp {
-		ordered[i] = &resp[i]
+func attachTaskInputTrends(resp []AgentTaskResponse, metadata []byte) {
+	encoded, _ := parseIssueMetadata(metadata)[service.IssueContextTokensMetadataKey].(string)
+	var history map[string][]int64
+	if json.Unmarshal([]byte(encoded), &history) != nil {
+		return
 	}
-	slices.SortStableFunc(ordered, func(a, b *AgentTaskResponse) int {
-		return strings.Compare(a.CreatedAt, b.CreatedAt)
-	})
-	byAgent := make(map[string]TaskInputTrend)
-	for _, task := range ordered {
-		if task.Status != "completed" || len(task.Usage) == 0 {
+	byAgent := make(map[string]*TaskInputTrend, len(history))
+	for agentID, values := range history {
+		if len(values) == 0 {
 			continue
 		}
-		var input int64
-		for _, usage := range task.Usage {
-			input += usage.InputTokens + usage.CacheReadTokens + usage.CacheWriteTokens
+		trend := &TaskInputTrend{CurrentContext: values[len(values)-1]}
+		for i := 1; i < len(values); i++ {
+			if values[i] < values[i-1] {
+				trend.ContextCompressionCount++
+			}
 		}
-		if input <= 0 {
-			continue
+		byAgent[agentID] = trend
+	}
+	for i := range resp {
+		if resp[i].Status == "completed" {
+			resp[i].InputTrend = byAgent[resp[i].AgentID]
 		}
-		trend := byAgent[task.AgentID]
-		// shortcut: run totals vary with workload too; use provider snapshots when exact context resets are needed.
-		if input < trend.CurrentContext {
-			trend.ContextCompressionCount++
-		}
-		trend.CurrentContext = input
-		byAgent[task.AgentID] = trend
-		task.InputTrend = &trend
 	}
 }
 

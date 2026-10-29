@@ -4598,6 +4598,7 @@ func (s *TaskService) CompleteTask(ctx context.Context, taskID pgtype.UUID, resu
 func (s *TaskService) CompleteTaskWithTransition(ctx context.Context, taskID pgtype.UUID, result []byte, sessionID, workDir, branchName string, sessionRolloutMissing bool, retiredSessionID, durableWorkDir string) (*db.AgentTaskQueue, bool, error) {
 	var task db.AgentTaskQueue
 	var change *qoderIssueChange
+	var contextMetadata *db.SetIssueMetadataKeyRow
 	// chatAssistantMsg is the single assistant outcome row written for a chat
 	// task inside the completion transaction below. It is broadcast (chat:done)
 	// only after the transaction commits.
@@ -4621,6 +4622,10 @@ func (s *TaskService) CompleteTaskWithTransition(ctx context.Context, taskID pgt
 		}
 		task = t
 		change, err = syncQoderIssue(ctx, qtx, t, true)
+		if err != nil {
+			return err
+		}
+		contextMetadata, err = appendTaskContextTokens(ctx, qtx, t, result)
 		if err != nil {
 			return err
 		}
@@ -4712,6 +4717,18 @@ func (s *TaskService) CompleteTaskWithTransition(ctx context.Context, taskID pgt
 	}
 
 	s.publishQoderIssueChange(ctx, change)
+	if contextMetadata != nil && s.Bus != nil {
+		s.Bus.Publish(events.Event{
+			Type:        protocol.EventIssueMetadataChanged,
+			WorkspaceID: util.UUIDToString(contextMetadata.WorkspaceID),
+			ActorType:   "system",
+			Payload: map[string]any{
+				"issue_id":       util.UUIDToString(contextMetadata.ID),
+				"metadata":       util.JSONObjectOrEmpty(contextMetadata.Metadata),
+				"issue_revision": contextMetadata.Revision,
+			},
+		})
+	}
 	slog.Info("task completed", "task_id", util.UUIDToString(task.ID), "issue_id", util.UUIDToString(task.IssueID))
 	s.captureTaskCompleted(ctx, task)
 
