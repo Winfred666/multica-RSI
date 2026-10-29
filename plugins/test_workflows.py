@@ -116,19 +116,6 @@ class ChildWakeupTests(unittest.TestCase):
         self.assertEqual(len(self.api.writes), 3)
         self.assertTrue(all(row["instruction"].endswith("Configured instruction") for row in self.api.writes))
 
-    def test_managed_parent_skips_hooks_without_suppressing_other_parents(self):
-        self.api.rows["parent"]["metadata"] = {"aide_managed_serial_review": True}
-        self.api.rows["ordinary"] = self.api.row("ordinary", "in_progress")
-        self.api.rows["ordinary-child"] = self.api.row("ordinary-child", "todo", "ordinary")
-        for status, hook in (("in_review", "in_review"), ("blocked", "blocked"), ("done", "all_finished")):
-            self.api.status("child", status)
-            self.api.status("ordinary-child", status)
-            self.assertEqual(self.check(hook), {"wakeups": 0})
-            self.assertEqual(self.check(hook, event=False), {"wakeups": 1})
-        self.assertEqual([row["issue_id"] for row in self.api.writes], ["ordinary"] * 3)
-        self.api.rows["parent"]["metadata"]["aide_managed_serial_review"] = False
-        self.assertEqual(self.check("all_finished"), {"wakeups": 1})
-
     def test_rework_and_new_children_rearm(self):
         for status in ("in_review", "in_progress", "in_review"):
             self.api.status("child", status)
@@ -274,14 +261,6 @@ class RalphTests(unittest.TestCase):
         self.payload["input"]["task_id"] = "run-2"
         RALPH(self.api, self.payload)
         self.assertEqual(len(self.api.writes), 2)
-
-    def test_managed_issue_skips_continuation_without_consuming_the_event(self):
-        self.api.rows["parent"]["metadata"] = {"aide_managed_serial_review": True}
-        self.assertEqual(RALPH(self.api, self.payload), {"continued": 0})
-        self.assertEqual(self.api.writes, [])
-        self.assertEqual(self.api.storage, {})
-        self.api.rows["parent"]["metadata"]["aide_managed_serial_review"] = False
-        self.assertEqual(RALPH(self.api, self.payload), {"continued": 1})
 
     def test_respects_human_handoffs_active_runs_and_failures(self):
         for state in ("in_review", "blocked", "done", "cancelled", "backlog", "todo"):

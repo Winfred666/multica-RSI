@@ -22,8 +22,6 @@ def main(api, payload):
     for parent in parents:
         if not parent or finished(parent):
             continue
-        if (parent.get("metadata") or {}).get("aide_managed_serial_review") is True:
-            continue
         children = api.children(parent["id"])
         if hook == "all_finished":
             met = bool(children) and all(finished(child) for child in children)

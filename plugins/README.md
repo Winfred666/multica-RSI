@@ -61,10 +61,6 @@ whose latest run is not the completed event's task. Failed/cancelled events do
 not trigger Ralph. Plugin storage deduplicates processed task IDs.
 Enabling a package applies it throughout that workspace.
 
-Set issue metadata `aide_managed_serial_review` to the boolean `true` on an AIDE
-root and its persistent role issues to skip both workflow hooks for those issues.
-Explicit native wakeups still run; other issues keep the normal plugin behavior.
-
 Issue reframe compress reads `input_trend.context_compression_count` from the
 current agent assignee's issue task runs. This is the existing platform count
 (a completed-run input trend), not a new measurement of provider compaction.
