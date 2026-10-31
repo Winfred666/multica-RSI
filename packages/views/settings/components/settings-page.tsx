@@ -59,7 +59,6 @@ import {
 import { searchSettings } from "./settings-search";
 import { HighlightText } from "../../search/highlight-text";
 import { useSettingsSearchIndex } from "./use-settings-search-index";
-import { WakeupsTab } from "./wakeups-tab";
 import { CollapsedNavTrigger, PageHeader } from "../../layout/page-header";
 import { PanelHeader } from "../../layout/panel-nav";
 import { useListColumnCollapsed } from "../../layout/app-shell-context";
