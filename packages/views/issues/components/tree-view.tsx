@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { EyeOff, Plus, RotateCcw } from "lucide-react";
+import { EyeOff, Plus, RotateCcw } from "@multica/ui/icons";
 import type { AgentTask, Issue, Project } from "@multica/core/types";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
