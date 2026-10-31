@@ -1496,6 +1496,19 @@ export const IssueSchema = z.object({
   source_context: IssueSourceContextSchema.optional().catch(undefined),
 }).loose();
 
+export const IssueSnapshotSchema = z.object({
+  version: z.literal(1),
+  captured_at: z.string(),
+  issue: IssueSchema.extend({ labels: z.array(LabelSchema) }),
+  comments: z.array(CommentSchema),
+  attachments: z.array(AttachmentResponseSchema.extend({
+    comment_id: z.string().nullable(),
+    content_type: z.string(),
+    size_bytes: z.number().nonnegative(),
+    data: z.string(),
+  })),
+}).loose();
+
 export const ListIssuesResponseSchema = z.object({
   issues: z.array(IssueSchema).default([]),
   total: z.number().default(0),

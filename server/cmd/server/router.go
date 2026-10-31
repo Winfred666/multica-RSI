@@ -2051,11 +2051,13 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Post("/query", h.QueryIssues)
 				r.Post("/", h.CreateIssue)
 				r.Post("/quick-create", h.QuickCreateIssue)
+				r.Post("/restore", h.RestoreIssue)
 				r.Post("/preview-trigger", h.PreviewIssueTrigger)
 				r.Post("/batch-update", h.BatchUpdateIssues)
 				r.Post("/batch-delete", h.BatchDeleteIssues)
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", h.GetIssue)
+					r.Get("/snapshot", h.GetIssueSnapshot)
 					r.Put("/", h.UpdateIssue)
 					r.Post("/move", h.MoveIssue)
 					r.Delete("/", h.DeleteIssue)

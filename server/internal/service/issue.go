@@ -96,6 +96,8 @@ type IssueCreateParams struct {
 	// Its immutable snapshot and cloned attachment rows commit in the same
 	// transaction as the new issue.
 	SourceContext *SourceContextCapture
+	// Restore imports issue content in the create transaction, without comment triggers.
+	Restore *IssueRestoreData
 }
 
 // IssueCreateOpts groups optional knobs for IssueService.Create. Most
@@ -497,6 +499,16 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 			WorkspaceID: p.WorkspaceID,
 		}); err != nil {
 			return IssueCreateResult{}, fmt.Errorf("attach issue label: %w", err)
+		}
+	}
+
+	if p.Restore != nil {
+		if err := persistIssueRestore(ctx, qtx, issue, *p.Restore); err != nil {
+			return IssueCreateResult{}, fmt.Errorf("restore issue content: %w", err)
+		}
+		issue, err = qtx.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{ID: issue.ID, WorkspaceID: issue.WorkspaceID})
+		if err != nil {
+			return IssueCreateResult{}, err
 		}
 	}
 
