@@ -48,6 +48,9 @@ import {
 interface UseZoomCanvasOptions {
   /** Natural (unscaled) size of the content, or null while it is unknown. */
   content: Size | null;
+  initialTransform?: ZoomTransform | null;
+  /** Keep the camera fixed when live content or the viewport changes size. */
+  preserveTransform?: boolean;
   /**
    * Whether Left/Right pan the canvas. Set false when the surrounding viewer
    * binds those keys itself — image-sequence prev/next (MUL-5752) — so the two
@@ -100,17 +103,19 @@ function nearlyEqual(a: number, b: number): boolean {
 
 export function useZoomCanvas({
   content,
+  initialTransform = null,
+  preserveTransform = false,
   horizontalArrowPan = true,
 }: UseZoomCanvasOptions): ZoomCanvasApi {
   const [viewportNode, setViewportNode] = useState<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState<Size>(EMPTY_SIZE);
-  const [transform, setTransform] = useState<ZoomTransform>(IDENTITY);
+  const [transform, setTransform] = useState<ZoomTransform>(initialTransform ?? IDENTITY);
   const [isPanning, setIsPanning] = useState(false);
   const [isAnimated, setIsAnimated] = useState(false);
 
   // Fit is deferred until both sizes are known; until then any transform we
   // computed would be against a 0x0 viewport and would have to be thrown away.
-  const hasFittedRef = useRef(false);
+  const hasFittedRef = useRef(initialTransform !== null);
   const activePointersRef = useRef(new Map<number, Point>());
   const panOriginRef = useRef<{ pointer: Point; transform: ZoomTransform } | null>(null);
   const pinchOriginRef = useRef<{ distance: number; scale: number } | null>(null);
@@ -174,12 +179,12 @@ export function useZoomCanvas({
   const contentKey = `${contentSize.width}x${contentSize.height}`;
   const previousContentKeyRef = useRef(contentKey);
   useLayoutEffect(() => {
-    if (previousContentKeyRef.current === contentKey) return;
+    if (preserveTransform || previousContentKeyRef.current === contentKey) return;
     previousContentKeyRef.current = contentKey;
     if (!ready) return;
     setIsAnimated(false);
     setTransform(computeFitTransform(contentSize, viewport));
-  }, [contentKey, ready, contentSize, viewport]);
+  }, [contentKey, ready, contentSize, viewport, preserveTransform]);
 
   // Keep the content in view when the window/pane is resized under it — and
   // keep a still-fitted image fitted (see `resizeTransform`).
@@ -187,11 +192,11 @@ export function useZoomCanvas({
   useEffect(() => {
     const previous = previousViewportRef.current;
     previousViewportRef.current = viewport;
-    if (!ready) return;
+    if (!ready || preserveTransform) return;
     setTransform((current) =>
       resizeTransform(current, contentSize, previous, viewport),
     );
-  }, [ready, contentSize, viewport]);
+  }, [ready, contentSize, viewport, preserveTransform]);
 
   const fit = useCallback(() => {
     const { contentSize: c, viewport: v, ready: r } = stateRef.current;

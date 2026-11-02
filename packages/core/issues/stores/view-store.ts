@@ -11,6 +11,11 @@ import { defaultStorage } from "../../platform/storage";
 
 export type ViewMode = "board" | "list" | "table" | "gantt" | "swimlane" | "tree";
 export type GanttZoom = "day" | "week" | "month";
+export interface TreeViewport {
+  scale: number;
+  x: number;
+  y: number;
+}
 /**
  * Board grouping. Besides the three built-ins, a select-type custom property
  * groups columns by its options via the `property:<definitionId>` form.
@@ -295,6 +300,7 @@ export interface IssueViewState {
   hiddenStatuses: IssueStatus[];
   ganttZoom: GanttZoom;
   ganttShowCompleted: boolean;
+  treeViewport: TreeViewport | null;
   /** Active swimlane grouping dimension. */
   swimlaneGrouping: SwimlaneGrouping;
   /** Persisted lane order, keyed by grouping. Entries are raw lane ids
@@ -314,6 +320,7 @@ export interface IssueViewState {
   setViewMode: (mode: ViewMode) => void;
   setGanttZoom: (zoom: GanttZoom) => void;
   toggleGanttShowCompleted: () => void;
+  setTreeViewport: (viewport: TreeViewport) => void;
   setGrouping: (grouping: IssueGrouping) => void;
   toggleStatusFilter: (status: IssueStatus) => void;
   togglePriorityFilter: (priority: IssuePriority) => void;
@@ -386,6 +393,7 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
   hiddenStatuses: [...DEFAULT_HIDDEN_STATUSES],
   ganttZoom: "week",
   ganttShowCompleted: false,
+  treeViewport: null,
   swimlaneGrouping: "assignee",
   swimlaneOrders: { parent: [], project: [], assignee: [] },
   collapsedSwimlanes: { parent: [], project: [], assignee: [] },
@@ -408,6 +416,7 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
   setGanttZoom: (zoom) => set({ ganttZoom: zoom }),
   toggleGanttShowCompleted: () =>
     set((state) => ({ ganttShowCompleted: !state.ganttShowCompleted })),
+  setTreeViewport: (treeViewport) => set({ treeViewport }),
   setGrouping: (grouping) =>
     set((state) => ({
       grouping,
@@ -687,6 +696,7 @@ export const viewStorePersistOptions = (name: string) => ({
     hiddenStatuses: state.hiddenStatuses,
     ganttZoom: state.ganttZoom,
     ganttShowCompleted: state.ganttShowCompleted,
+    treeViewport: state.treeViewport,
     swimlaneGrouping: state.swimlaneGrouping,
     swimlaneOrders: state.swimlaneOrders,
     collapsedSwimlanes: state.collapsedSwimlanes,

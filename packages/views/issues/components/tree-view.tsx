@@ -54,6 +54,8 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   const restoreStatus = useViewStore((s) => s.showStatus);
   const sortBy = useViewStore((s) => s.sortBy);
   const sortDirection = useViewStore((s) => s.sortDirection);
+  const treeViewport = useViewStore((s) => s.treeViewport);
+  const setTreeViewport = useViewStore((s) => s.setTreeViewport);
   const { data: tasks = EMPTY_TASKS } = useQuery(agentTaskSnapshotOptions(wsId));
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [heights, setHeights] = useState<ReadonlyMap<string, number>>(new Map());
@@ -65,7 +67,10 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
     new Set(hiddenStatuses.filter((status) => !statusFilters.includes(status))),
     expanded,
   ), heights), [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, heights]);
-  const canvas = useZoomCanvas({ content: layout });
+  const canvas = useZoomCanvas({ content: layout, initialTransform: treeViewport, preserveTransform: true });
+  useEffect(() => {
+    setTreeViewport(canvas.transform);
+  }, [canvas.transform, setTreeViewport]);
   const byId = useMemo(() => new Map(layout.nodes.map((node) => [node.node.id, node])), [layout]);
   const pages = Object.values(statusPagination);
   const pending = pages.some((page) => page.hasMore || page.isFetching);
