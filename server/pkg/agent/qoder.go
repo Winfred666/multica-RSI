@@ -448,6 +448,7 @@ func (b *qoderBackend) Execute(ctx context.Context, prompt string, opts ExecOpti
 			SessionID:      sessionID,
 			ResumeRejected: resumeRejected,
 			Usage:          usageMap,
+			ContextTokens:  c.currentContextTokens(),
 		}
 	}()
 

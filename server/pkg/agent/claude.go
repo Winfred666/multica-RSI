@@ -202,6 +202,7 @@ func (b *claudeBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 		var lastUsageResult *claudeSDKMessage
 		sawAsyncLaunch := false
 		usage := make(map[string]TokenUsage)
+		var contextTokens int64
 		seenUsage := make(map[string]struct{})
 		eventCount := 0
 		invalidEventCount := 0
@@ -261,7 +262,7 @@ func (b *claudeBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 			switch msg.Type {
 			case "assistant":
 				assistantEventCount++
-				turn := b.handleAssistant(msg, msgCh, usage, seenUsage)
+				turn := b.handleAssistant(msg, msgCh, usage, seenUsage, &contextTokens)
 				toolUseCount += turn.toolUses
 				if !turn.understood {
 					unreadableAssistantCount++
@@ -272,6 +273,9 @@ func (b *claudeBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 					sawAsyncLaunch = true
 				}
 			case "system":
+				if msg.Subtype == "compact_boundary" && msg.ParentToolUseID == "" {
+					contextTokens = 0
+				}
 				if msg.SessionID != "" {
 					sessionID = msg.SessionID
 				}
@@ -459,6 +463,7 @@ func (b *claudeBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 			DurationMs:     duration.Milliseconds(),
 			SessionID:      reportedSessionID,
 			Usage:          usage,
+			ContextTokens:  contextTokens,
 			ResumeRejected: resumeRejected,
 		}
 	}()
@@ -471,7 +476,7 @@ func (b *claudeBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 	return session, nil
 }
 
-func (b *claudeBackend) handleAssistant(msg claudeSDKMessage, ch chan<- Message, usage map[string]TokenUsage, seenUsage map[string]struct{}) assistantTurn {
+func (b *claudeBackend) handleAssistant(msg claudeSDKMessage, ch chan<- Message, usage map[string]TokenUsage, seenUsage map[string]struct{}, contextTokens *int64) assistantTurn {
 	var content claudeMessageContent
 	if err := json.Unmarshal(msg.Message, &content); err != nil {
 		// Unreadable body: understood stays false so the caller drops any
@@ -496,6 +501,8 @@ func (b *claudeBackend) handleAssistant(msg claudeSDKMessage, ch chan<- Message,
 		if content.ID != "" {
 			seenUsage[content.ID] = struct{}{}
 		}
+		// Match Claude's native used_percentage: latest input plus cache, excluding output.
+		*contextTokens = content.Usage.InputTokens + content.Usage.CacheReadInputTokens + content.Usage.CacheCreationInputTokens
 		u := usage[content.Model]
 		u.InputTokens += content.Usage.InputTokens
 		u.CacheReadTokens += content.Usage.CacheReadInputTokens

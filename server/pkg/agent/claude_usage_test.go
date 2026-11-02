@@ -102,21 +102,22 @@ func TestClaudeExecuteFallbackUsage(t *testing.T) {
 		result  json.RawMessage
 		success bool
 		want    map[string]TokenUsage
+		context int64
 	}{
-		{name: "split_response_without_result", events: split, want: baseWant},
-		{name: "split_response_zero_result_usage", events: split, result: terminal(true, &claudeUsage{}, map[string]claudeResultModelUsage{model: {}}), want: baseWant},
-		{name: "zero_usage_arrives_before_real_usage", events: []json.RawMessage{assistant("msg_a", model, "", &claudeUsage{OutputTokens: 1}), a, a2}, want: baseWant},
-		{name: "cache_only_response", events: []json.RawMessage{assistant("msg_cache", model, "", &claudeUsage{CacheReadInputTokens: 200, CacheCreationInputTokens: 10}), assistant("msg_cache", model, "", &claudeUsage{CacheReadInputTokens: 200, CacheCreationInputTokens: 10})}, want: map[string]TokenUsage{model: {CacheReadTokens: 200, CacheWriteTokens: 10}}},
-		{name: "interleaved_response_ids", events: []json.RawMessage{a, b, a2}, want: map[string]TokenUsage{model: {InputTokens: 130, CacheReadTokens: 260, CacheWriteTokens: 15}}},
-		{name: "distinct_models", events: []json.RawMessage{a, assistant("msg_b", otherModel, "", secondUsage), a}, want: map[string]TokenUsage{model: baseWant[model], otherModel: {InputTokens: 30, CacheReadTokens: 60, CacheWriteTokens: 5}}},
-		{name: "usage_arrives_on_later_block", events: []json.RawMessage{assistant("msg_a", model, "", nil), a, a}, want: baseWant},
-		{name: "model_arrives_on_later_block", events: []json.RawMessage{assistant("msg_a", "", "", usage), a, a}, want: baseWant},
-		{name: "no_response_ids_remain_best_effort", events: []json.RawMessage{assistant("", model, "", usage), assistant("", model, "", secondUsage)}, want: map[string]TokenUsage{model: {InputTokens: 130, CacheReadTokens: 260, CacheWriteTokens: 15}}},
-		{name: "subagent_events_are_not_main_loop_fallback", events: []json.RawMessage{assistant("msg_a", model, "parent_tool", usage), a, a}, want: baseWant},
+		{name: "split_response_without_result", events: split, want: baseWant, context: 310},
+		{name: "split_response_zero_result_usage", events: split, result: terminal(true, &claudeUsage{}, map[string]claudeResultModelUsage{model: {}}), want: baseWant, context: 310},
+		{name: "zero_usage_arrives_before_real_usage", events: []json.RawMessage{assistant("msg_a", model, "", &claudeUsage{OutputTokens: 1}), a, a2}, want: baseWant, context: 310},
+		{name: "cache_only_response", events: []json.RawMessage{assistant("msg_cache", model, "", &claudeUsage{CacheReadInputTokens: 200, CacheCreationInputTokens: 10}), assistant("msg_cache", model, "", &claudeUsage{CacheReadInputTokens: 200, CacheCreationInputTokens: 10})}, want: map[string]TokenUsage{model: {CacheReadTokens: 200, CacheWriteTokens: 10}}, context: 210},
+		{name: "interleaved_response_ids", events: []json.RawMessage{a, b, a2}, want: map[string]TokenUsage{model: {InputTokens: 130, CacheReadTokens: 260, CacheWriteTokens: 15}}, context: 95},
+		{name: "distinct_models", events: []json.RawMessage{a, assistant("msg_b", otherModel, "", secondUsage), a}, want: map[string]TokenUsage{model: baseWant[model], otherModel: {InputTokens: 30, CacheReadTokens: 60, CacheWriteTokens: 5}}, context: 95},
+		{name: "usage_arrives_on_later_block", events: []json.RawMessage{assistant("msg_a", model, "", nil), a, a}, want: baseWant, context: 310},
+		{name: "model_arrives_on_later_block", events: []json.RawMessage{assistant("msg_a", "", "", usage), a, a}, want: baseWant, context: 310},
+		{name: "no_response_ids_remain_best_effort", events: []json.RawMessage{assistant("", model, "", usage), assistant("", model, "", secondUsage)}, want: map[string]TokenUsage{model: {InputTokens: 130, CacheReadTokens: 260, CacheWriteTokens: 15}}, context: 95},
+		{name: "subagent_events_are_not_main_loop_fallback", events: []json.RawMessage{a, a, assistant("msg_child", model, "parent_tool", secondUsage)}, want: baseWant, context: 310},
 		{name: "placeholder_output_alone_is_not_usage", events: []json.RawMessage{assistant("msg_a", model, "", &claudeUsage{OutputTokens: 1})}, want: map[string]TokenUsage{}},
-		{name: "successful_model_totals_override_fallback", events: split, result: terminal(false, &claudeUsage{InputTokens: 999}, finalUsage), success: true, want: finalWant},
-		{name: "failed_model_totals_override_fallback", events: split, result: terminal(true, &claudeUsage{InputTokens: 999}, finalUsage), want: finalWant},
-		{name: "terminal_usage_without_model_totals", events: split, result: terminal(true, &claudeUsage{InputTokens: 150, OutputTokens: 50, CacheReadInputTokens: 300, CacheCreationInputTokens: 15}, nil), want: map[string]TokenUsage{model: finalWant[model]}},
+		{name: "successful_model_totals_override_fallback", events: split, result: terminal(false, &claudeUsage{InputTokens: 999}, finalUsage), success: true, want: finalWant, context: 310},
+		{name: "failed_model_totals_override_fallback", events: split, result: terminal(true, &claudeUsage{InputTokens: 999}, finalUsage), want: finalWant, context: 310},
+		{name: "terminal_usage_without_model_totals", events: split, result: terminal(true, &claudeUsage{InputTokens: 150, OutputTokens: 50, CacheReadInputTokens: 300, CacheCreationInputTokens: 15}, nil), want: map[string]TokenUsage{model: finalWant[model]}, context: 310},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -133,6 +134,9 @@ func TestClaudeExecuteFallbackUsage(t *testing.T) {
 			if !reflect.DeepEqual(result.Usage, tt.want) {
 				t.Fatalf("usage = %#v, want %#v", result.Usage, tt.want)
 			}
+			if result.ContextTokens != tt.context {
+				t.Fatalf("context = %d, want %d", result.ContextTokens, tt.context)
+			}
 		})
 	}
 }
@@ -140,7 +144,7 @@ func TestClaudeExecuteFallbackUsage(t *testing.T) {
 func TestClaudeFallbackUsageIsScopedToExecution(t *testing.T) {
 	t.Parallel()
 	event := json.RawMessage(`{"type":"assistant","message":{"id":"msg_reused","role":"assistant","model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":200,"cache_creation_input_tokens":10},"content":[{"type":"text","text":"visible text"},{"type":"tool_use","id":"tool_reused","name":"Read","input":{"file_path":"fixture.txt"}}]}}`)
-	backend := claudeUsageFixtureBackend(t, []json.RawMessage{event, event}, nil, true)
+	backend := claudeUsageFixtureBackend(t, []json.RawMessage{event, event, json.RawMessage(`{"type":"system","subtype":"compact_boundary"}`)}, nil, true)
 	for i := 0; i < 2; i++ {
 		t.Run(fmt.Sprintf("execution_%d", i), func(t *testing.T) {
 			t.Parallel()
@@ -148,6 +152,9 @@ func TestClaudeFallbackUsageIsScopedToExecution(t *testing.T) {
 			want := TokenUsage{InputTokens: 100, CacheReadTokens: 200, CacheWriteTokens: 10}
 			if got := result.Usage["claude-sonnet-4-6"]; got != want {
 				t.Fatalf("usage = %+v, want %+v", got, want)
+			}
+			if result.ContextTokens != 0 {
+				t.Fatalf("context = %d after compaction, want 0", result.ContextTokens)
 			}
 		})
 	}

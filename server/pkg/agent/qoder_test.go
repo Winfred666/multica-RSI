@@ -262,6 +262,8 @@ while IFS= read -r line; do
       printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"ses_model","models":{"currentModelId":"qoder:auto","availableModels":[{"modelId":"qoder:auto","name":"Qoder Auto"}]}}}\n' "$id"
       ;;
     *'"method":"session/prompt"'*)
+      printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ses_model","update":{"sessionUpdate":"usage_update","used":64000,"size":256000}}}'
+      printf '%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ses_model","update":{"sessionUpdate":"usage_update","used":32000,"size":256000}}}'
       printf '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn","usage":{"inputTokens":17,"outputTokens":5,"cachedReadTokens":3,"cachedWriteTokens":2,"costUsdTicks":900}}}\n' "$id"
       exit 0
       ;;
@@ -909,6 +911,9 @@ func TestQoderBackendAttributesUsageToACPDefaultModel(t *testing.T) {
 		}
 		if usage != (TokenUsage{InputTokens: 17, OutputTokens: 5, CacheReadTokens: 3, CacheWriteTokens: 2, CostUSDTicks: 900}) {
 			t.Fatalf("usage = %+v, want all prompt-result fields", usage)
+		}
+		if result.ContextTokens != 32000 {
+			t.Fatalf("context = %d, want latest ACP used value 32000", result.ContextTokens)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("timeout waiting for result")
