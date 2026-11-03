@@ -1712,6 +1712,10 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if err := qtx.AddSystemSkillsToAgent(r.Context(), created.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to attach system skills")
+		return
+	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to commit agent create")
 		return

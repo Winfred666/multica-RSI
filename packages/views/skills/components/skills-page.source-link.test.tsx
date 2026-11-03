@@ -2,7 +2,9 @@
 
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { api } from "@multica/core/api";
 import type { SkillSummary } from "@multica/core/types";
 import type { SupportedLocale } from "@multica/core/i18n";
 import { renderWithI18n } from "../../test/i18n";
@@ -36,7 +38,10 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@tanstack/react-query", () => ({
+vi.mock("@multica/core/api", () => ({ api: { updateSkill: vi.fn().mockResolvedValue({}) } }));
+
+vi.mock("@tanstack/react-query", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-query")>()),
   useQuery: (options: { queryKey?: readonly unknown[] }) => {
     if (options.queryKey?.[0] === "skills") {
       return {
@@ -154,9 +159,11 @@ function makeAdapter(
 
 function renderPage(adapter: NavigationAdapter, locale?: SupportedLocale) {
   renderWithI18n(
-    <NavigationProvider value={adapter}>
-      <SkillsPage />
-    </NavigationProvider>,
+    <QueryClientProvider client={new QueryClient()}>
+      <NavigationProvider value={adapter}>
+        <SkillsPage />
+      </NavigationProvider>
+    </QueryClientProvider>,
     { locale },
   );
 }
@@ -228,5 +235,28 @@ describe("SkillsPage docs link", () => {
     expect(
       screen.getByRole("link", { name: "En savoir plus →" }),
     ).toHaveAttribute("href", "https://multica.ai/docs/fr/skills");
+  });
+});
+
+
+describe("SkillsPage system skill flag", () => {
+  it.each([false, true])("toggles the flag from %s without navigating", async (enabled) => {
+    mocks.skills = [{ ...importedSkill, is_system_skill: enabled }];
+    const adapter = makeAdapter();
+    renderPage(adapter);
+    const toggle = await screen.findByRole("switch", { name: "System: animations" });
+    expect(toggle).toHaveAttribute("aria-checked", String(enabled));
+    fireEvent.click(toggle);
+    await waitFor(() => expect(api.updateSkill).toHaveBeenCalledWith("skill-1", { is_system_skill: !enabled }));
+    expect(adapter.push).not.toHaveBeenCalled();
+  });
+
+  it("disables the flag when the skill cannot be edited", async () => {
+    mocks.skills = [{ ...importedSkill, created_by: "another-user" }];
+    renderPage(makeAdapter());
+    const toggle = await screen.findByRole("switch", { name: "System: animations" });
+    expect(toggle).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(toggle);
+    expect(api.updateSkill).not.toHaveBeenCalled();
   });
 });

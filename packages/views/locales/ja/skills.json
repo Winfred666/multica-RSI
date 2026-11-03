@@ -46,6 +46,7 @@
     "supporting_data_warning": "一部のワークスペースデータを読み込めませんでした。作成者の表示、ランタイム名、編集権限が不完全に見える場合があります。"
   },
   "table": {
+    "system_skill": "システム",
     "name": "名前",
     "created_by": "追加者",
     "used_by": "使用中",

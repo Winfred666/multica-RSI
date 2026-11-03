@@ -46,6 +46,7 @@
     "supporting_data_warning": "Some workspace data failed to load. Creator attribution, runtime names, or edit permissions may appear incomplete."
   },
   "table": {
+    "system_skill": "System",
     "name": "Name",
     "created_by": "Added by",
     "used_by": "Used by",

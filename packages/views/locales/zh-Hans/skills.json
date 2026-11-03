@@ -46,6 +46,7 @@
     "supporting_data_warning": "部分工作区数据加载失败。创建者归属、运行时名称、编辑权限可能显示不完整。"
   },
   "table": {
+    "system_skill": "系统",
     "name": "名称",
     "created_by": "添加者",
     "used_by": "被谁使用",

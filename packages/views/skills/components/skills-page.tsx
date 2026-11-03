@@ -18,7 +18,9 @@ import type {
   Skill,
   SkillSummary,
 } from "@multica/core/types";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@multica/core/api";
+import { toast } from "sonner";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -33,6 +35,7 @@ import { runtimeDisplayLabel, runtimeListOptions } from "@multica/core/runtimes"
 import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
 import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
+import { Switch } from "@multica/ui/components/ui/switch";
 import {
   LIST_GRID_BOTTOM_CLEARANCE,
   ListGrid,
@@ -81,7 +84,7 @@ import { docsLocalePrefix } from "../../common/docs-locale";
 
 // Column template — single source of truth for header, rows, and skeletons.
 // Tracks: [edge 0.75rem] [checkbox 1rem] [name, only fr track]
-// [usedBy] [source] [creator] [updated] [created] [kebab 1.75rem]
+// [system] [usedBy] [source] [creator] [updated] [created] [kebab 1.75rem]
 // [edge 0.75rem].
 // Content cells carry a default px-2 from list-grid.tsx
 // (structural columns opt out with px-0), so the narrow edge tracks plus
@@ -105,10 +108,10 @@ import { docsLocalePrefix } from "../../common/docs-locale";
 //   never the default experience; an enabled column must NEVER silently
 //   vanish (that "dead toggle" bug shipped twice).
 // - Container < @2xl (phones, slim split panes): static core set
-//   (name + usedBy), no horizontal scroll, column toggles don't apply.
+//   (name + system + usedBy), no horizontal scroll, column toggles don't apply.
 const GRID_COLS =
-  "grid-cols-[0.75rem_1rem_minmax(120px,1fr)_var(--lgc-usedby)_1.75rem_0.75rem] " +
-  "@2xl:grid-cols-[0.75rem_1rem_minmax(200px,1fr)_var(--lgc-usedby)_var(--lgc-source)_var(--lgc-creator)_var(--lgc-updated)_var(--lgc-created)_1.75rem_0.75rem]";
+  "grid-cols-[0.75rem_1rem_minmax(120px,1fr)_4rem_var(--lgc-usedby)_1.75rem_0.75rem] " +
+  "@2xl:grid-cols-[0.75rem_1rem_minmax(200px,1fr)_4rem_var(--lgc-usedby)_var(--lgc-source)_var(--lgc-creator)_var(--lgc-updated)_var(--lgc-created)_1.75rem_0.75rem]";
 
 // h-12 rows. The virtualizer's fixed-size contract: every row renders at
 // exactly this height, which is what lets it skip per-row measurement.
@@ -124,10 +127,10 @@ const COLUMN_WIDTHS: Record<SkillColumnKey, number> = {
   created: 104,
 };
 
-// Fixed tracks (edges 12+12, checkbox 16, name min 200, kebab 28) plus the
-// 9 gap-x-3 gaps between the wide template's 10 tracks (zero-width tracks
-// still carry gaps).
-const FIXED_TRACKS_WIDTH = 268 + 9 * 12;
+// Fixed tracks (edges 12+12, checkbox 16, name min 200, kebab 28,
+// system 64) plus the 10 gap-x-3 gaps between the 11 tracks.
+// Zero-width tracks still carry gaps.
+const FIXED_TRACKS_WIDTH = 332 + 10 * 12;
 
 function columnTrackVars(
   isVisible: (key: SkillColumnKey) => boolean,
@@ -392,6 +395,30 @@ function CreatorCell({ creator }: { creator: MemberWithUser | null }) {
   );
 }
 
+function SystemSkillCell({ row }: { row: SkillRow }) {
+  const { t } = useT("skills");
+  const wsId = useWorkspaceId();
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (isSystemSkill: boolean) =>
+      api.updateSkill(row.skill.id, { is_system_skill: isSystemSkill }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: skillListOptions(wsId).queryKey }),
+    onError: (error) => toast.error(error.message),
+  });
+  return (
+    <ListGridCell {...rowLinkInteractiveProps}>
+      <Switch
+        size="sm"
+        aria-label={`${t(($) => $.table.system_skill)}: ${row.skill.name}`}
+        checked={row.skill.is_system_skill === true}
+        disabled={!row.canEdit || mutation.isPending}
+        onCheckedChange={(checked) => mutation.mutate(checked)}
+      />
+    </ListGridCell>
+  );
+}
+
 // Empty state
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
@@ -461,6 +488,7 @@ function SkillListHeader({
       <ListGridHeaderCell sorted={sorted("name")} onSort={() => onSort("name")}>
         {t(($) => $.table.name)}
       </ListGridHeaderCell>
+      <ListGridHeaderCell>{t(($) => $.table.system_skill)}</ListGridHeaderCell>
       {isColVisible("usedBy") ? (
         <ListGridHeaderCell
           sorted={sorted("usedBy")}
@@ -524,6 +552,9 @@ function LoadingSkeleton() {
           <Skeleton className="h-3 w-12" />
         </ListGridHeaderCell>
         <ListGridHeaderCell>
+          <Skeleton className="h-3 w-10" />
+        </ListGridHeaderCell>
+        <ListGridHeaderCell>
           <Skeleton className="h-3 w-14" />
         </ListGridHeaderCell>
         {/* Source and created are hidden by default — keep their tracks
@@ -544,6 +575,9 @@ function LoadingSkeleton() {
           <span aria-hidden="true" />
           <ListGridCell>
             <Skeleton className="h-3.5 w-40 max-w-full" />
+          </ListGridCell>
+          <ListGridCell>
+            <Skeleton className="h-3 w-6" />
           </ListGridCell>
           <ListGridCell>
             <Skeleton className="h-5 w-14" />
@@ -867,6 +901,7 @@ export default function SkillsPage() {
                   onToggle={() => toggleSelected(row.skill.id)}
                 />
                 <NameCell row={row} />
+                <SystemSkillCell row={row} />
                 {isColVisible("usedBy") ? (
                   <UsedByCell agents={row.agents} />
                 ) : (

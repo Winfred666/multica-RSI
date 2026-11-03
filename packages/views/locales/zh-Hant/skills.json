@@ -46,6 +46,7 @@
     "supporting_data_warning": "部分工作區資料載入失敗。建立者歸屬、執行時名稱、編輯權限可能顯示不完整。"
   },
   "table": {
+    "system_skill": "系統",
     "name": "名稱",
     "created_by": "新增者",
     "used_by": "被誰使用",

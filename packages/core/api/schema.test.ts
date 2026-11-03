@@ -150,6 +150,16 @@ describe("ApiClient schema fallback", () => {
       updated_at: "2026-01-01T00:00:00Z",
     };
 
+    it.each([undefined, null, "true", 1, false, true])(
+      "defaults malformed or absent system flags safely: %s",
+      async (isSystemSkill) => {
+        stubFetchJson([{ ...baseSkill, is_system_skill: isSystemSkill }]);
+        const client = new ApiClient("https://api.example.test");
+        const skills = await client.listSkills();
+        expect(skills[0]?.is_system_skill).toBe(isSystemSkill === true);
+      },
+    );
+
     it("falls back to an empty list when the response is malformed", async () => {
       stubFetchJson({ skills: "not-an-array" });
       const client = new ApiClient("https://api.example.test");

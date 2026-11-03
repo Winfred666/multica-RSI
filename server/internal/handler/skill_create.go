@@ -19,6 +19,8 @@ type skillCreateInput struct {
 	Content     string
 	Config      any
 	Files       []CreateSkillFileRequest
+
+	IsSystemSkill bool
 }
 
 // createSkillWithFilesInTx writes a skill plus its supporting files using the
@@ -42,6 +44,8 @@ func createSkillWithFilesInTx(ctx context.Context, qtx *db.Queries, input skillC
 		Content:     sanitizeNullBytes(input.Content),
 		Config:      config,
 		CreatedBy:   input.CreatorID,
+
+		IsSystemSkill: input.IsSystemSkill,
 	})
 	if err != nil {
 		return SkillWithFilesResponse{}, err

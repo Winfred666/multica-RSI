@@ -46,6 +46,7 @@
     "supporting_data_warning": "Certaines données de l'espace de travail n'ont pas pu être chargées. L'attribution des créateurs, les noms de runtimes ou les droits de modification peuvent apparaître incomplets."
   },
   "table": {
+    "system_skill": "Système",
     "name": "Nom",
     "created_by": "Ajouté par",
     "used_by": "Utilisé par",

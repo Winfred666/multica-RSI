@@ -54,6 +54,8 @@ type SkillResponse struct {
 	CreatedBy   *string `json:"created_by"`
 	CreatedAt   string  `json:"created_at"`
 	UpdatedAt   string  `json:"updated_at"`
+
+	IsSystemSkill bool `json:"is_system_skill"`
 }
 
 // SkillSummaryResponse is the list-endpoint shape: everything SkillResponse
@@ -78,6 +80,8 @@ type SkillSummaryResponse struct {
 	// always sets a non-nil slice (empty when none). Other summary
 	// producers leave this nil so the field is omitted.
 	Labels *[]LabelResponse `json:"labels,omitempty"`
+
+	IsSystemSkill bool `json:"is_system_skill"`
 }
 
 // AgentSkillSummary is the still-narrower shape used for skills embedded in
@@ -181,6 +185,8 @@ func skillToResponse(s db.Skill) SkillResponse {
 		CreatedBy:   uuidToPtr(s.CreatedBy),
 		CreatedAt:   timestampToString(s.CreatedAt),
 		UpdatedAt:   timestampToString(s.UpdatedAt),
+
+		IsSystemSkill: s.IsSystemSkill,
 	}
 }
 
@@ -229,6 +235,7 @@ func skillSummaryToResponse(
 	config []byte,
 	createdBy pgtype.UUID,
 	createdAt, updatedAt pgtype.Timestamptz,
+	isSystemSkill bool,
 ) SkillSummaryResponse {
 	return SkillSummaryResponse{
 		ID:          uuidToString(id),
@@ -239,6 +246,8 @@ func skillSummaryToResponse(
 		CreatedBy:   uuidToPtr(createdBy),
 		CreatedAt:   timestampToString(createdAt),
 		UpdatedAt:   timestampToString(updatedAt),
+
+		IsSystemSkill: isSystemSkill,
 	}
 }
 
@@ -281,6 +290,8 @@ type CreateSkillRequest struct {
 	Content     string                   `json:"content"`
 	Config      any                      `json:"config"`
 	Files       []CreateSkillFileRequest `json:"files,omitempty"`
+
+	IsSystemSkill bool `json:"is_system_skill"`
 }
 
 type CreateSkillFileRequest struct {
@@ -294,6 +305,8 @@ type UpdateSkillRequest struct {
 	Content     *string                  `json:"content"`
 	Config      any                      `json:"config"`
 	Files       []CreateSkillFileRequest `json:"files,omitempty"`
+
+	IsSystemSkill *bool `json:"is_system_skill"`
 }
 
 type SetAgentSkillsRequest struct {
@@ -356,7 +369,7 @@ func (h *Handler) ListSkills(w http.ResponseWriter, r *http.Request) {
 	for i, s := range skills {
 		resp[i] = skillSummaryToResponse(
 			s.ID, s.WorkspaceID, s.Name, s.Description, s.Config,
-			s.CreatedBy, s.CreatedAt, s.UpdatedAt,
+			s.CreatedBy, s.CreatedAt, s.UpdatedAt, s.IsSystemSkill,
 		)
 		// Own a non-nil slice so JSON is `labels: []` (not `null`/omitted).
 		// append(nil, xs...) keeps a nil header when xs is empty.
@@ -507,7 +520,7 @@ func (h *Handler) writeSkillMetadata(w http.ResponseWriter, r *http.Request, ski
 	writeJSON(w, http.StatusOK, SkillWithFileMetadataResponse{
 		SkillSummaryResponse: skillSummaryToResponse(
 			skill.ID, skill.WorkspaceID, skill.Name, skill.Description,
-			skill.Config, skill.CreatedBy, skill.CreatedAt, skill.UpdatedAt,
+			skill.Config, skill.CreatedBy, skill.CreatedAt, skill.UpdatedAt, skill.IsSystemSkill,
 		),
 		ContentSize: int64(len(skill.Content)),
 		ContentHash: contentHash(skill.Content),
@@ -554,6 +567,8 @@ func (h *Handler) CreateSkill(w http.ResponseWriter, r *http.Request) {
 		Content:     req.Content,
 		Config:      req.Config,
 		Files:       req.Files,
+
+		IsSystemSkill: req.IsSystemSkill,
 	})
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -628,7 +643,10 @@ func (h *Handler) UpdateSkill(w http.ResponseWriter, r *http.Request) {
 	qtx := h.Queries.WithTx(tx)
 
 	params := db.UpdateSkillParams{
-		ID: parseUUID(id),
+		ID: skill.ID,
+	}
+	if req.IsSystemSkill != nil {
+		params.IsSystemSkill = pgtype.Bool{Bool: *req.IsSystemSkill, Valid: true}
 	}
 	if req.Name != nil {
 		params.Name = pgtype.Text{String: sanitizeNullBytes(*req.Name), Valid: true}
@@ -2578,7 +2596,7 @@ func (h *Handler) ListAgentSkills(w http.ResponseWriter, r *http.Request) {
 	for i, s := range skills {
 		resp[i] = skillSummaryToResponse(
 			s.ID, s.WorkspaceID, s.Name, s.Description, s.Config,
-			s.CreatedBy, s.CreatedAt, s.UpdatedAt,
+			s.CreatedBy, s.CreatedAt, s.UpdatedAt, s.IsSystemSkill,
 		)
 		resp[i].Enabled = &s.Enabled
 	}
@@ -2788,7 +2806,7 @@ func (h *Handler) writeUpdatedAgentSkills(w http.ResponseWriter, r *http.Request
 	for i, s := range skills {
 		resp[i] = skillSummaryToResponse(
 			s.ID, s.WorkspaceID, s.Name, s.Description, s.Config,
-			s.CreatedBy, s.CreatedAt, s.UpdatedAt,
+			s.CreatedBy, s.CreatedAt, s.UpdatedAt, s.IsSystemSkill,
 		)
 		resp[i].Enabled = &s.Enabled
 	}

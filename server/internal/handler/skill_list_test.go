@@ -3,12 +3,70 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/multica-ai/multica/server/internal/testutil"
 )
+
+func TestSystemSkillFlagControlsNewAgentDefaults(t *testing.T) {
+	wsID := dbfx.Workspace(t, "System skills", "handler-system-skills")
+	fx := testutil.New(testPool, wsID, testUserID)
+	fx.Member(t, wsID, testUserID, "owner")
+	runtimeID := fx.Runtime(t, "System skills")
+	fx.Cleanup(t, `DELETE FROM skill WHERE workspace_id = $1`, wsID)
+	fx.Cleanup(t, `DELETE FROM agent WHERE workspace_id = $1`, wsID)
+	fx.Cleanup(t, `DELETE FROM agent_skill WHERE agent_id IN (SELECT id FROM agent WHERE workspace_id = $1)`, wsID)
+	request := func(method, path string, body any) *http.Request {
+		req := newRequest(method, path, body)
+		req.Header.Set("X-Workspace-ID", wsID)
+		return req
+	}
+	var skill SkillWithFilesResponse
+	testutil.Call(t, testHandler.CreateSkill, request(http.MethodPost, "/api/skills", map[string]any{
+		"name": "any-name", "content": "Workspace content", "is_system_skill": true,
+	})).Want(http.StatusCreated).JSON(&skill)
+	if !skill.IsSystemSkill {
+		t.Fatal("create response lost system skill flag")
+	}
+	var firstAgent string
+	for i, enabled := range []bool{true, false, true} {
+		var updated SkillWithFilesResponse
+		testutil.Call(t, testHandler.UpdateSkill, withURLParam(request(http.MethodPut, "/api/skills/"+skill.ID,
+			map[string]any{"is_system_skill": enabled}), "id", skill.ID)).Want(http.StatusOK).JSON(&updated)
+		if updated.IsSystemSkill != enabled || updated.Content != "Workspace content" {
+			t.Fatalf("flag update changed content or lost flag: %+v", updated)
+		}
+		var skills []SkillSummaryResponse
+		testutil.Call(t, testHandler.ListSkills, request(http.MethodGet, "/api/skills", nil)).Want(http.StatusOK).JSON(&skills)
+		if len(skills) != 1 || skills[0].IsSystemSkill != enabled {
+			t.Fatalf("list flag = %+v, want %v", skills, enabled)
+		}
+		var created AgentResponse
+		testutil.Call(t, testHandler.CreateAgent, request(http.MethodPost, "/api/agents", map[string]any{
+			"name": []string{"first", "second", "third"}[i], "runtime_id": runtimeID,
+		})).Want(http.StatusCreated).JSON(&created)
+		want := 0
+		if enabled {
+			want = 1
+		}
+		if len(created.Skills) != want {
+			t.Fatalf("new agent skills = %+v, want %d", created.Skills, want)
+		}
+		if enabled && (created.Skills[0].ID != skill.ID || !created.Skills[0].Enabled) {
+			t.Fatalf("system skill not equipped: %+v", created.Skills)
+		}
+		if i == 0 {
+			firstAgent = created.ID
+		}
+		if got := fx.Count(t, `SELECT count(*) FROM agent_skill WHERE agent_id = $1 AND skill_id = $2 AND enabled`, firstAgent, skill.ID); got != 1 {
+			t.Fatal("changing the system flag changed an existing agent")
+		}
+	}
+}
 
 // TestListSkills_OmitsContent guards the fix for GH multica-ai/multica#2174:
 // the workspace skill list endpoint must not ship the SKILL.md `content`

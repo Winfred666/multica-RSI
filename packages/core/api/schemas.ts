@@ -3543,6 +3543,7 @@ export const SkillFileSchema = z.object({
 // `files`: those belong on the detail endpoint. Defaulting them here used
 // to invent empty bodies on every list row (GH #2174).
 export const SkillSummarySchema = z.object({
+  is_system_skill: z.boolean().catch(false),
   id: z.string(),
   workspace_id: z.string(),
   name: z.string(),

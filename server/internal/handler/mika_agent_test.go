@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/service"
+	"github.com/multica-ai/multica/server/internal/testutil"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -44,6 +45,9 @@ func cleanupMika(t *testing.T) {
 // that makes Mika Mika is decided here.
 func TestCreateMikaAgent_ServerOwnsTheDefinition(t *testing.T) {
 	cleanupMika(t)
+	skillID := dbfx.Insert(t, "skill", testutil.Cols{
+		"workspace_id": testWorkspaceID, "name": "Mika default", "is_system_skill": true,
+	})
 
 	w := createMika(t, map[string]any{
 		"runtime_id": handlerTestRuntimeID(t),
@@ -53,6 +57,10 @@ func TestCreateMikaAgent_ServerOwnsTheDefinition(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
 	resp := decodeAgent(t, w)
+
+	if len(resp.Skills) != 1 || resp.Skills[0].ID != skillID || !resp.Skills[0].Enabled {
+		t.Fatalf("Mika system skills = %+v", resp.Skills)
+	}
 
 	if resp.SystemKey != service.MikaSystemKey {
 		t.Fatalf("system_key = %q, want %q", resp.SystemKey, service.MikaSystemKey)

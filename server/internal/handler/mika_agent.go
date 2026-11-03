@@ -223,6 +223,10 @@ func (h *Handler) resolveMikaAgent(w http.ResponseWriter, r *http.Request, works
 		writeError(w, http.StatusInternalServerError, "failed to save agent access")
 		return db.Agent{}, false, false
 	}
+	if err := qtx.AddSystemSkillsToAgent(r.Context(), created.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to attach system skills")
+		return db.Agent{}, false, false
+	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to commit agent create")
 		return db.Agent{}, false, false
@@ -238,6 +242,9 @@ func (h *Handler) resolveMikaAgent(w http.ResponseWriter, r *http.Request, works
 
 func (h *Handler) writeMikaAgentResponse(w http.ResponseWriter, r *http.Request, agent db.Agent, workspaceID, userID, sessionTitle string, created bool) {
 	resp := h.agentToResponse(agent)
+	if err := h.attachAgentSkills(r.Context(), &resp, agent.ID); err != nil {
+		slog.Warn("mika agent: load skills failed", append(logger.RequestAttrs(r), "error", err)...)
+	}
 	if err := h.enrichAgentResponseWithTargets(r.Context(), &resp, agent.ID); err != nil {
 		slog.Warn("mika agent: load invocation targets failed", append(logger.RequestAttrs(r), "error", err, "agent_id", uuidToString(agent.ID))...)
 	}

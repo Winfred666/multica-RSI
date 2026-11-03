@@ -871,6 +871,7 @@ export interface UpdateAgentEnvRequest {
  * the body. For skills embedded in an `Agent` payload see `AgentSkillSummary`.
  */
 export interface SkillSummary {
+  is_system_skill?: boolean;
   id: string;
   workspace_id: string;
   name: string;
@@ -900,6 +901,7 @@ export interface SkillFile {
 }
 
 export interface CreateSkillRequest {
+  is_system_skill?: boolean;
   name: string;
   description?: string;
   content?: string;
@@ -921,6 +923,7 @@ export interface SkillImportResult {
 }
 
 export interface UpdateSkillRequest {
+  is_system_skill?: boolean;
   name?: string;
   description?: string;
   content?: string;
