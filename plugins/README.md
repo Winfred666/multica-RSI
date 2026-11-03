@@ -52,7 +52,7 @@ installation upgrade; configuration edits need neither a ZIP nor a host restart.
 Sub-issue hooks react to issue events without recurring schedules. They submit a
 durable native wakeup even while the parent is busy; Multica handles waiting and
 delivery. They skip closed, backlog, human-assigned and unassigned parents.
-Current status categories support custom board statuses. Manual checks remain available.
+Current status categories support custom board statuses.
 Ralph listens only to `task.completed`, checks the affected issue, and posts the
 configured prompt as a comment mentioning its current agent or squad leader.
 The comment triggers continuation immediately, without a timer or cooldown.

@@ -15,17 +15,17 @@
     "hooks": [
       {
         "key": "all_finished", "name": "All sub-issues finished", "description": "Bring the child results back to the parent.",
-        "triggers": ["event", "manual"], "events": ["issue.created", "issue.updated", "issue.status_changed"],
+        "triggers": ["event"], "events": ["issue.created", "issue.updated", "issue.status_changed"],
         "timeout_ms": 30000, "transport": { "type": "exec", "entry": "hook.py" }
       },
       {
         "key": "in_review", "name": "Sub-issue in review", "description": "Ask the parent to review a child's result.",
-        "triggers": ["event", "manual"], "events": ["issue.created", "issue.updated", "issue.status_changed"],
+        "triggers": ["event"], "events": ["issue.created", "issue.updated", "issue.status_changed"],
         "timeout_ms": 30000, "transport": { "type": "exec", "entry": "hook.py" }
       },
       {
         "key": "blocked", "name": "Sub-issue blocked", "description": "Ask the parent to resolve a child's blocker.",
-        "triggers": ["event", "manual"], "events": ["issue.created", "issue.updated", "issue.status_changed"],
+        "triggers": ["event"], "events": ["issue.created", "issue.updated", "issue.status_changed"],
         "timeout_ms": 30000, "transport": { "type": "exec", "entry": "hook.py" }
       }
     ]

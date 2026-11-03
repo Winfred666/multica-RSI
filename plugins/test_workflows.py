@@ -300,7 +300,7 @@ class PackagingTests(unittest.TestCase):
                             self.assertIn("tasks:read", manifest["scopes"])
                             self.assertNotIn("schedule", hook)
                         else:
-                            self.assertEqual(hook["triggers"], ["event", "manual"])
+                            self.assertEqual(hook["triggers"], ["event"])
                             self.assertEqual(hook["events"], ["issue.created", "issue.updated", "issue.status_changed"])
                             self.assertNotIn("schedule", hook)
 

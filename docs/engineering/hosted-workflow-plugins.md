@@ -134,8 +134,7 @@ Workflow policy belongs in plugin packages. Sub-issue hooks react to issue
 events and create deduplicated native wakeups; Ralph reacts to completed runs.
 Neither package uses recurring polling. The
 [plugin dispatcher](../../server/internal/service/plugin_event_dispatch.go)
-can drop events under load; manual sub-issue checks can re-evaluate current
-conditions. Other packages can use the existing
+can drop events under load. Other packages can use the existing
 [scheduler](../../server/internal/scheduler/jobs_plugin_hook.go) when needed.
 
 ## Existing V1 manifest examples
