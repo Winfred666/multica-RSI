@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { EyeOff, Plus, RotateCcw } from "lucide-react";
 import type { AgentTask, Issue, Project } from "@multica/core/types";
@@ -13,12 +13,14 @@ import { issueTimelineOptions } from "@multica/core/issues/queries";
 import { issueStatusCategory, statusColumnKeys } from "@multica/core/issues";
 import { STATUS_CONFIG } from "@multica/core/issues/config";
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
+import { isEditableShortcutTarget } from "@multica/core/shortcuts";
 import {
   buildIssueTree, issueTreeCollaborators, layoutIssueTree, TREE_NODE_WIDTH,
 } from "@multica/core/issues/surface/tree";
 import { Button } from "@multica/ui/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
 import { Switch } from "@multica/ui/components/ui/switch";
+import { cn } from "@multica/ui/lib/utils";
 import { AppLink } from "../../navigation";
 import { useZoomCanvas } from "../../editor/hooks/use-zoom-canvas";
 import { ZoomCanvas, ZoomControls } from "../../editor/zoom-canvas";
@@ -27,11 +29,11 @@ import { sortIssues } from "../utils/sort";
 import { useStatusLabel } from "../utils/status-label";
 import type { IssueCreateDefaults } from "../surface/types";
 import type { IssueStatusPagination } from "../surface/use-issue-status-branches";
+import { useIssueSurfaceSelection } from "../surface/selection-context";
 import { IssueHoverCard } from "./issue-hover-card";
 import { BoardCardContent } from "./board-card";
 import type { ChildProgress } from "./list-row";
 import { IssueActionsContextMenu } from "../actions";
-import { PEEK_TARGET_ATTR, useIsIssuePeeked, useIssuePeekLinkProps } from "../surface/peek-context";
 import { TreeCollaboratorAvatar, TreeIssueHoverContent } from "./tree-hover-content";
 import { BUILT_IN_ICON_COLOR, StatusIcon } from "./status-icon";
 
@@ -67,7 +69,61 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
     new Set(hiddenStatuses.filter((status) => !statusFilters.includes(status))),
     expanded,
   ), heights), [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, heights]);
-  const canvas = useZoomCanvas({ content: layout, initialTransform: treeViewport, preserveTransform: true });
+  const canvas = useZoomCanvas({ content: layout, initialTransform: treeViewport, preserveTransform: true, panWithSpace: true });
+  const selection = useIssueSurfaceSelection();
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ pointerId: number; x: number; y: number; selected: Set<string> } | null>(null);
+  const suppressClick = useRef(false);
+  const [rectangle, setRectangle] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+
+  function contentPoint(event: PointerEvent<HTMLElement>) {
+    const bounds = canvasRef.current!.getBoundingClientRect();
+    return {
+      x: (event.clientX - bounds.left - canvas.transform.x) / canvas.transform.scale,
+      y: (event.clientY - bounds.top - canvas.transform.y) / canvas.transform.scale,
+    };
+  }
+
+  function handlePointerDown(event: PointerEvent<HTMLElement>) {
+    suppressClick.current = canvas.isSpacePressed;
+    if (canvas.isSpacePressed || event.pointerType === "touch") {
+      canvas.handlePointerDown(event);
+      return;
+    }
+    if (event.button !== 0 || (event.target as Element).closest("[data-tree-card], button, a, input, textarea, select")) return;
+    event.preventDefault();
+    event.currentTarget.focus({ preventScroll: true });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const point = contentPoint(event);
+    drag.current = { pointerId: event.pointerId, ...point, selected: new Set(event.shiftKey || event.ctrlKey || event.metaKey ? selection.selectedIds : []) };
+    setRectangle({ ...point, width: 0, height: 0 });
+  }
+
+  function handlePointerMove(event: PointerEvent<HTMLElement>) {
+    const start = drag.current;
+    if (!start || start.pointerId !== event.pointerId) {
+      canvas.handlePointerMove(event);
+      return;
+    }
+    const point = contentPoint(event);
+    const rect = { x: Math.min(start.x, point.x), y: Math.min(start.y, point.y), width: Math.abs(point.x - start.x), height: Math.abs(point.y - start.y) };
+    suppressClick.current = true;
+    setRectangle(rect);
+    const selected = new Set(start.selected);
+    for (const { node, x, y, height } of layout.nodes) {
+      if (!node.collapsed && x + TREE_NODE_WIDTH / 2 >= rect.x && x - TREE_NODE_WIDTH / 2 <= rect.x + rect.width && y + height >= rect.y && y <= rect.y + rect.height) selected.add(node.issues[0]!.id);
+    }
+    selection.deselect([...selection.selectedIds].filter((id) => !selected.has(id)));
+    selection.select([...selected]);
+  }
+
+  function handlePointerUp(event: PointerEvent<HTMLElement>) {
+    if (drag.current?.pointerId === event.pointerId) {
+      drag.current = null;
+      setRectangle(null);
+    }
+    canvas.handlePointerUp(event);
+  }
   useEffect(() => {
     setTreeViewport(canvas.transform);
   }, [canvas.transform, setTreeViewport]);
@@ -90,7 +146,24 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/15" style={{ backgroundImage: "radial-gradient(var(--border) 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/15" style={{ backgroundImage: "radial-gradient(var(--border) 1px, transparent 1px)", backgroundSize: "24px 24px" }}
+      onClickCapture={(event) => {
+        if (suppressClick.current && canvasRef.current?.contains(event.target as Node)) {
+          suppressClick.current = false;
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        const card = (event.target as Element).closest<HTMLElement>("[data-tree-card]");
+        if (card && selection.selectedIds.size > 0 && (event.target as Element).closest("a")) {
+          event.preventDefault();
+          event.stopPropagation();
+          selection.toggle(card.dataset.treeCard!);
+        } else if (!card && canvasRef.current?.contains(event.target as Node)) {
+          selection.clear();
+        }
+      }}
+    >
       <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-2">
         <span className="text-caption text-muted-foreground" role="status">
           {failed ? t(($) => $.tree.load_failed) : pending ? t(($) => $.tree.loading) : t(($) => $.tree.pan_hint)}
@@ -111,7 +184,20 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
           </Popover>
         </div>
       </div>
-      <ZoomCanvas canvas={canvas} content={layout} label={t(($) => $.view.tree)}>
+      <ZoomCanvas canvas={{ ...canvas, handlePointerDown, handlePointerMove, handlePointerUp,
+        handleKeyDown: (event) => {
+          if (!isEditableShortcutTarget(event.target)) {
+            if (event.key === "Escape") selection.clear();
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+              event.preventDefault();
+              selection.select(layout.nodes.filter(({ node }) => !node.collapsed).map(({ node }) => node.issues[0]!.id));
+              return;
+            }
+          }
+          canvas.handleKeyDown(event);
+        },
+      }} canvasRef={canvasRef} className={!canvas.isSpacePressed && !canvas.isPanning ? "[&.zoom-canvas]:cursor-default" : undefined} content={layout} label={t(($) => $.view.tree)}>
+        {rectangle && <div aria-hidden="true" data-tree-selection className="pointer-events-none absolute z-10 border border-brand bg-brand/10" style={{ left: rectangle.x, top: rectangle.y, width: rectangle.width, height: rectangle.height }} />}
         <svg width={layout.width} height={layout.height} className="pointer-events-none absolute inset-0" aria-hidden="true">
           {layout.nodes.map((position) => {
             const parent = position.parentId ? byId.get(position.parentId) : null;
@@ -163,8 +249,8 @@ function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, on
 }) {
   const { t } = useT("issues");
   const paths = useWorkspacePaths();
-  const peeked = useIsIssuePeeked(issue.id);
-  const peekLinkProps = useIssuePeekLinkProps(issue.id);
+  const selection = useIssueSurfaceSelection();
+  const selected = selection.selectedIds.has(issue.id);
   const ref = useRef<HTMLDivElement>(null);
   const nodeId = collapsed?.id ?? issue.id;
   useEffect(() => {
@@ -218,8 +304,8 @@ function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, on
   return (
     <div ref={ref} className="w-full" data-tree-card={issue.id}>
       <IssueActionsContextMenu issue={issue}>
-        <div className="group/card" {...{ [PEEK_TARGET_ATTR]: issue.id }} data-peeked={peeked ? "" : undefined}>
-          <AppLink href={paths.issueDetail(issue.id)} newTabTitle={issue.identifier} className="block" {...peekLinkProps}>
+        <div className={cn("group/card rounded-lg", selected && "outline outline-1 outline-brand")} data-selected={selected ? "" : undefined}>
+          <AppLink href={paths.issueDetail(issue.id)} newTabTitle={issue.identifier} className="block">
             {card}
           </AppLink>
         </div>

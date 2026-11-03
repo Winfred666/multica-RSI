@@ -3,7 +3,7 @@
     "input_trend": "Current context: {{tokens}} tokens",
     "input_drops": "Context compressions: {{count}}",
     "input_trend_hint": "Estimated from completed runs; ring assumes a 256K-token context window.",
-    "pan_hint": "Drag the canvas to pan",
+    "pan_hint": "Drag to select · Hold Space to pan",
     "loading": "Loading tree…",
     "load_failed": "Some branches could not load",
     "hide_statuses": "Collapse statuses",

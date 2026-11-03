@@ -41,7 +41,7 @@ export function buildIssueTree(
   function collapse(nodes: IssueTreeNode[], parent: string): IssueTreeNode[] {
     const groupId = `collapsed:${parent}`;
     const hidden = nodes.filter((node) => hiddenStatuses.has(node.issues[0]!.status));
-    if (hidden.length === 0 || expandedGroups.has(groupId)) {
+    if (hidden.length < 2 || expandedGroups.has(groupId)) {
       return nodes.map((node) => ({ ...node, children: collapse(node.children, node.id) }));
     }
     const hiddenIds = new Set(hidden.map((node) => node.id));

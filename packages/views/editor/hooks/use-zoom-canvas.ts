@@ -24,6 +24,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { isEditableShortcutTarget, isPortalLayerShortcutTarget } from "@multica/core/shortcuts";
 import {
   MAX_SCALE,
   PAN_STEP_PX,
@@ -51,6 +52,8 @@ interface UseZoomCanvasOptions {
   initialTransform?: ZoomTransform | null;
   /** Keep the camera fixed when live content or the viewport changes size. */
   preserveTransform?: boolean;
+  /** Reserve mouse dragging for selection unless Space is held. */
+  panWithSpace?: boolean;
   /**
    * Whether Left/Right pan the canvas. Set false when the surrounding viewer
    * binds those keys itself — image-sequence prev/next (MUL-5752) — so the two
@@ -75,6 +78,7 @@ export interface ZoomCanvasApi {
   canZoomIn: boolean;
   canZoomOut: boolean;
   isPanning: boolean;
+  isSpacePressed: boolean;
   /**
    * True when the last change came from a discrete control (button/keyboard)
    * rather than direct manipulation, so the transform can be eased. Dragging
@@ -105,13 +109,37 @@ export function useZoomCanvas({
   content,
   initialTransform = null,
   preserveTransform = false,
+  panWithSpace = false,
   horizontalArrowPan = true,
 }: UseZoomCanvasOptions): ZoomCanvasApi {
   const [viewportNode, setViewportNode] = useState<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState<Size>(EMPTY_SIZE);
   const [transform, setTransform] = useState<ZoomTransform>(initialTransform ?? IDENTITY);
   const [isPanning, setIsPanning] = useState(false);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isAnimated, setIsAnimated] = useState(false);
+
+  useEffect(() => {
+    if (!panWithSpace || !viewportNode) return;
+    const keyDown = (event: KeyboardEvent) => {
+      if (event.key !== " " || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+      if (isEditableShortcutTarget(event.target) || isPortalLayerShortcutTarget(event.target)) return;
+      if ((event.target as Element).closest?.("button, [role=button]")) return;
+      if (!viewportNode.contains(event.target as Node) && !viewportNode.matches(":hover")) return;
+      event.preventDefault();
+      setIsSpacePressed(true);
+    };
+    const release = () => setIsSpacePressed(false);
+    const keyUp = (event: KeyboardEvent) => { if (event.key === " ") release(); };
+    window.addEventListener("keydown", keyDown, true);
+    window.addEventListener("keyup", keyUp);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("keydown", keyDown, true);
+      window.removeEventListener("keyup", keyUp);
+      window.removeEventListener("blur", release);
+    };
+  }, [panWithSpace, viewportNode]);
 
   // Fit is deferred until both sizes are known; until then any transform we
   // computed would be against a 0x0 viewport and would have to be thrown away.
@@ -261,10 +289,15 @@ export function useZoomCanvas({
 
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
-      if ((event.target as Element).closest(INTERACTIVE_SELECTOR)) return;
+      if (panWithSpace && event.pointerType !== "touch" && !isSpacePressed) return;
+      if ((event.target as Element).closest(INTERACTIVE_SELECTOR) && !(panWithSpace && isSpacePressed)) return;
       if (!stateRef.current.ready) return;
       // Ignore secondary mouse buttons so right-click never starts a pan.
       if (event.pointerType === "mouse" && event.button !== 0) return;
+      if (panWithSpace && isSpacePressed) {
+        event.preventDefault();
+        event.currentTarget.focus({ preventScroll: true });
+      }
 
       setIsAnimated(false);
       const point = localPoint(event);
@@ -288,7 +321,7 @@ export function useZoomCanvas({
         setIsPanning(false);
       }
     },
-    [localPoint],
+    [localPoint, panWithSpace, isSpacePressed],
   );
 
   const handlePointerMove = useCallback(
@@ -430,6 +463,7 @@ export function useZoomCanvas({
     // below 25% the button must stay live all the way down to that fit scale.
     canZoomOut: transform.scale > computeMinScale(contentSize, viewport) + 0.001,
     isPanning,
+    isSpacePressed,
     isAnimated,
     zoomIn,
     zoomOut,

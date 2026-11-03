@@ -35,6 +35,13 @@ describe("issue tree", () => {
     expect(new Set(nodes.map((node) => node.node.id)).size).toBe(5);
   });
 
+  it("keeps single hidden siblings and their descendants expanded", () => {
+    const issues = [issue("root", null, "done"), issue("parent", "root", "done"), issue("child", "parent")];
+    const { nodes } = layoutIssueTree(buildIssueTree(issues, new Set(["done"]), new Set()));
+    expect(nodes.map(({ node }) => node.id)).toEqual(["root", "parent", "child"]);
+    expect(nodes.every(({ node }) => !node.collapsed)).toBe(true);
+  });
+
   it("spaces levels for the tallest configurable card and updates when it shrinks", () => {
     const roots = buildIssueTree([issue("p"), issue("sibling"), issue("child", "p")], new Set(), new Set());
     const layout = layoutIssueTree(roots, new Map([["p", 450], ["sibling", 520]]));

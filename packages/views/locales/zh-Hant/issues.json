@@ -1714,7 +1714,7 @@
     "input_trend": "目前上下文：{{tokens}} tokens",
     "input_drops": "上下文壓縮次數：{{count}}",
     "input_trend_hint": "根據已完成的執行估算；圓環預設按 256K token 上下文視窗顯示。",
-    "pan_hint": "拖動畫布以平移",
+    "pan_hint": "拖動框選，按住空白鍵平移",
     "loading": "正在載入樹狀圖...",
     "load_failed": "部分分支載入失敗",
     "hide_statuses": "摺疊狀態",

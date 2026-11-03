@@ -13,6 +13,8 @@ import { issueTasksOptions, issueTimelineOptions } from "@multica/core/issues/qu
 import { renderWithI18n } from "../../test/i18n";
 import { TreeView } from "./tree-view";
 import type { IssueStatusPagination } from "../surface/use-issue-status-branches";
+import { IssueSurfaceSelectionProvider, useCreateIssueSurfaceSelection } from "../surface/selection-context";
+import type { ZoomTransform } from "../../editor/hooks/use-zoom-canvas";
 
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
 vi.mock("@multica/core/workspace/hooks", () => ({ useActorName: () => ({ getActorName: (_type: string, id: string) => id }) }));
@@ -38,7 +40,12 @@ const comment = (actor: string, content = "Posted reply", actorType = "agent"): 
   type: "comment", id: content, actor_type: actorType, actor_id: actor, content, created_at: "2026-01-01",
 });
 
-function setup(rows: Issue[], tasks: AgentTask[] = [], timeline: TimelineEntry[] = []) {
+function SelectionProvider({ children }: { children: ReactNode }) {
+  const selection = useCreateIssueSurfaceSelection("tree");
+  return <IssueSurfaceSelectionProvider selection={selection}>{children}</IssueSurfaceSelectionProvider>;
+}
+
+function setup(rows: Issue[], tasks: AgentTask[] = [], timeline: TimelineEntry[] = [], treeViewport: ZoomTransform | null = null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const api = {
     listTimeline: vi.fn<() => Promise<TimelineEntry[]>>(async () => timeline),
@@ -49,9 +56,9 @@ function setup(rows: Issue[], tasks: AgentTask[] = [], timeline: TimelineEntry[]
   };
   setApiInstance(api as unknown as ApiClient);
   const store = createStore(viewStoreSlice);
-  store.setState({ viewMode: "tree", hiddenStatuses: ["done", "cancelled"] });
+  store.setState({ viewMode: "tree", hiddenStatuses: ["done", "cancelled"], treeViewport });
   const create = vi.fn();
-  const render = (issues: Issue[]) => <QueryClientProvider client={qc}><ViewStoreProvider store={store}><TreeView issues={issues} statusPagination={{} as IssueStatusPagination} onCreateIssue={create} /></ViewStoreProvider></QueryClientProvider>;
+  const render = (issues: Issue[]) => <QueryClientProvider client={qc}><ViewStoreProvider store={store}><SelectionProvider><TreeView issues={issues} statusPagination={{} as IssueStatusPagination} onCreateIssue={create} /></SelectionProvider></ViewStoreProvider></QueryClientProvider>;
   const result = renderWithI18n(render(rows));
   return { ...result, qc, store, create, render, api };
 }
@@ -69,18 +76,20 @@ describe("TreeView", () => {
     const user = userEvent.setup();
     const root = issue("Parent");
     const done = { ...issue("Delivered", "Parent", "done"), description: "Completed parent summary" };
+    const cancelled = issue("Cancelled", "Parent", "cancelled");
     const descendant = issue("Active descendant", "Delivered");
-    const { create, rerender, render, qc, store } = setup([root, done, descendant]);
+    const { create, rerender, render, qc, store } = setup([root, done, cancelled, descendant]);
     expect(screen.queryByRole("link", { name: /Active descendant/ })).not.toBeInTheDocument();
     act(() => store.getState().toggleCardProperty("description"));
     expect(screen.getByText("Completed parent summary")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Delivered/ })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Expand hidden issues (1)" }));
+    fireEvent.keyDown(screen.getByRole("application", { name: "Tree" }), { key: "a", ctrlKey: true });
+    await user.click(screen.getByRole("button", { name: "Expand hidden issues (2)" }));
     expect(screen.getByRole("link", { name: /Delivered/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Active descendant/ })).toBeInTheDocument();
     await user.click(screen.getAllByRole("button", { name: "Create sub-issue" })[0]!);
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ parent_issue_id: "Parent" }));
-    rerender(render([root, done, descendant, issue("New sub-issue", "Parent")]));
+    rerender(render([root, done, cancelled, descendant, issue("New sub-issue", "Parent")]));
     expect(screen.getByRole("link", { name: /New sub-issue/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Collapse hidden statuses" }));
     expect(screen.queryByRole("link", { name: /Delivered/ })).not.toBeInTheDocument();
@@ -88,7 +97,7 @@ describe("TreeView", () => {
     qc.clear();
   });
 
-  it("supports zoom and panning with standard cards", async () => {
+  it("supports zoom and Space panning over cards without opening them", async () => {
     const row = issue("Working");
     const tasks = ["agent-Working", "helper"].map((agent_id) => ({ agent_id, issue_id: row.id, status: "running", created_at: "2026-01-01" } as AgentTask));
     const { container, qc } = setup([row], tasks);
@@ -101,11 +110,64 @@ describe("TreeView", () => {
     canvas.releasePointerCapture = vi.fn();
     const content = container.querySelector(".zoom-canvas-content") as HTMLElement;
     const previous = content.style.transform;
-    fireEvent.pointerDown(canvas, { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.keyDown(canvas, { key: " " });
+    fireEvent.pointerDown(screen.getByRole("link", { name: /Working/ }), { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
     fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 40, clientY: 50 });
     expect(content.style.transform).not.toBe(previous);
     fireEvent.pointerUp(canvas, { pointerId: 1 });
+    fireEvent.keyUp(canvas, { key: " " });
+    expect(fireEvent.click(screen.getByRole("link", { name: /Working/ }))).toBe(false);
+    const afterPan = content.style.transform;
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 2, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(canvas, { pointerId: 2, clientX: 40, clientY: 50 });
+    expect(content.style.transform).toBe(afterPan);
+    fireEvent.pointerUp(canvas, { pointerId: 2 });
     act(() => qc.clear());
+  });
+
+  it("rectangle-selects visible issues at the current zoom, supports additive selection, and clears with Escape", () => {
+    const { container, qc } = setup([issue("First"), issue("Second"), issue("Third"), issue("Hidden", null, "done"), issue("Hidden too", null, "done")], [], [], { scale: 0.5, x: 80, y: 35 });
+    const canvas = screen.getByRole("application", { name: "Tree" });
+    const selected = () => [...container.querySelectorAll("[data-tree-card]:has([data-selected])")].map((card) => card.getAttribute("data-tree-card"));
+    const content = container.querySelector(".zoom-canvas-content") as HTMLElement;
+    const previous = content.style.transform;
+    // Client coordinates include both the saved camera offset and 50% zoom.
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 1, clientX: 430, clientY: 135 });
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 100, clientY: 55 });
+    expect(selected()).toEqual(["First", "Second"]);
+    expect(container.querySelector("[data-tree-selection]")).toHaveStyle({ left: "40px", top: "40px", width: "660px", height: "160px" });
+    expect(container.querySelector("[data-selected]")).toHaveClass("outline-1", "outline-brand");
+    expect(content.style.transform).toBe(previous);
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 280, clientY: 55 });
+    expect(selected()).toEqual(["Second"]);
+    fireEvent.pointerUp(canvas, { pointerId: 1 });
+    expect(container.querySelector("[data-tree-selection]")).toBeNull();
+    fireEvent.click(canvas);
+    expect(selected()).toEqual(["Second"]);
+
+    fireEvent.click(screen.getByRole("link", { name: /Third/ }));
+    expect(selected()).toEqual(["Second", "Third"]);
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 2, clientX: 100, clientY: 55, shiftKey: true });
+    fireEvent.pointerMove(canvas, { pointerId: 2, clientX: 260, clientY: 135 });
+    fireEvent.pointerUp(canvas, { pointerId: 2 });
+    fireEvent.click(canvas);
+    expect(selected()).toEqual(["First", "Second", "Third"]);
+
+    fireEvent.keyDown(canvas, { key: "Escape" });
+    expect(selected()).toEqual([]);
+    fireEvent.keyDown(canvas, { key: "a", ctrlKey: true });
+    expect(selected()).toEqual(["First", "Second", "Third"]);
+    const first = screen.getByRole("link", { name: /First/ });
+    const navigate = vi.fn((event: Event) => event.preventDefault());
+    first.addEventListener("click", navigate);
+    fireEvent.click(first);
+    expect(selected()).toEqual(["Second", "Third"]);
+    expect(navigate).not.toHaveBeenCalled();
+    fireEvent.click(canvas);
+    expect(selected()).toEqual([]);
+    fireEvent.click(first);
+    expect(navigate).toHaveBeenCalledOnce();
+    qc.clear();
   });
 
   it("uses standard card display options and opens the latest report from its title in any status", async () => {

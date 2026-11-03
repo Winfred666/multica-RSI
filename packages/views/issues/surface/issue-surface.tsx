@@ -254,7 +254,8 @@ function IssueSurfaceContent({
     batchToolbar !== "never" &&
     (batchToolbar === "always" ||
       controller.viewMode === "list" ||
-      controller.viewMode === "table");
+      controller.viewMode === "table" ||
+      controller.viewMode === "tree");
 
   return (
     <IssueSurfaceActionsProvider actions={controller.actions}>
