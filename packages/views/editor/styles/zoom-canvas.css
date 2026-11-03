@@ -45,6 +45,14 @@
   cursor: grabbing;
 }
 
+.zoom-canvas.tree-canvas:focus-visible {
+  outline: none;
+}
+
+.zoom-canvas.tree-canvas:not(.is-panning):not(.is-space-pressed) {
+  cursor: default;
+}
+
 .zoom-canvas-content {
   position: absolute;
   top: 0;

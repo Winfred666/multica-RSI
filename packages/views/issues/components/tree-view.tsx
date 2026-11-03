@@ -196,7 +196,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
           }
           canvas.handleKeyDown(event);
         },
-      }} canvasRef={canvasRef} className={!canvas.isSpacePressed && !canvas.isPanning ? "[&.zoom-canvas]:cursor-default" : undefined} content={layout} label={t(($) => $.view.tree)}>
+      }} canvasRef={canvasRef} className={cn("tree-canvas", canvas.isSpacePressed && "is-space-pressed")} content={layout} label={t(($) => $.view.tree)}>
         {rectangle && <div aria-hidden="true" data-tree-selection className="pointer-events-none absolute z-10 border border-brand bg-brand/10" style={{ left: rectangle.x, top: rectangle.y, width: rectangle.width, height: rectangle.height }} />}
         <svg width={layout.width} height={layout.height} className="pointer-events-none absolute inset-0" aria-hidden="true">
           {layout.nodes.map((position) => {
