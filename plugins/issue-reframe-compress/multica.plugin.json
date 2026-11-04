@@ -1,79 +1,51 @@
 {
   "manifest_version": 1,
-  "key": "com.multica.issue-reframe-compress",
-  "name": "Issue reframe compress",
-  "description": "Clean issue discussion at a natural stopping point in the assignee\u2019s existing run, after two context compressions.",
-  "version": "1.0.1",
-  "author": {
-    "name": "Multica"
-  },
-  "scopes": [
-    "host:exec",
-    "issues:read",
-    "tasks:read",
-    "comments:read",
-    "comments:write",
-    "storage:workspace"
-  ],
+  "key": "org.multica-aide.issue-reframe-compress",
+  "name": "Comment and thread pruning",
+  "description": "Review stale comments and resolved threads for deletion in batches of five, after every two context compressions.",
+  "version": "1.0.4",
+  "author": {"name": "Multica"},
+  "scopes": ["host:exec", "issues:read", "tasks:read", "comments:read", "comments:write", "storage:workspace"],
   "contributes": {
     "hooks": [
       {
+        "key": "cleanup",
+        "name": "Review discussion after compression",
+        "description": "Offer discussion cleanup at compression thresholds 2, 4, 6 and onward.",
+        "triggers": ["event"],
+        "events": ["task.completed"],
+        "timeout_ms": 30000,
+        "transport": {"type": "exec", "entry": "hook.py"}
+      },
+      {
         "key": "comments",
         "name": "Issue comments",
-        "description": "Issue comments: At a natural stopping point in your normal issue work, call with issue_id to check whether cleanup is due. If comments are returned, process them serially: delete noise, update with one short plain-text result or conclusion, or preserve important experiments, guidance, and knowledge. Submit id, revision, and action; include content for update. Repeat until complete, then follow the returned instruction to resume your original task. Do not post a cleanup comment.",
-        "triggers": [
-          "agent"
-        ],
+        "description": "Review five open comments or five resolved threads at a time; resolved threads show only their final comment. Delete stale discussion about fixed problems, old scores or rounds; keep useful guidance and results. Submit id, revision and action (delete or keep), then repeat until complete. Do not rewrite or summarize comments or post a cleanup comment.",
+        "triggers": ["agent"],
         "input_schema": {
           "type": "object",
           "properties": {
-            "issue_id": {
-              "type": "string"
-            },
+            "issue_id": {"type": "string"},
             "decisions": {
               "type": "array",
-              "maxItems": 20,
+              "maxItems": 5,
               "items": {
                 "type": "object",
                 "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "revision": {
-                    "type": "integer",
-                    "minimum": 1
-                  },
-                  "action": {
-                    "type": "string",
-                    "enum": [
-                      "delete",
-                      "update",
-                      "preserve"
-                    ]
-                  },
-                  "content": {
-                    "type": "string"
-                  }
+                  "id": {"type": "string"},
+                  "revision": {"type": "integer", "minimum": 1},
+                  "action": {"type": "string", "enum": ["delete", "keep"]}
                 },
-                "required": [
-                  "id",
-                  "revision",
-                  "action"
-                ],
+                "required": ["id", "revision", "action"],
                 "additionalProperties": false
               }
             }
           },
-          "required": [
-            "issue_id"
-          ],
+          "required": ["issue_id"],
           "additionalProperties": false
         },
         "timeout_ms": 30000,
-        "transport": {
-          "type": "exec",
-          "entry": "hook.py"
-        }
+        "transport": {"type": "exec", "entry": "hook.py"}
       }
     ]
   }

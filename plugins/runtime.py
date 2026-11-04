@@ -14,7 +14,7 @@ def fingerprint(value):
 
 
 def category(issue):
-    return issue.get("status_category") or issue["status"]
+    return {"done": "done", "closed": "cancelled"}.get(issue.get("status_category"), issue["status"])
 
 
 def finished(issue):
@@ -89,6 +89,32 @@ class API:
             return json.loads(row["value"])
         self.request("PUT", path, {"value": json.dumps(value)})
 
+    def continuation_thread(self, issue_id, task_id, prompt, receipt):
+        marker = "<!-- aide-ralph:" + self.installation + ":" + task_id + " -->"
+        headers = {}
+        rows = self.request("GET", f"/api/issues/{issue_id}/comments?roots_only=true", response_headers=headers)
+        if {key.lower(): value for key, value in headers.items()}.get("x-comments-truncated") == "true":
+            raise RuntimeError("continuation comment inventory is truncated")
+        matches = [row for row in rows if marker in row.get("content", "")]
+        if not matches:
+            if receipt.get("pending_run") == task_id:
+                raise RuntimeError("continuation comment creation is uncertain; inspect the issue before retrying")
+            token = self.payload.get("callback_token")
+            callback_url = self.payload.get("callback_url")
+            if not token or not callback_url:
+                raise RuntimeError("continuation requires the event hook callback URL and token")
+            self.state("issue:" + issue_id, dict(receipt, pending_run=task_id))
+            request = Request(callback_url.rstrip("/") + f"/issues/{issue_id}/comments",
+                              json.dumps({"content": marker + "\n\n" + prompt}).encode(),
+                              {**self.headers, "Authorization": "Bearer " + token}, method="POST")
+            with urlopen(request, timeout=5) as response:
+                matches = [json.load(response)]
+        if (len(matches) != 1 or matches[0].get("author_type") != "plugin"
+                or matches[0].get("author_id") != self.installation or not matches[0].get("id")
+                or matches[0].get("parent_id") or matches[0].get("content") != marker + "\n\n" + prompt):
+            raise RuntimeError("continuation comment does not match this plugin and completed run")
+        return matches[0]["id"]
+
     def target(self, issue):
         if issue.get("assignee_type") == "agent":
             return issue.get("assignee_id")
@@ -98,7 +124,7 @@ class API:
                 return squad.get("leader_id")
         return None
 
-    def wake(self, issue, key, prompt):
+    def wake(self, issue, key, prompt, parent_comment_id=None):
         # Re-read before writing: an event may describe an obsolete assignment.
         current = self.issue(issue["id"])
         if not current or finished(current) or category(current) == "backlog":
@@ -110,6 +136,7 @@ class API:
             self.request("POST", f"/api/issues/{current['id']}/wakeups", {
                 "agent_id": agent, "instruction": prompt, "kind": "at", "after_seconds": 1,
                 "idempotency_key": fingerprint([self.installation, key, agent]),
+                **({"parent_comment_id": parent_comment_id} if parent_comment_id else {}),
             })
         except PermissionError:
             return False

@@ -1,20 +1,45 @@
 {
   "manifest_version": 1,
-  "key": "com.multica.in-progress-ralph",
+  "key": "org.multica-aide.in-progress-ralph",
   "name": "In-progress Ralph",
-  "description": "Continue idle in-progress issues immediately after a completed run.",
-  "version": "1.0.2",
-  "author": { "name": "Multica" },
-  "scopes": ["host:exec", "storage:workspace", "tasks:read"],
+  "description": "Continue idle in-progress issues after completed or failed runs.",
+  "version": "1.0.7",
+  "author": {
+    "name": "Multica"
+  },
+  "scopes": [
+    "host:exec",
+    "storage:workspace",
+    "tasks:read",
+    "comments:write"
+  ],
   "config": {
-    "prompt": { "type": "string", "label": "Continuation prompt", "multiline": true, "required": true }
+    "prompt": {
+      "type": "string",
+      "label": "Continuation prompt",
+      "multiline": true,
+      "required": true
+    }
   },
   "contributes": {
-    "hooks": [{
-      "key": "continue", "name": "Continue in-progress work", "description": "Resume eligible idle work without interrupting runs or waits.",
-      "triggers": ["event"],
-      "events": ["task.completed"],
-      "timeout_ms": 30000, "transport": { "type": "exec", "entry": "hook.py" }
-    }]
+    "hooks": [
+      {
+        "key": "continue",
+        "name": "Continue in-progress work",
+        "description": "Resume eligible idle work without interrupting runs or waits.",
+        "triggers": [
+          "event"
+        ],
+        "events": [
+          "task.completed",
+          "task.failed"
+        ],
+        "timeout_ms": 30000,
+        "transport": {
+          "type": "exec",
+          "entry": "hook.py"
+        }
+      }
+    ]
   }
 }

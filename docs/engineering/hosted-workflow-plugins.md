@@ -206,8 +206,8 @@ Shipped examples: [Schedule Pulse](../../examples/plugins/schedule-pulse/multica
 | Package | Additional policy only |
 | --- | --- |
 | [Wakeup for sub-issue](../../plugins/wakeup-for-sub-issue/multica.plugin.json) | Three configurable prompts handle all children finished, child review, and child blocked. Issue events create one native wakeup per transition. Saved transition IDs preserve deduplication when older timeline activity is truncated. |
-| [In-progress Ralph](../../plugins/in-progress-ralph/multica.plugin.json) | On task completion, continue the affected idle in-progress issue, respecting active/deferred runs, unfinished children, pending wakeups and human handoffs. |
-| [Issue reframe compress](../../plugins/issue-reframe-compress/multica.plugin.json) | Review and clean issue comments within the assignee's current run after two reported context compressions. |
+| [In-progress Ralph](../../plugins/in-progress-ralph/multica.plugin.json) | After completed or failed task runs, continue idle in-progress work while respecting active runs, child handoffs and explicit waits. |
+| [Comment and thread pruning](../../plugins/issue-reframe-compress/multica.plugin.json) | At compression counts 2, 4, 6 and onward, review five open comments or five resolved threads for deletion. Resolved threads show only their final comment. |
 | Issue spending threshold | Read `multica issue usage ISSUE --output json`; compare reported cost with configured `price_limit_usd`, then comment or cancel runs. |
 
 The packages are available in [plugins/](../../plugins/README.md).

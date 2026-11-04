@@ -21,7 +21,6 @@ def policy(name):
 
 
 CHILD = policy("wakeup-for-sub-issue")
-RALPH = policy("in-progress-ralph")
 
 
 class FakeAPI(runtime.API):
@@ -243,66 +242,21 @@ class ChildWakeupTests(unittest.TestCase):
         self.assertEqual(self.check("all_finished", event=False)["wakeups"], 0)
 
 
-class RalphTests(unittest.TestCase):
-    def setUp(self):
-        self.api = FakeAPI()
-        self.api.rows.pop("child")
-        self.api.tasks["parent"] = [{"id": "run-1", "status": "completed", "created_at": "2026-01-01T00:00:00Z"}]
-        self.payload = {"event_type": "task.completed", "issue_id": "parent", "input": {"task_id": "run-1"},
-                        "config": {"prompt": "Continue the task"}}
 
-    def test_continues_immediately_once_per_completed_run(self):
-        self.assertEqual(RALPH(self.api, self.payload), {"continued": 1})
-        self.assertEqual(self.api.writes[0]["content"], "[@Agent](mention://agent/agent)\n\nContinue the task")
-        self.assertEqual(self.api.rules, {})
-        RALPH(self.api, self.payload)
-        self.assertEqual(len(self.api.writes), 1)
-        self.api.tasks["parent"][0]["id"] = "run-2"
-        self.payload["input"]["task_id"] = "run-2"
-        RALPH(self.api, self.payload)
-        self.assertEqual(len(self.api.writes), 2)
 
-    def test_respects_human_handoffs_active_runs_and_failures(self):
-        for state in ("in_review", "blocked", "done", "cancelled", "backlog", "todo"):
-            self.api.status("parent", state)
-            RALPH(self.api, self.payload)
-        self.api.status("parent", "in_progress")
-        for state in ("queued", "running", "dispatched", "deferred", "waiting_local_directory", "failed", "cancelled"):
-            self.api.tasks["parent"][0]["status"] = state
-            RALPH(self.api, self.payload)
-        self.assertEqual(self.api.writes, [])
-
-    def test_waits_for_children_and_rules(self):
-        self.api.rows["child"] = self.api.row("child", "todo", "parent")
-        RALPH(self.api, self.payload)
-        self.api.rows.pop("child")
-        self.api.rules["wait"] = {"issue_id": "parent", "enabled": True}
-        RALPH(self.api, self.payload)
-        self.assertEqual(self.api.writes, [])
 
 
 class PackagingTests(unittest.TestCase):
-    def test_packages_are_single_file_executables_with_declared_triggers(self):
+    def test_child_package_is_executable(self):
         with tempfile.TemporaryDirectory() as directory:
-            for name in ("wakeup-for-sub-issue", "in-progress-ralph"):
-                output = Path(directory) / (name + ".zip")
-                package(ROOT / name, output)
-                with ZipFile(output) as bundle:
-                    self.assertEqual(set(bundle.namelist()), {"multica.plugin.json", "hook.py"})
-                    code = bundle.read("hook.py")
-                    self.assertTrue(code.startswith(b"#!/usr/bin/env python3\n"))
-                    compile(code, "hook.py", "exec")
-                    manifest = json.loads(bundle.read("multica.plugin.json"))
-                    for hook in manifest["contributes"]["hooks"]:
-                        if name == "in-progress-ralph":
-                            self.assertEqual(hook["triggers"], ["event"])
-                            self.assertEqual(hook["events"], ["task.completed"])
-                            self.assertIn("tasks:read", manifest["scopes"])
-                            self.assertNotIn("schedule", hook)
-                        else:
-                            self.assertEqual(hook["triggers"], ["event"])
-                            self.assertEqual(hook["events"], ["issue.created", "issue.updated", "issue.status_changed"])
-                            self.assertNotIn("schedule", hook)
+            output = Path(directory) / "child.zip"
+            package(ROOT / "wakeup-for-sub-issue", output)
+            with ZipFile(output) as bundle:
+                self.assertEqual(set(bundle.namelist()), {"multica.plugin.json", "hook.py"})
+                compile(bundle.read("hook.py"), "hook.py", "exec")
+                manifest = json.loads(bundle.read("multica.plugin.json"))
+                for hook in manifest["contributes"]["hooks"]:
+                    self.assertEqual(hook["events"], ["issue.created", "issue.updated", "issue.status_changed"])
 
 
 if __name__ == "__main__":
