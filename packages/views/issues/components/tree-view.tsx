@@ -9,7 +9,6 @@ import { useWorkspacePaths } from "@multica/core/paths";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { isBuiltInIssueStatus } from "@multica/core/issue-statuses";
 import { agentTaskSnapshotOptions } from "@multica/core/agents";
-import { issueTimelineOptions } from "@multica/core/issues/queries";
 import { issueStatusCategory, statusColumnKeys } from "@multica/core/issues";
 import { STATUS_CONFIG } from "@multica/core/issues/config";
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
@@ -27,6 +26,7 @@ import { ZoomCanvas, ZoomControls } from "../../editor/zoom-canvas";
 import { useT } from "../../i18n";
 import { sortIssues } from "../utils/sort";
 import { useStatusLabel } from "../utils/status-label";
+import { useIssueTimelineQuery } from "../hooks/use-issue-timeline";
 import type { IssueCreateDefaults } from "../surface/types";
 import type { IssueStatusPagination } from "../surface/use-issue-status-branches";
 import { useIssueSurfaceSelection } from "../surface/selection-context";
@@ -264,7 +264,7 @@ function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, on
     return () => observer.disconnect();
   }, [nodeId, onHeightChange]);
   // shortcut: one cached timeline per displayed issue; batch collaborators if large trees need it.
-  const timeline = useQuery(issueTimelineOptions(issue.id));
+  const timeline = useIssueTimelineQuery(issue.id);
   const collaborators = useMemo(() => issueTreeCollaborators(timeline.data ?? []), [timeline.data]);
   const report = collaborators.filter((actor) => actor.actorType === "agent").flatMap((actor) => actor.messages)
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
