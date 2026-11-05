@@ -23,8 +23,10 @@ introduction, supported providers and installation options.
   the runtime when an admin raises an agent's limit.
 
 See the [hosted plugin guide](docs/engineering/hosted-workflow-plugins.md) for
-configuration and API details. In [plugins/](plugins/README.md), we maintain
-packages for parent wakeups, in-progress continuation and issue-comment cleanup.
+configuration and API details. The [workspace startup kit](harness/README.md)
+contains the system prompt, system and library skills, and plugins for parent
+wakeups, in-progress continuation and issue-comment cleanup. Workspace creation
+installs the kit through its self-contained Python installer.
 
 ## Frontend
 

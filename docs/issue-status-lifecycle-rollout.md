@@ -36,7 +36,7 @@ identity, map custom Done/Closed to terminal behavior, and leave other custom
 keys distinct. Lifecycle grouping uses `Category`, not the effective behavior.
 Ordinary creation, assignment, comments, and explicit run requests retain their
 existing trigger rules. Merely entering a custom Started status is not an
-instruction to start, finish or fail an agent. The built-in platform skill and
+instruction to start, finish or fail an agent. The workspace platform skill and
 new daemon task briefs describe this distinction. This is not a workflow engine;
 PR #7990 is subsequent work, not part of this release.
 

@@ -3,7 +3,19 @@ package execenv
 import (
 	"strings"
 	"testing"
+
+	"github.com/multica-ai/multica/harness"
 )
+
+func TestHarnessStartupTemplate(t *testing.T) {
+	prompt, err := harness.Files.ReadFile("startup.gotmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateStartupTemplate(string(prompt)); err != nil {
+		t.Fatal(err)
+	}
+}
 
 const startupContextReferences = `{{.AgentSkills}}
 {{.RequestingUserName}} {{.RequestingUserProfileDescription}}

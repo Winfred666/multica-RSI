@@ -19,6 +19,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/lmittmann/tint v1.2.0
 	github.com/mattn/go-shellwords v1.0.14
+	github.com/multica-ai/multica/harness v0.0.0
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/openai/openai-go/v3 v3.61.0
 	github.com/pelletier/go-toml/v2 v2.4.3
@@ -39,6 +40,8 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+replace github.com/multica-ai/multica/harness => ../harness
 
 require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20 // indirect

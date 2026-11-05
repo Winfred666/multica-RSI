@@ -13,6 +13,7 @@ Multica is a task management platform where people and agents collaborate on iss
 | Location | Responsibility and constraints |
 | --- | --- |
 | `server/` | Go backend; Chi, sqlc, WebSocket |
+| `harness/` | Portable workspace startup prompt, system and library skills, plugins and Python installer. Workspace creation installs this kit through the native APIs. |
 | `packages/core/` | Headless logic, API client, Query hooks, shared Zustand stores. No UI libraries, `react-dom`, `localStorage`, or `process.env`; use `StorageAdapter` for persistence. |
 | `packages/ui/` | UI primitives and shared styles. No business logic or `@multica/core` imports. |
 | `packages/views/` | Shared web/desktop pages and business components. No store definitions, `next/*`, or `react-router-dom`; use `NavigationAdapter`, `useNavigation()`, and `<AppLink>`. |

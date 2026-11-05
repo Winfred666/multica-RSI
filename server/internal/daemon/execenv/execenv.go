@@ -652,11 +652,6 @@ func Prepare(params PrepareParams, logger *slog.Logger) (*Environment, error) {
 	// .agent_context/skills/ fallback was never read (issue #5242). See
 	// hermes_home.go.
 	//
-	// Note this is a local contract, not an observable product behaviour: the
-	// server appends the platform's built-in skills to every agent's skill set
-	// (service.LoadAgentSkillBundles), so a claimed task's AgentSkills is never
-	// empty and the skill-less branch is effectively unreachable in production.
-	// Emptying an agent's own skill list is NOT a way to opt out of the overlay.
 	if params.Provider == "hermes" && len(params.Task.AgentSkills) > 0 {
 		hermesHome := filepath.Join(envRoot, "hermes-home")
 		sessions, err := prepareHermesHome(hermesHome, params.HermesSourceHome, params.HermesSourceMustExist, params.Task.AgentSkills, params.HermesEnv, params.HermesMemoryStore, params.HermesSessionStore, logger)

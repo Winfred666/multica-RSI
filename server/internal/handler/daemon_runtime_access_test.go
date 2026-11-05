@@ -181,7 +181,7 @@ func TestBuildClaimedTaskResponseRejectsAgentOwnerChangedAfterClaim(t *testing.T
 		t.Fatalf("load runtime: %v", err)
 	}
 	req := newOwnerDaemonRequest(http.MethodPost, "/api/daemon/runtimes/"+runtimeID+"/tasks/claim", nil)
-	_, _, _, _, _, failure := testHandler.buildClaimedTaskResponse(
+	_, _, _, _, failure := testHandler.buildClaimedTaskResponse(
 		req, task, runtime, runtimeID, testWorkspaceID,
 	)
 	if failure == nil || failure.status != http.StatusForbidden || failure.outcome != "error_runtime_access_denied" {
@@ -235,7 +235,7 @@ func TestBuildClaimedTaskResponseRejectsAgentReboundAfterClaim(t *testing.T) {
 		t.Fatalf("load old runtime: %v", err)
 	}
 	req := newOwnerDaemonRequest(http.MethodPost, "/api/daemon/runtimes/"+oldRuntimeID+"/tasks/claim", nil)
-	_, _, _, _, _, failure := testHandler.buildClaimedTaskResponse(
+	_, _, _, _, failure := testHandler.buildClaimedTaskResponse(
 		req, task, runtime, oldRuntimeID, testWorkspaceID,
 	)
 	if failure == nil || failure.status != http.StatusConflict || failure.outcome != "error_agent_runtime_changed" {
@@ -288,23 +288,23 @@ func (h *Handler) finalizeClaimDeliveryForTest(
 func (h *Handler) finalizeClaimDeliveryForTestWithRuntime(
 	r *http.Request, task *db.AgentTaskQueue, runtime db.AgentRuntime, runtimeID, runtimeWorkspaceID string,
 ) (AgentTaskResponse, []pgtype.UUID, int, int, *claimBuildFailure, error) {
-	resp, deliveredCommentIDs, _, agentSkillCount, builtinSkillCount, buildFailure := h.buildClaimedTaskResponse(
+	resp, deliveredCommentIDs, _, agentSkillCount, buildFailure := h.buildClaimedTaskResponse(
 		r, task, runtime, runtimeID, runtimeWorkspaceID,
 	)
 	if buildFailure != nil {
-		return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, buildFailure, nil
+		return resp, deliveredCommentIDs, agentSkillCount, 0, buildFailure, nil
 	}
 	if !runtime.OwnerID.Valid {
-		return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount,
+		return resp, deliveredCommentIDs, agentSkillCount, 0,
 			&claimBuildFailure{outcome: "error_token", status: http.StatusInternalServerError, message: "runtime owner required"}, nil
 	}
 	tokenStr, terr := auth.GenerateAgentTaskToken()
 	if terr != nil {
-		return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, nil, fmt.Errorf("generate token: %w", terr)
+		return resp, deliveredCommentIDs, agentSkillCount, 0, nil, fmt.Errorf("generate token: %w", terr)
 	}
 	remoteMCPToken, daemonTokens, derr := remoteMCPDaemonTokenForClaim(resp, runtime)
 	if derr != nil {
-		return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, nil, fmt.Errorf("remote mcp token: %w", derr)
+		return resp, deliveredCommentIDs, agentSkillCount, 0, nil, fmt.Errorf("remote mcp token: %w", derr)
 	}
 	commentBackedTask := task.TriggerCommentID.Valid || len(task.CoalescedCommentIds) > 0
 	receipt, deliveryFailure, ferr := h.finalizeClaimDelivery(r.Context(), task, runtime, runtimeID, runtimeWorkspaceID, &resp, db.CreateTaskTokenParams{
@@ -317,15 +317,15 @@ func (h *Handler) finalizeClaimDeliveryForTestWithRuntime(
 		ExpiresAt:   pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true},
 	}, deliveredCommentIDs, commentBackedTask, nil, daemonTokens...)
 	if ferr != nil {
-		return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, nil, ferr
+		return resp, deliveredCommentIDs, agentSkillCount, 0, nil, ferr
 	}
 	if deliveryFailure != nil {
-		return AgentTaskResponse{}, deliveredCommentIDs, agentSkillCount, builtinSkillCount, deliveryFailure, nil
+		return AgentTaskResponse{}, deliveredCommentIDs, agentSkillCount, 0, deliveryFailure, nil
 	}
 	resp.AuthToken = tokenStr
 	resp.RemoteMCPDaemonToken = remoteMCPToken
 	resp.DeliveredCommentIDs = uuidStringsOrEmpty(receipt)
-	return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, nil, nil
+	return resp, deliveredCommentIDs, agentSkillCount, 0, nil, nil
 }
 
 func TestClaimTaskByRuntime_RuntimeOwnerChangedAfterClaimNeverDelivered(t *testing.T) {

@@ -206,6 +206,10 @@ func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if isMachineCredentialActor(r) {
+		writeError(w, http.StatusForbidden, "workspace creation needs a member PAT or session; Mika creates through its runtime CLI")
+		return
+	}
 
 	// Self-host gate (#3433): when the operator has set
 	// DISABLE_WORKSPACE_CREATION=true, no caller — including existing
@@ -256,13 +260,11 @@ func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "slug is reserved")
 		return
 	}
-	if req.Context == nil {
-		prompt := execenv.DefaultStartupTemplate
-		req.Context = &prompt
-	}
-	if err := execenv.ValidateStartupTemplate(*req.Context); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
+	if req.Context != nil {
+		if err := execenv.ValidateStartupTemplate(*req.Context); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 
 	// Resolve the prefix before opening the transaction: an invalid one is a
@@ -339,6 +341,16 @@ func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 
 	wsID := uuidToString(ws.ID)
+	if err := h.installWorkspaceHarness(r, wsID, req.Context != nil); err != nil {
+		slog.Error("workspace startup kit failed", "workspace_id", wsID, "error", err)
+		writeError(w, http.StatusInternalServerError, "workspace "+wsID+" was created but startup kit installation failed")
+		return
+	}
+	ws, err = h.Queries.GetWorkspace(r.Context(), ws.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read installed workspace")
+		return
+	}
 
 	// "Is this the user's first workspace?" is derived in PostHog by looking
 	// at whether they have a prior workspace_created event, not stamped at

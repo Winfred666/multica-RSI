@@ -1,0 +1,37 @@
+{
+  "system_skills": [
+    "multica-focused-improvement",
+    "multica-surface-block",
+    "multica-issue-turn",
+    "multica-platform",
+    "multica-quick-create",
+    "multica-subissue-review",
+    "multica-subissue-v2",
+    "multica-surface-delivery",
+    "multica-peer-mention-protocol",
+    "multica-project-resource-contract"
+  ],
+  "skills": [
+    "create-symbolic-sop",
+    "harness-backup-restore",
+    "grilling",
+    "ponytail",
+    "multica-onboarding"
+  ],
+  "plugins": [
+    "in-progress-ralph",
+    "issue-reframe-compress",
+    "wakeup-for-sub-issue"
+  ],
+  "plugin_config": {
+    "in-progress-ralph": {
+      "prompt": "Continue the unfinished task from its saved state: keep working or mention an agent for help. When the work is done, run multica-surface-delivery. If the work is truly blocked, run multica-surface-block."
+    },
+    "issue-reframe-compress": {},
+    "wakeup-for-sub-issue": {
+      "all_finished_prompt": "All child issues are settled. Continue the parent task from its saved result and deliver when ready.",
+      "in_review_prompt": "A child submitted work for review. Review its evidence through multica-subissue-review and continue the parent task.",
+      "blocked_prompt": "A child is blocked. Inspect its concrete blocker, resolve it or mention an agent for help, and continue the existing assignment."
+    }
+  }
+}

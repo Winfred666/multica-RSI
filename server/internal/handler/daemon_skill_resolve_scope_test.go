@@ -197,44 +197,6 @@ func TestResolveTaskSkillBundles_LoadsOnlyTheRequestedSkill(t *testing.T) {
 	}
 }
 
-// TestResolveTaskSkillBundles_BuiltinRefTouchesNoWorkspaceQuery pins the other
-// half: built-ins live in the binary, so resolving one must not reach the
-// database at all.
-func TestResolveTaskSkillBundles_BuiltinRefTouchesNoWorkspaceQuery(t *testing.T) {
-	if testHandler == nil || testPool == nil {
-		t.Skip("database not available")
-	}
-
-	ctx := context.Background()
-	spy := &skillQuerySpy{inner: testPool}
-	runtimeID, taskID, _ := resolveScopeFixture(t, ctx, "resolvebuiltin", "resolvebuiltin-alpha")
-
-	// The unscoped set: resolution deliberately serves any built-in by id.
-	builtins := testHandler.TaskService.AllBuiltinSkills()
-	if len(builtins) == 0 {
-		t.Skip("no builtin skills embedded in this build")
-	}
-	want := builtins[0]
-
-	var resp struct {
-		Bundles []service.AgentSkillData `json:"bundles"`
-	}
-	resolveBundles(t, newSpyHandler(t, spy), runtimeID, taskID, resolveSkillBundleRef{
-		ID:     service.BuiltinSkillID(want.Name),
-		Source: skillbundle.SourceBuiltin,
-		Hash:   "sha256:whatever",
-	}).Want(http.StatusOK).JSON(&resp)
-
-	if len(resp.Bundles) != 1 || resp.Bundles[0].Name != want.Name || resp.Bundles[0].Content != want.Content {
-		t.Fatalf("resolved %+v, want builtin %q", resp.Bundles, want.Name)
-	}
-
-	fullCalls, scoped, files := spy.snapshot()
-	if fullCalls != 0 || len(scoped) != 0 || len(files) != 0 {
-		t.Fatalf("builtin resolve hit the database: full=%d scoped=%v files=%v", fullCalls, scoped, files)
-	}
-}
-
 // TestResolveTaskSkillBundles_KeepsRequestOrderAndDeduplicates: the scoped
 // query orders by name, so response order can no longer fall out of the load.
 // It must follow the request, and a repeated ref must not be loaded twice.

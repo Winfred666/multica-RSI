@@ -7143,30 +7143,21 @@ func (s *TaskService) skillsWithFiles(ctx context.Context, skills []db.Skill) ([
 	return result, nil
 }
 
-// LoadAgentSkillBundles returns every skill visible to an agent, including
-// built-ins, with stable bundle hashes and lightweight refs for slim claims.
+// LoadAgentSkillBundles returns attached workspace skills with stable bundle
+// hashes and lightweight refs for slim claims.
 // It fails closed on a workspace-skill read error for the reason in
 // LoadAgentSkills: a bundle set built from a partial read is indistinguishable
 // from a correct one.
-func (s *TaskService) LoadAgentSkillBundles(ctx context.Context, agentID pgtype.UUID, agentSystemKey string, legacyRedirects bool) ([]AgentSkillData, []AgentSkillRefData, error) {
+func (s *TaskService) LoadAgentSkillBundles(ctx context.Context, agentID pgtype.UUID) ([]AgentSkillData, []AgentSkillRefData, error) {
 	skills, err := s.LoadAgentSkills(ctx, agentID)
 	if err != nil {
 		return nil, nil, err
 	}
-	skills = append(skills, s.BuiltinSkills(agentSystemKey, legacyRedirects)...)
 	bundles, refs := BuildAgentSkillBundles(skills)
 	return bundles, refs, nil
 }
 
-// BuiltinSkillID is the ref id a builtin skill is addressed by. Builtins have
-// no database row, so their identity is their name — this is the one place
-// that turns a name into that identity, for both the bundle builder that hands
-// the id out and the resolver that looks one back up.
-func BuiltinSkillID(name string) string { return "builtin:" + name }
-
-// AgentSkillBundleKey is the (source, id) identity a daemon skill ref resolves
-// by. Source is part of the key because a builtin and a workspace skill are
-// different bundles even when they share a name.
+// AgentSkillBundleKey identifies a daemon skill bundle by source and ID.
 func AgentSkillBundleKey(source, id string) string { return source + "\x00" + id }
 
 // AgentSkillBundleRef is one skill a daemon is asking to resolve.
@@ -7190,11 +7181,8 @@ type AgentSkillBundleRef struct {
 func (s *TaskService) LoadRequestedAgentSkillBundles(ctx context.Context, agentID pgtype.UUID, refs []AgentSkillBundleRef) (map[string]AgentSkillData, error) {
 	requestedIDs := make([]pgtype.UUID, 0, len(refs))
 	seenWorkspace := make(map[string]struct{}, len(refs))
-	wantBuiltin := make(map[string]struct{}, len(refs))
 	for _, ref := range refs {
 		switch ref.Source {
-		case skillbundle.SourceBuiltin:
-			wantBuiltin[ref.ID] = struct{}{}
 		case skillbundle.SourceWorkspace:
 			if _, ok := seenWorkspace[ref.ID]; ok {
 				continue
@@ -7233,15 +7221,6 @@ func (s *TaskService) LoadRequestedAgentSkillBundles(ctx context.Context, agentI
 			requested = append(requested, loaded...)
 		}
 	}
-	if len(wantBuiltin) > 0 {
-		// Every built-in, not the agent-scoped subset — see AllBuiltinSkills.
-		for _, builtin := range s.AllBuiltinSkills() {
-			if _, ok := wantBuiltin[BuiltinSkillID(builtin.Name)]; ok {
-				requested = append(requested, builtin)
-			}
-		}
-	}
-
 	bundles, _ := BuildAgentSkillBundles(requested)
 	resolved := make(map[string]AgentSkillData, len(bundles))
 	for _, bundle := range bundles {
@@ -7257,14 +7236,7 @@ func BuildAgentSkillBundles(skills []AgentSkillData) ([]AgentSkillData, []AgentS
 		source := skill.Source
 		id := skill.ID
 		if source == "" {
-			if id == "" {
-				source = skillbundle.SourceBuiltin
-			} else {
-				source = skillbundle.SourceWorkspace
-			}
-		}
-		if id == "" && source == skillbundle.SourceBuiltin {
-			id = BuiltinSkillID(skill.Name)
+			source = skillbundle.SourceWorkspace
 		}
 		skill.Source = source
 		skill.ID = id

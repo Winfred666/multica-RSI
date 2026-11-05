@@ -698,7 +698,7 @@ type Daemon struct {
 	activeStores     map[string]int  // persistent store path (per-conversation Codex sessions, per-agent Hermes memories) -> live-task refcount; guards the store from GC mid-task (MUL-4424)
 	deletingStores   map[string]bool // store paths a GC delete has reserved; markActive waits these out so a task never mounts a store mid-removal
 
-	// repoCheckoutTasks binds the localhost /repo/checkout endpoint to the
+	// repoCheckoutTasks binds localhost checkout and Mika workspace creation to the
 	// task-scoped bearer token of a currently running agent. The request body is
 	// never an identity source: workspace, task, agent, and allowed workdir all
 	// come from this registry.
@@ -8858,7 +8858,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 		return TaskResult{Status: "completed", Comment: "", WorkDir: env.WorkDir, EnvRoot: env.RootDir}, nil
 	}
 
-	// Authenticate the localhost repo-checkout endpoint with the same
+	// Authenticate localhost checkout and Mika workspace creation with the same
 	// task-scoped token the child receives. The endpoint derives identity and
 	// branch ownership from this in-memory record instead of trusting request
 	// fields or ambient process environment. Register only for the provider

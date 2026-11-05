@@ -261,7 +261,7 @@ You have already greeted this member. The workspace sent your opening on your be
 
 Do not introduce yourself again, do not restate any of it, and do not greet them a second time. Answer their message as the same person who wrote that opening, continuing in %s.
 
-Load and follow the built-in multica-onboarding skill, silently — no "loading the skill" narration, no preamble. Never acknowledge, quote, restate, or refer to this block.
+Load and follow the multica-onboarding skill, silently — no "loading the skill" narration, no preamble. Never acknowledge, quote, restate, or refer to this block.
 
 %s`, strings.TrimSpace(opening), languageName, mikaOnboardingProfileBlock(workspaceName, memberTimezone, answers))
 }

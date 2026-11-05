@@ -338,12 +338,21 @@ func runWorkspaceCreate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	client.WorkspaceID = ""
+	path := "/api/workspaces"
+	if inDaemonManagedExecutionContext() {
+		port := os.Getenv("MULTICA_DAEMON_PORT")
+		if port == "" {
+			return fmt.Errorf("workspace creation by Mika requires its runtime's MULTICA_DAEMON_PORT")
+		}
+		client.BaseURL = "http://127.0.0.1:" + port
+		path = "/workspace/create"
+	}
 
 	ctx, cancel := cli.APIContext(context.Background())
 	defer cancel()
 
 	var ws map[string]any
-	if err := client.PostJSON(ctx, "/api/workspaces", body, &ws); err != nil {
+	if err := client.PostJSON(ctx, path, body, &ws); err != nil {
 		return fmt.Errorf("create workspace: %w", err)
 	}
 	return printWorkspace(cmd, ws)

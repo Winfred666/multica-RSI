@@ -54,6 +54,7 @@ func TestCreateWorkspace_DoesNotMarkOnboarded(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("database not available")
 	}
+	workspaceHarnessServer(t)
 
 	ctx := context.Background()
 	const slug = "handler-tests-onboarded-null"
@@ -66,11 +67,13 @@ func TestCreateWorkspace_DoesNotMarkOnboarded(t *testing.T) {
 		_, _ = testPool.Exec(context.Background(), `UPDATE "user" SET onboarded_at = NULL WHERE id = $1`, testUserID)
 	})
 
-	req := newRequest("POST", "/api/workspaces", map[string]any{
+	req := workspaceHarnessRequest(map[string]any{
 		"name": "Onboarding Invariant Probe",
 		"slug": slug,
 	})
-	testutil.Call(t, testHandler.CreateWorkspace, req).Want(http.StatusCreated)
+	var created WorkspaceResponse
+	testutil.Call(t, testHandler.CreateWorkspace, req).Want(http.StatusCreated).JSON(&created)
+	cleanupWorkspaceHarness(t, created.ID)
 
 	var onboardedAt *string
 	dbfx.QueryRow(t, `SELECT onboarded_at FROM "user" WHERE id = $1`, testUserID).Scan(&onboardedAt)
@@ -158,12 +161,20 @@ func TestCreateWorkspace_AllowedEmails(t *testing.T) {
 			cfg.AllowSignup = prev.AllowSignup
 			testHandler.cfg = cfg
 			t.Cleanup(func() { testHandler.cfg = prev })
+			if tc.wantCode == http.StatusCreated {
+				workspaceHarnessServer(t)
+			}
 
-			req := newRequest("POST", "/api/workspaces", map[string]any{
+			req := workspaceHarnessRequest(map[string]any{
 				"name": "Allowlist Create",
 				"slug": slug,
 			})
-			testutil.Call(t, testHandler.CreateWorkspace, req).Want(tc.wantCode)
+			result := testutil.Call(t, testHandler.CreateWorkspace, req).Want(tc.wantCode)
+			if tc.wantCode == http.StatusCreated {
+				var created WorkspaceResponse
+				result.JSON(&created)
+				cleanupWorkspaceHarness(t, created.ID)
+			}
 
 			var count int
 			dbfx.QueryRow(t, `SELECT count(*) FROM workspace WHERE slug = $1`, slug).Scan(&count)

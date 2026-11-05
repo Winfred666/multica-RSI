@@ -1922,7 +1922,7 @@ func logHeartbeatEndpointSlow(runtimeID, outcome, authPath string, start time.Ti
 // logClaimEndpointSlow emits one structured log when the /tasks/claim endpoint
 // exceeds 500ms, splitting auth / claim / response-build phases so the prod
 // tail can be diagnosed without flooding logs at normal poll rates.
-func logClaimEndpointSlow(runtimeID, outcome string, start time.Time, authMs, claimMs, buildMs int64, payloadBytes, agentSkillCount, builtinSkillCount, skillPayloadBytes int) {
+func logClaimEndpointSlow(runtimeID, outcome string, start time.Time, authMs, claimMs, buildMs int64, payloadBytes, agentSkillCount, skillPayloadBytes int) {
 	totalMs := time.Since(start).Milliseconds()
 	if totalMs < 500 {
 		return
@@ -1936,7 +1936,6 @@ func logClaimEndpointSlow(runtimeID, outcome string, start time.Time, authMs, cl
 		"build_ms", buildMs,
 		"payload_bytes", payloadBytes,
 		"agent_skill_count", agentSkillCount,
-		"builtin_skill_count", builtinSkillCount,
 		"skill_payload_bytes", skillPayloadBytes,
 	)
 }
@@ -2231,7 +2230,7 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 		if handled, _ := h.repairStaleCommentPlanIfNeeded(r.Context(), &task, rtWorkspaceID); handled {
 			continue
 		}
-		resp, deliveredCommentIDs, issueSnapshot, _, _, failure := h.buildClaimedTaskResponse(r, &task, rt, uuidToString(task.RuntimeID), rtWorkspaceID)
+		resp, deliveredCommentIDs, issueSnapshot, _, failure := h.buildClaimedTaskResponse(r, &task, rt, uuidToString(task.RuntimeID), rtWorkspaceID)
 		if failure != nil {
 			// Builder rejected this task (workspace isolation / chat-input);
 			// it has already settled the task where the failure requires it.
@@ -2805,14 +2804,14 @@ func claimResponseAgentIdentityMatches(resp AgentTaskResponse) bool {
 // feed the same delivery receipt into FinalizeTaskClaim. A non-nil failure
 // means the task must not be dispatched; the builder has already cancelled it
 // where the failure semantics require it.
-func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQueue, runtime db.AgentRuntime, runtimeID, runtimeWorkspaceID string) (resp AgentTaskResponse, deliveredCommentIDs []pgtype.UUID, issueSnapshot []byte, agentSkillCount, builtinSkillCount int, failure *claimBuildFailure) {
+func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQueue, runtime db.AgentRuntime, runtimeID, runtimeWorkspaceID string) (resp AgentTaskResponse, deliveredCommentIDs []pgtype.UUID, issueSnapshot []byte, agentSkillCount int, failure *claimBuildFailure) {
 	// Build response with fresh agent data (name + skills + custom_env + custom_args).
 	resp = taskToResponse(*task, runtimeWorkspaceID)
 	if err := (&service.IssueWakeupService{Tasks: h.TaskService}).CheckClaim(r.Context(), *task); err != nil {
 		if !errors.Is(err, service.ErrWakeupForbidden) {
-			return resp, nil, nil, 0, 0, h.rejectClaimSourceLoad(r.Context(), task, err, "wakeup", resp.WakeupID)
+			return resp, nil, nil, 0, h.rejectClaimSourceLoad(r.Context(), task, err, "wakeup", resp.WakeupID)
 		}
-		return resp, nil, nil, 0, 0, h.failClaimedTaskBeforeLaunch(r.Context(), task, "Wakeup is disabled or its authorization is no longer available.", taskfailure.ReasonInvalidTaskIdentity, "wakeup_unavailable", http.StatusConflict, "wakeup unavailable")
+		return resp, nil, nil, 0, h.failClaimedTaskBeforeLaunch(r.Context(), task, "Wakeup is disabled or its authorization is no longer available.", taskfailure.ReasonInvalidTaskIdentity, "wakeup_unavailable", http.StatusConflict, "wakeup unavailable")
 	}
 	// Preserve PostgreSQL's microseconds: second-resolution display timestamps
 	// cannot distinguish stale claims reclaimed within the same second.
@@ -2866,7 +2865,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 			// already disappeared, but no claim payload is dispatched either way.
 			slog.Error("daemon claim: task agent no longer exists; refusing dispatch",
 				"task_id", uuidToString(task.ID), "agent_id", uuidToString(task.AgentID))
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, h.failClaimedTaskBeforeLaunch(
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, h.failClaimedTaskBeforeLaunch(
 				r.Context(), task,
 				"Task identity is invalid: the assigned agent no longer exists.",
 				taskfailure.ReasonInvalidTaskIdentity,
@@ -2879,7 +2878,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 			slog.Error("daemon claim: requeue after agent load failure failed; stale reclaim will recover it",
 				"task_id", uuidToString(task.ID), "error", requeueErr)
 		}
-		return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+		return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, &claimBuildFailure{
 			outcome: "error_load_task_agent",
 			status:  http.StatusInternalServerError,
 			message: "failed to load task agent",
@@ -2896,7 +2895,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 			"task_runtime_id", uuidToString(task.RuntimeID),
 			"agent_runtime_id", uuidToString(agent.RuntimeID),
 		)
-		return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, h.failClaimedTaskBeforeLaunch(
+		return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, h.failClaimedTaskBeforeLaunch(
 			r.Context(), task,
 			"The agent moved to another runtime before this task could start. Retry the task to run it on the agent's current runtime.",
 			taskfailure.ReasonInvalidTaskIdentity,
@@ -2914,7 +2913,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 			"runtime_id", runtimeID,
 			"agent_owner_valid", agent.OwnerID.Valid,
 		)
-		return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, h.failClaimedTaskBeforeLaunch(
+		return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, h.failClaimedTaskBeforeLaunch(
 			r.Context(), task,
 			userMessage,
 			taskfailure.ReasonRuntimeAccessDenied,
@@ -2922,13 +2921,6 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		)
 	}
 	useSkillRefs := requestHasClientCapability(r, protocol.DaemonCapabilitySkillBundlesV1)
-	// A daemon older than the multica-platform merge assembles a brief that
-	// still names the built-ins this server stopped shipping. It cannot be
-	// fixed from here — the brief lives in the daemon binary — so the missing
-	// capability buys that daemon a redirect stub under the old name instead of
-	// a dangling pointer. Capability, not version: the version string is only
-	// ever shown to humans.
-	legacySkillRedirects := !requestHasClientCapability(r, protocol.DaemonCapabilityPlatformSkillV1)
 	var customEnv map[string]string
 	if agent.CustomEnv != nil {
 		if err := json.Unmarshal(agent.CustomEnv, &customEnv); err != nil {
@@ -3020,21 +3012,18 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		resp.Agent.Instructions = service.ComposeMikaInstructions(agent.Name, agent.Instructions)
 	}
 	if useSkillRefs {
-		_, skillRefs, err := h.TaskService.LoadAgentSkillBundles(r.Context(), task.AgentID, agent.SystemKey.String, legacySkillRedirects)
+		_, skillRefs, err := h.TaskService.LoadAgentSkillBundles(r.Context(), task.AgentID)
 		if err != nil {
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, h.rejectClaimSkillLoad(task, err)
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, h.rejectClaimSkillLoad(task, err)
 		}
 		agentSkillCount = len(skillRefs)
 		resp.Agent.SkillRefs = skillRefs
 	} else {
 		skills, err := h.TaskService.LoadAgentSkills(r.Context(), task.AgentID)
 		if err != nil {
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, h.rejectClaimSkillLoad(task, err)
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, h.rejectClaimSkillLoad(task, err)
 		}
 		agentSkillCount = len(skills)
-		builtinSkills := h.TaskService.BuiltinSkills(agent.SystemKey.String, legacySkillRedirects)
-		builtinSkillCount = len(builtinSkills)
-		skills = append(skills, builtinSkills...)
 		resp.Agent.Skills = skills
 	}
 	if !claimResponseAgentIdentityMatches(resp) {
@@ -3044,7 +3033,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		}
 		slog.Error("daemon claim: response agent identity mismatch; refusing dispatch",
 			"task_id", uuidToString(task.ID), "task_agent_id", resp.AgentID, "response_agent_id", responseAgentID)
-		return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, h.failClaimedTaskBeforeLaunch(
+		return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, h.failClaimedTaskBeforeLaunch(
 			r.Context(), task,
 			"Task identity is invalid: the task and response agent disagree.",
 			taskfailure.ReasonInvalidTaskIdentity,
@@ -3076,12 +3065,12 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 	if task.IssueID.Valid {
 		issue, issueErr := h.Queries.GetIssue(r.Context(), task.IssueID)
 		if issueErr != nil {
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount,
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount,
 				h.rejectClaimSourceLoad(r.Context(), task, issueErr, "issue", uuidToString(task.IssueID))
 		}
 		resp.WorkspaceID = uuidToString(issue.WorkspaceID)
 		if failure := h.rejectClaimOnWorkspaceMismatch(r.Context(), task, resp.WorkspaceID, runtimeID, runtimeWorkspaceID, false); failure != nil {
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, failure
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, failure
 		}
 		resp.ThreadName = issue.Title
 		issueNumber = issue.Number
@@ -3232,7 +3221,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 				"task_id", uuidToString(task.ID),
 				"issue_id", uuidToString(issue.ID),
 				"error", projectErr)
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, &claimBuildFailure{
 				outcome: "error_project_context",
 				status:  http.StatusInternalServerError,
 				message: "failed to load project context",
@@ -3574,12 +3563,12 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 	if task.ChatSessionID.Valid {
 		cs, chatErr := h.Queries.GetChatSession(r.Context(), task.ChatSessionID)
 		if chatErr != nil {
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount,
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount,
 				h.rejectClaimSourceLoad(r.Context(), task, chatErr, "chat session", uuidToString(task.ChatSessionID))
 		}
 		resp.WorkspaceID = uuidToString(cs.WorkspaceID)
 		if failure := h.rejectClaimOnWorkspaceMismatch(r.Context(), task, resp.WorkspaceID, runtimeID, runtimeWorkspaceID, false); failure != nil {
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, failure
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, failure
 		}
 		resp.ChatSessionID = uuidToString(cs.ID)
 		resp.ThreadName = cs.Title
@@ -3614,7 +3603,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 					delivery.ChannelThreadID.String != delivery.ChannelMessageID.String
 			}
 		} else if !errors.Is(deliveryErr, pgx.ErrNoRows) {
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount,
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount,
 				h.rejectClaimSourceLoad(r.Context(), task, deliveryErr, "channel task delivery", uuidToString(task.ID))
 		}
 		// A web chat can opt into the same durable project context as an
@@ -3625,7 +3614,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 				"task_id", uuidToString(task.ID),
 				"chat_session_id", uuidToString(cs.ID),
 				"error", projectErr)
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, &claimBuildFailure{
 				outcome: "error_project_context",
 				status:  http.StatusInternalServerError,
 				message: "failed to load project context",
@@ -3680,7 +3669,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 				"task_id", uuidToString(task.ID),
 				"chat_session_id", uuidToString(cs.ID),
 				"error", inputLoadErr)
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, &claimBuildFailure{
 				outcome: "error_chat_input_load",
 				status:  http.StatusInternalServerError,
 				message: "failed to load chat input",
@@ -3776,7 +3765,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 					"task_id", uuidToString(task.ID),
 					"chat_session_id", uuidToString(cs.ID),
 					"error", attErr)
-				return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+				return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, &claimBuildFailure{
 					outcome: "error_chat_attachment_load",
 					status:  http.StatusInternalServerError,
 					message: "failed to load chat attachments",
@@ -3817,7 +3806,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 				slog.Error("chat claim: cancel after empty input failed",
 					"task_id", uuidToString(task.ID), "error", cerr)
 			}
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, &claimBuildFailure{
 				outcome: "error_empty_chat_input",
 				status:  http.StatusInternalServerError,
 				message: "chat task has no user input",
@@ -3835,12 +3824,12 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 	if task.AutopilotRunID.Valid {
 		run, runErr := h.Queries.GetAutopilotRun(r.Context(), task.AutopilotRunID)
 		if runErr != nil {
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount,
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount,
 				h.rejectClaimSourceLoad(r.Context(), task, runErr, "autopilot run", uuidToString(task.AutopilotRunID))
 		}
 		ap, apErr := h.Queries.GetAutopilot(r.Context(), run.AutopilotID)
 		if apErr != nil {
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount,
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount,
 				h.rejectClaimSourceLoad(r.Context(), task, apErr, "autopilot", uuidToString(run.AutopilotID))
 		}
 
@@ -3852,7 +3841,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		// autopilot-owned context.
 		resp.WorkspaceID = uuidToString(ap.WorkspaceID)
 		if failure := h.rejectClaimOnWorkspaceMismatch(r.Context(), task, resp.WorkspaceID, runtimeID, runtimeWorkspaceID, false); failure != nil {
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, failure
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, failure
 		}
 
 		resp.AutopilotID = uuidToString(run.AutopilotID)
@@ -3877,7 +3866,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 				"task_id", uuidToString(task.ID),
 				"autopilot_id", uuidToString(run.AutopilotID),
 				"error", projectErr)
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, &claimBuildFailure{
 				outcome: "error_project_context",
 				status:  http.StatusInternalServerError,
 				message: "failed to load project context",
@@ -3901,13 +3890,13 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 			resp.ThreadName = qc.Prompt
 			resp.WorkspaceID = qc.WorkspaceID
 			if failure := h.rejectClaimOnWorkspaceMismatch(r.Context(), task, resp.WorkspaceID, runtimeID, runtimeWorkspaceID, true); failure != nil {
-				return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, failure
+				return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, failure
 			}
 			if qc.SourceContextID != "" {
 				workspaceID, workspaceErr := util.ParseUUID(qc.WorkspaceID)
 				contextID, contextIDErr := util.ParseUUID(qc.SourceContextID)
 				if workspaceErr != nil || contextIDErr != nil {
-					return resp, nil, nil, 0, 0, h.failClaimedTaskBeforeLaunch(
+					return resp, nil, nil, 0, h.failClaimedTaskBeforeLaunch(
 						r.Context(), task,
 						"Captured source context is invalid. Start again from the branch point.",
 						taskfailure.ReasonAgentUnknown,
@@ -3919,12 +3908,12 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 					if _, requeueErr := h.TaskService.RequeueTaskAfterClaimFailure(r.Context(), *task); requeueErr != nil {
 						slog.Error("quick-create claim: requeue after source context lookup failed", "task_id", uuidToString(task.ID), "error", requeueErr)
 					}
-					return resp, nil, nil, 0, 0, &claimBuildFailure{
+					return resp, nil, nil, 0, &claimBuildFailure{
 						outcome: "error_source_context_load", status: http.StatusInternalServerError, message: "failed to load captured source context",
 					}
 				}
 				if contextErr != nil || captured.State != "pending" || captured.OriginTaskID != task.ID {
-					return resp, nil, nil, 0, 0, h.failClaimedTaskBeforeLaunch(
+					return resp, nil, nil, 0, h.failClaimedTaskBeforeLaunch(
 						r.Context(), task,
 						"Captured source context is no longer available. Start again from the branch point.",
 						taskfailure.ReasonAgentUnknown,
@@ -3949,7 +3938,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 					"task_id", uuidToString(task.ID),
 					"project_id", qc.ProjectID,
 					"error", projectErr)
-				return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+				return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, &claimBuildFailure{
 					outcome: "error_project_context",
 					status:  http.StatusInternalServerError,
 					message: "failed to load project context",
@@ -4041,7 +4030,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 	// discipline. This final call is the backstop for a task that reached here
 	// without any branch claiming it.
 	if failure := h.rejectClaimOnWorkspaceMismatch(r.Context(), task, resp.WorkspaceID, runtimeID, runtimeWorkspaceID, hasQuickCreate); failure != nil {
-		return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, failure
+		return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, failure
 	}
 
 	// Workspace-level Context (workspace.context DB column) — the per-workspace
@@ -4147,13 +4136,13 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 				slog.Error("task claim: requeue after worktree-gate cancel failure failed; stale reclaim will recover it",
 					"task_id", uuidToString(task.ID), "error", rerr)
 			}
-			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, &claimBuildFailure{
 				outcome: "error_worktree_gate_cancel",
 				status:  http.StatusInternalServerError,
 				message: "failed to cancel a worktree task blocked by daemon version; task requeued",
 			}
 		}
-		return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+		return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, &claimBuildFailure{
 			outcome: "error_worktree_daemon_version",
 			status:  http.StatusUnprocessableEntity,
 			message: reason,
@@ -4187,7 +4176,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		resp.InitiatorEmail = originator.Email
 	}
 
-	return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, nil
+	return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, nil
 }
 
 // worktreeClaimBlockReason returns a user-facing reason when this runtime must
@@ -4242,7 +4231,6 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		authMs, claimMs, buildMs int64
 		payloadBytes             int
 		agentSkillCount          int
-		builtinSkillCount        int
 		skillPayloadBytes        int
 		buildStart               time.Time
 	)
@@ -4253,7 +4241,7 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		if !buildStart.IsZero() {
 			buildMs = time.Since(buildStart).Milliseconds()
 		}
-		logClaimEndpointSlow(runtimeID, outcome, start, authMs, claimMs, buildMs, payloadBytes, agentSkillCount, builtinSkillCount, skillPayloadBytes)
+		logClaimEndpointSlow(runtimeID, outcome, start, authMs, claimMs, buildMs, payloadBytes, agentSkillCount, skillPayloadBytes)
 	}()
 
 	// Verify the caller owns this runtime's workspace. The runtime's
@@ -4301,7 +4289,7 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 	outcome = "claimed"
 	buildStart = time.Now()
 
-	resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, failure := h.buildClaimedTaskResponse(r, task, runtime, runtimeID, runtimeWorkspaceID)
+	resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, failure := h.buildClaimedTaskResponse(r, task, runtime, runtimeID, runtimeWorkspaceID)
 	if failure != nil {
 		outcome = failure.outcome
 		if failure.settled {
