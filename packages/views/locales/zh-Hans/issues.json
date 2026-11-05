@@ -1,5 +1,6 @@
 {
   "tree": {
+    "workspace_no_access": "无法访问工作区",
     "input_trend": "当前上下文：{{tokens}} tokens",
     "input_drops": "上下文压缩次数：{{count}}",
     "input_trend_hint": "根据已完成的运行估算；圆环默认按 256K token 上下文窗口显示。",

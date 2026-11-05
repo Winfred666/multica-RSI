@@ -8,6 +8,17 @@ const issue = (id: string, parent: string | null = null, status = "todo"): Issue
 } as Issue);
 
 describe("issue tree", () => {
+  it("places a wide workspace frame beside ordinary children without overlap", () => {
+    const roots = buildIssueTree([issue("parent"), issue("workspace", "parent"), issue("child", "parent")], new Set(), new Set());
+    const layout = layoutIssueTree(roots, new Map([["workspace", { width: 760, height: 700 }]]));
+    const parent = layout.nodes.find(({ node }) => node.id === "parent")!;
+    const workspace = layout.nodes.find(({ node }) => node.id === "workspace")!;
+    const child = layout.nodes.find(({ node }) => node.id === "child")!;
+    expect(child.x - child.width / 2).toBeGreaterThan(workspace.x + workspace.width / 2);
+    expect(child.y).toBe(workspace.y);
+    expect(workspace.y).toBeGreaterThan(parent.y + parent.height);
+    expect(layout.width).toBeGreaterThan(child.x + child.width / 2);
+  });
   it("keeps filtered roots and sibling order, without inventing missing parents", () => {
     const roots = buildIssueTree([issue("b", "parent"), issue("a", "parent"), issue("parent"), issue("orphan", "outside")], new Set(), new Set());
     expect(roots.map((node) => node.id)).toEqual(["parent", "orphan"]);

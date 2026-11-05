@@ -1711,6 +1711,7 @@
     "created_updated": "建立於 {{created}} · 更新於 {{updated}}"
   },
   "tree": {
+    "workspace_no_access": "無法存取工作區",
     "input_trend": "目前上下文：{{tokens}} tokens",
     "input_drops": "上下文壓縮次數：{{count}}",
     "input_trend_hint": "根據已完成的執行估算；圓環預設按 256K token 上下文視窗顯示。",

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { issueWorkspaceId, workspaceTreeOptions } from "@multica/core/workspace/tree";
 import { EyeOff, Plus, RotateCcw } from "lucide-react";
 import type { AgentTask, Issue, Project } from "@multica/core/types";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -17,7 +18,7 @@ import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import { isEditableShortcutTarget } from "@multica/core/shortcuts";
 import {
   buildIssueTree, issueTreeCollaborators, layoutIssueTree, TREE_NODE_WIDTH,
-  type IssueTreeSize,
+  type IssueTreeNode, type IssueTreeSize,
 } from "@multica/core/issues/surface/tree";
 import { Button } from "@multica/ui/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
@@ -40,8 +41,13 @@ import { IssueActionsContextMenu } from "../actions";
 import { TreeCollaboratorAvatar, TreeIssueHoverContent } from "./tree-hover-content";
 import { BUILT_IN_ICON_COLOR, StatusIcon } from "./status-icon";
 import { TreeDeliverables } from "./deliverables/tree-deliverables";
+import { WorkspaceTreeFrame } from "./workspace-tree-frame";
 
 const EMPTY_TASKS: AgentTask[] = [];
+
+function isWorkspaceNode(node: IssueTreeNode) {
+  return node.id.startsWith("workspace:");
+}
 
 export function TreeView({ issues, statusPagination, onCreateIssue, childProgressMap, projectMap }: {
   issues: Issue[];
@@ -70,11 +76,26 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
     setSizes((previous) => previous.get(id)?.height === size.height && previous.get(id)?.width === size.width
       ? previous : new Map(previous).set(id, size));
   }, []);
-  const layout = useMemo(() => layoutIssueTree(buildIssueTree(
-    sortIssues(issues, sortBy, sortDirection, statusColumnKeys(catalog)),
-    new Set(hiddenStatuses.filter((status) => !statusFilters.includes(status))),
-    expanded,
-  ), sizes), [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, sizes]);
+  const workspaceIds = [...new Set(issues.map(issueWorkspaceId).filter((id): id is string => !!id && id !== wsId))];
+  const workspaceQueries = useQueries({ queries: workspaceIds.map(workspaceTreeOptions) });
+  const frames = new Map(workspaceIds.map((id, index) => [id, workspaceQueries[index]!]));
+  const layout = useMemo(() => {
+    const roots = buildIssueTree(
+      sortIssues(issues, sortBy, sortDirection, statusColumnKeys(catalog)),
+      new Set(hiddenStatuses.filter((status) => !statusFilters.includes(status))), expanded,
+    );
+    function withWorkspaces(nodes: IssueTreeNode[]): IssueTreeNode[] {
+      return nodes.map((node) => {
+        const workspace = issueWorkspaceId(node.issues[0]!);
+        const children = withWorkspaces(node.children);
+        if (!node.collapsed && workspace && workspace !== wsId) {
+          children.unshift({ id: `workspace:${node.id}`, issues: node.issues, collapsed: false, children: [] });
+        }
+        return { ...node, children };
+      });
+    }
+    return layoutIssueTree(withWorkspaces(roots), sizes);
+  }, [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, sizes, wsId]);
   const canvas = useZoomCanvas({ content: layout, initialTransform: treeViewport, preserveTransform: true, panWithSpace: true });
   const selection = useIssueSurfaceSelection();
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -96,7 +117,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
       canvas.handlePointerDown(event);
       return;
     }
-    if (event.button !== 0 || (event.target as Element).closest("[data-tree-card], button, a, input, textarea, select")) return;
+    if (event.button !== 0 || (event.target as Element).closest("[data-tree-card], [data-workspace-frame], button, a, input, textarea, select")) return;
     event.preventDefault();
     event.currentTarget.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -117,7 +138,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
     setRectangle(rect);
     const selected = new Set(start.selected);
     for (const { node, x, y, height, width } of layout.nodes) {
-      if (!node.collapsed && x + width / 2 >= rect.x && x - width / 2 <= rect.x + rect.width && y + height >= rect.y && y <= rect.y + rect.height) selected.add(node.issues[0]!.id);
+      if (!node.collapsed && !isWorkspaceNode(node) && x + width / 2 >= rect.x && x - width / 2 <= rect.x + rect.width && y + height >= rect.y && y <= rect.y + rect.height) selected.add(node.issues[0]!.id);
     }
     selection.deselect([...selection.selectedIds].filter((id) => !selected.has(id)));
     selection.select([...selected]);
@@ -160,6 +181,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
           event.stopPropagation();
           return;
         }
+        if ((event.target as Element).closest("[data-workspace-frame]")) return;
         const card = (event.target as Element).closest<HTMLElement>("[data-tree-card]");
         if (card && selection.selectedIds.size > 0 && (event.target as Element).closest("a")) {
           event.preventDefault();
@@ -196,7 +218,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
             if (event.key === "Escape") selection.clear();
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
               event.preventDefault();
-              selection.select(layout.nodes.filter(({ node }) => !node.collapsed).map(({ node }) => node.issues[0]!.id));
+              selection.select(layout.nodes.filter(({ node }) => !node.collapsed && !isWorkspaceNode(node)).map(({ node }) => node.issues[0]!.id));
               return;
             }
           }
@@ -217,13 +239,15 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
             const path = dx === 0
               ? `M ${parent.x} ${startY} V ${endY}`
               : `M ${parent.x} ${startY} V ${midY - radius} Q ${parent.x} ${midY} ${parent.x + direction * radius} ${midY} H ${position.x - direction * radius} Q ${position.x} ${midY} ${position.x} ${midY + radius} V ${endY}`;
-            const tone = color(position.node.issues[0]!);
+            const tone = isWorkspaceNode(position.node) ? { className: "text-muted-foreground", color: undefined } : color(position.node.issues[0]!);
             return <path key={position.node.id} d={path} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" className={tone.className} style={{ color: tone.color, opacity: 0.65 }} />;
           })}
         </svg>
-        {layout.nodes.map(({ node, x, y, width }) => (
-          <div key={node.id} className="absolute flex flex-col items-center" style={{ left: x - width / 2, top: y, width }}>
-            <TreeIssueNode
+        {layout.nodes.map(({ node, x, y, width }) => {
+          const frame = isWorkspaceNode(node) ? frames.get(issueWorkspaceId(node.issues[0]!) ?? "") : undefined;
+          return <div key={node.id} className="absolute flex flex-col items-center" style={{ left: x - width / 2, top: y, width: frame ? undefined : width }}
+            ref={frame ? (element) => { if (element) onSizeChange(node.id, { width: element.offsetWidth, height: element.offsetHeight }); } : undefined}>
+            {frame ? <WorkspaceTreeFrame data={frame.error ? undefined : frame.data} error={frame.error} retry={() => void frame.refetch()} /> : <TreeIssueNode
               issue={node.issues[0]!}
               tasks={tasks}
               onCreateIssue={onCreateIssue}
@@ -235,9 +259,9 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
                 count: node.issues.length,
                 onExpand: () => setExpanded((previous) => new Set([...previous, node.id])),
               } : undefined}
-            />
-          </div>
-        ))}
+            />}
+          </div>;
+        })}
       </ZoomCanvas>
       <ZoomControls canvas={canvas} className="absolute bottom-4 right-4 rounded-lg border bg-background p-1 shadow-sm" />
     </div>

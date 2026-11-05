@@ -1,5 +1,6 @@
 {
   "tree": {
+    "workspace_no_access": "워크스페이스에 접근할 수 없습니다",
     "input_trend": "현재 컨텍스트: {{tokens}} 토큰",
     "input_drops": "컨텍스트 압축 횟수: {{count}}",
     "input_trend_hint": "완료된 실행에서 추정하며, 링은 컨텍스트 한도를 256K 토큰으로 가정합니다.",

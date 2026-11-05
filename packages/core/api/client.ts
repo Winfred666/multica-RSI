@@ -258,6 +258,7 @@ import { createRequestId, createSafeId } from "../utils";
 import { getCurrentSlug } from "../platform/workspace-storage";
 import { parseWithFallback } from "./schema";
 import {
+  WorkspaceTreeIdentitySchema,
   RuntimeProfileSchema,
   RuntimeProfileListSchema,
   AgentTaskListSchema,
@@ -1098,7 +1099,7 @@ export class ApiClient {
   }
 
   // Issues
-  async listIssues(params?: ListIssuesParams): Promise<ListIssuesResponse> {
+  async listIssues(params?: ListIssuesParams, workspaceSlug?: string): Promise<ListIssuesResponse> {
     const search = new URLSearchParams();
     if (params?.limit) search.set("limit", String(params.limit));
     if (params?.offset) search.set("offset", String(params.offset));
@@ -1149,6 +1150,7 @@ export class ApiClient {
     if (params?.ids) {
       const raw = await this.fetch<unknown>("/api/issues/query", {
         method: "POST",
+        headers: workspaceHeader(workspaceSlug),
         body: JSON.stringify(Object.fromEntries(search)),
       });
       return parseWithFallback(raw, ListIssuesResponseSchema, EMPTY_LIST_ISSUES_RESPONSE, {
@@ -1156,7 +1158,7 @@ export class ApiClient {
       });
     }
     const path = `/api/issues?${search}`;
-    const raw = await this.fetch<unknown>(path);
+    const raw = await this.fetch<unknown>(path, { headers: workspaceHeader(workspaceSlug) });
     return parseWithFallback(raw, ListIssuesResponseSchema, EMPTY_LIST_ISSUES_RESPONSE, {
       endpoint: "GET /api/issues",
     });
@@ -3064,6 +3066,17 @@ export class ApiClient {
   }
 
   // Workspaces
+  async getWorkspaceTreeIdentity(id: string) {
+    const raw = await this.fetch<unknown>(`/api/workspaces/${id}`, {
+      headers: { "X-Workspace-Slug": "", "X-Workspace-ID": id },
+    });
+    const workspace = parseWithFallback<{ id: string; slug: string; name: string } | null>(raw, WorkspaceTreeIdentitySchema.nullable(), null, {
+      endpoint: "GET /api/workspaces/{id}",
+    });
+    if (!workspace || workspace.id !== id) throw new Error("Invalid workspace identity");
+    return workspace;
+  }
+
   async listWorkspaces(): Promise<Workspace[]> {
     return this.fetch("/api/workspaces");
   }

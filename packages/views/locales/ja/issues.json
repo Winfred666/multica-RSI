@@ -1,5 +1,6 @@
 {
   "tree": {
+    "workspace_no_access": "ワークスペースにアクセスできません",
     "input_trend": "現在のコンテキスト：{{tokens}} トークン",
     "input_drops": "コンテキスト圧縮回数：{{count}}",
     "input_trend_hint": "完了した実行から推定。リングはコンテキスト上限を256Kトークンと仮定して表示します。",

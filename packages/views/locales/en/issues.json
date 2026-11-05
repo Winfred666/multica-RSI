@@ -1,5 +1,6 @@
 {
   "tree": {
+    "workspace_no_access": "Workspace unavailable",
     "input_trend": "Current context: {{tokens}} tokens",
     "input_drops": "Context compressions: {{count}}",
     "input_trend_hint": "Estimated from completed runs; ring assumes a 256K-token context window.",
