@@ -264,6 +264,7 @@ import {
   AgentTaskPageSchema,
   AgentActivityBucketListSchema,
   AttachmentResponseSchema,
+  AttachmentListSchema,
   CancelTaskResponseSchema,
   ChatDraftRestoresResponseSchema,
   ChatMessageListSchema,
@@ -4021,7 +4022,10 @@ export class ApiClient {
   }
 
   async listAttachments(issueId: string): Promise<Attachment[]> {
-    return this.fetch(`/api/issues/${issueId}/attachments`);
+    const raw = await this.fetch<unknown>(`/api/issues/${issueId}/attachments`);
+    return parseWithFallback(raw, AttachmentListSchema, [], {
+      endpoint: "GET /api/issues/{id}/attachments",
+    });
   }
 
   // Fetches a fresh attachment metadata record. The server re-signs

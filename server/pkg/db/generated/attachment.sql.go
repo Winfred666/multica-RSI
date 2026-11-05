@@ -1272,3 +1272,87 @@ func (q *Queries) ReplaceCommentAttachments(ctx context.Context, arg ReplaceComm
 	}
 	return result.RowsAffected(), nil
 }
+
+const updateAttachment = `-- name: UpdateAttachment :one
+WITH updated AS (
+  UPDATE attachment
+  SET filename = $1, url = $2,
+      content_type = $3, size_bytes = $4
+  WHERE attachment.id = $5 AND attachment.workspace_id = $6
+    AND attachment.source_context_id IS NULL
+  RETURNING id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, task_id, source_context_id
+), bumped_issue AS (
+  UPDATE issue SET revision = revision + 1
+  WHERE id IN (SELECT issue_id FROM updated WHERE issue_id IS NOT NULL)
+  RETURNING revision
+), bumped_comment AS (
+  UPDATE comment SET revision = revision + 1
+  WHERE id IN (SELECT comment_id FROM updated WHERE comment_id IS NOT NULL)
+  RETURNING revision
+)
+SELECT updated.id, updated.workspace_id, updated.issue_id, updated.comment_id, updated.uploader_type, updated.uploader_id, updated.filename, updated.url, updated.content_type, updated.size_bytes, updated.created_at, updated.chat_session_id, updated.chat_message_id, updated.task_id, updated.source_context_id,
+       COALESCE((SELECT revision FROM bumped_issue), 0)::bigint AS issue_revision,
+       COALESCE((SELECT revision FROM bumped_comment), 0)::bigint AS comment_revision
+FROM updated
+`
+
+type UpdateAttachmentParams struct {
+	Filename    string      `json:"filename"`
+	Url         string      `json:"url"`
+	ContentType string      `json:"content_type"`
+	SizeBytes   int64       `json:"size_bytes"`
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+type UpdateAttachmentRow struct {
+	ID              pgtype.UUID        `json:"id"`
+	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
+	IssueID         pgtype.UUID        `json:"issue_id"`
+	CommentID       pgtype.UUID        `json:"comment_id"`
+	UploaderType    string             `json:"uploader_type"`
+	UploaderID      pgtype.UUID        `json:"uploader_id"`
+	Filename        string             `json:"filename"`
+	Url             string             `json:"url"`
+	ContentType     string             `json:"content_type"`
+	SizeBytes       int64              `json:"size_bytes"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	ChatSessionID   pgtype.UUID        `json:"chat_session_id"`
+	ChatMessageID   pgtype.UUID        `json:"chat_message_id"`
+	TaskID          pgtype.UUID        `json:"task_id"`
+	SourceContextID pgtype.UUID        `json:"source_context_id"`
+	IssueRevision   int64              `json:"issue_revision"`
+	CommentRevision int64              `json:"comment_revision"`
+}
+
+func (q *Queries) UpdateAttachment(ctx context.Context, arg UpdateAttachmentParams) (UpdateAttachmentRow, error) {
+	row := q.db.QueryRow(ctx, updateAttachment,
+		arg.Filename,
+		arg.Url,
+		arg.ContentType,
+		arg.SizeBytes,
+		arg.ID,
+		arg.WorkspaceID,
+	)
+	var i UpdateAttachmentRow
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.IssueID,
+		&i.CommentID,
+		&i.UploaderType,
+		&i.UploaderID,
+		&i.Filename,
+		&i.Url,
+		&i.ContentType,
+		&i.SizeBytes,
+		&i.CreatedAt,
+		&i.ChatSessionID,
+		&i.ChatMessageID,
+		&i.TaskID,
+		&i.SourceContextID,
+		&i.IssueRevision,
+		&i.CommentRevision,
+	)
+	return i, err
+}

@@ -20,9 +20,8 @@ import { attachmentIdFromDownloadURL } from "@multica/core/types/attachment-url"
 const RESIGN_STALE_MS = 20 * 60 * 1000;
 
 // How long fetched image bytes stay in the query cache after the last <img>
-// using them unmounts. The bytes themselves never go stale (an attachment id
-// maps to an immutable storage object), so the blob query uses
-// `staleTime: Infinity`; this bound exists purely to keep a long scroll
+// using them unmounts. Attachment-change events invalidate replaced bytes;
+// otherwise the blob query uses `staleTime: Infinity` to keep a long scroll
 // through an image-heavy thread from pinning every decoded screenshot in
 // renderer memory forever.
 export const INLINE_BLOB_GC_MS = 5 * 60 * 1000;
@@ -31,7 +30,7 @@ export const INLINE_BLOB_GC_MS = 5 * 60 * 1000;
 // useObjectURL creates a new object URL on every mount (state "" -> effect
 // creates URL), so a cached blob still flashes the fallback pickedUrl for one
 // frame on re-entry — the flicker reported in #7741 for image-heavy issues.
-const blobUrlCache = new Map<string, string>();
+const blobUrlCache = new Map<string, { url: string; blob: Blob }>();
 const blobUrlRefCount = new Map<string, number>();
 const blobUrlGCTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -143,7 +142,7 @@ export function useResignedInlineMedia(
     blobUrl &&
     resignAttachmentId &&
     isAuthenticated &&
-    blobUrlCache.get(resignAttachmentId) === blobUrl
+    blobUrlCache.get(resignAttachmentId)?.url === blobUrl
   ) {
     return { url: blobUrl, pending: false };
   }
@@ -191,7 +190,7 @@ function useObjectURL(
           const cached = blobUrlCache.get(id);
           if (cached) {
             try {
-              URL.revokeObjectURL(cached);
+              URL.revokeObjectURL(cached.url);
             } catch (_err) {
               void _err;
             }
@@ -211,16 +210,18 @@ function useObjectURL(
 
   useEffect(() => {
     if (!blob || !id || !isAuthenticated || typeof URL.createObjectURL !== "function") return;
-    if (blobUrlCache.has(id)) {
+    const cached = blobUrlCache.get(id);
+    if (cached?.blob === blob) {
       bump((v) => v + 1);
       return;
     }
+    if (cached) URL.revokeObjectURL(cached.url);
     const next = URL.createObjectURL(blob);
-    blobUrlCache.set(id, next);
+    blobUrlCache.set(id, { url: next, blob });
     bump((v) => v + 1);
   }, [blob, id, isAuthenticated]);
 
-  if (isAuthenticated && id && blobUrlCache.has(id)) return blobUrlCache.get(id)!;
+  if (isAuthenticated && id && blobUrlCache.has(id)) return blobUrlCache.get(id)!.url;
   return "";
 }
 

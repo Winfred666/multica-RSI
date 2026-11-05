@@ -1025,7 +1025,10 @@ export const AttachmentResponseSchema = z.object({
   filename: z.string(),
   chat_session_id: z.string().nullable().optional(),
   chat_message_id: z.string().nullable().optional(),
+  task_id: z.string().nullable().optional().default(null),
 }).loose();
+
+export const AttachmentListSchema = z.array(AttachmentResponseSchema).default([]);
 
 export const EMPTY_ATTACHMENT: Attachment = {
   id: "",

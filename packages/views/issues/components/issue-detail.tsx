@@ -2448,7 +2448,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   // The files this issue has delivered as a whole: the sidebar section, the
   // overview grid, the viewer's info panel and the comments' version badges
   // all read this (MUL-7649).
-  const deliverableFiles = useMemo(() => collectDeliverableFiles(timeline), [timeline]);
+  const deliverableFiles = useMemo(() => collectDeliverableFiles(timeline, issueAttachments), [timeline, issueAttachments]);
   const commentById = useMemo(
     () =>
       new Map(

@@ -7,9 +7,11 @@ import { cn } from "@multica/ui/lib/utils";
 import { useResignedInlineMedia } from "../../../editor/hooks/use-inline-media-url";
 import { fileTypeLabel, getPreviewKind } from "../../../editor/utils/preview";
 import { fileIcon } from "../../../editor/utils/file-icon";
+import { CodeBlockIframe } from "../../../editor/code-block-iframe";
+import { useAttachmentHtmlText } from "../../../editor/hooks/use-attachment-html-text";
 
 /**
- * A file's face in a grid or strip: the image itself for images, otherwise
+ * A file's face in a grid or strip: an HTML or image preview, otherwise
  * its type icon and extension. Fills its box — the caller sizes it.
  */
 export function DeliverableThumbnail({
@@ -22,8 +24,12 @@ export function DeliverableThumbnail({
   showTypeLabel?: boolean;
   className?: string;
 }) {
-  if (getPreviewKind(attachment.content_type, attachment.filename) === "image") {
-    return <ImageThumbnail attachment={attachment} className={className} />;
+  const kind = getPreviewKind(attachment.content_type, attachment.filename);
+  if (kind === "html") {
+    return <HtmlThumbnail attachment={attachment} className={className} />;
+  }
+  if (kind === "image") {
+    return <ImageThumbnail key={attachment.url} attachment={attachment} className={className} />;
   }
   return (
     <FileFace
@@ -32,6 +38,15 @@ export function DeliverableThumbnail({
       className={className}
     />
   );
+}
+
+function HtmlThumbnail({ attachment, className }: { attachment: Attachment; className?: string }) {
+  const { data } = useAttachmentHtmlText(attachment.id);
+  return data ? (
+    <div inert className={cn("pointer-events-none", className)}>
+      <CodeBlockIframe html={data.text} title={attachment.filename} heightClassName="h-full" className="rounded-none border-0" />
+    </div>
+  ) : <FileFace attachment={attachment} showTypeLabel className={className} />;
 }
 
 function FileFace({

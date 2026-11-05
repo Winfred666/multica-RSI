@@ -5,6 +5,7 @@ export interface Attachment {
   comment_id: string | null;
   chat_session_id: string | null;
   chat_message_id: string | null;
+  task_id?: string | null;
   uploader_type: string;
   uploader_id: string;
   filename: string;

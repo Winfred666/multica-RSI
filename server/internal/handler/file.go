@@ -33,6 +33,8 @@ var extContentTypes = map[string]string{
 	".mjs":  "application/javascript",
 	".json": "application/json",
 	".wasm": "application/wasm",
+	".html": "text/html",
+	".htm":  "text/html",
 }
 
 const maxUploadSize = 100 << 20 // 100 MB
@@ -63,6 +65,7 @@ type AttachmentResponse struct {
 	CommentID     *string `json:"comment_id"`
 	ChatSessionID *string `json:"chat_session_id"`
 	ChatMessageID *string `json:"chat_message_id"`
+	TaskID        *string `json:"task_id"`
 	UploaderType  string  `json:"uploader_type"`
 	UploaderID    string  `json:"uploader_id"`
 	Filename      string  `json:"filename"`
@@ -195,6 +198,10 @@ func (h *Handler) attachmentToResponse(a db.Attachment, mode attachmentURLMode) 
 		s := uuidToString(a.ChatMessageID)
 		resp.ChatMessageID = &s
 	}
+	if a.TaskID.Valid {
+		s := uuidToString(a.TaskID)
+		resp.TaskID = &s
+	}
 	return resp
 }
 
@@ -235,7 +242,8 @@ func (h *Handler) buildMarkdownURL(a db.Attachment, id string) string {
 	relPath := util.AttachmentDownloadPath(id)
 	publicURL := strings.TrimRight(h.cfg.PublicURL, "/")
 
-	if h.storageURLIsPubliclyReadable(a.Url) {
+	// An issue task deliverable can be replaced; its Markdown link follows the row.
+	if (!a.TaskID.Valid || !a.IssueID.Valid) && h.storageURLIsPubliclyReadable(a.Url) {
 		return a.Url
 	}
 
@@ -497,12 +505,7 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 			}
 			params.ChatSessionID = session.ID
 		}
-		// task_id upload: an agent producing an image/file for its chat reply.
-		// The row is tagged with the producing task and its chat session so
-		// CompleteTask can bind it to the assistant message it synthesizes.
-		// Gate: the request must come from a task-scoped token, the form task_id
-		// must equal that token's task, the caller must be that task's agent,
-		// and it must be a chat task (has a chat_session_id).
+		// Task uploads belong to the run's issue or chat, before its final reply.
 		if taskID := r.FormValue("task_id"); taskID != "" {
 			// Authoritative task-token boundary (load-bearing, mirrors
 			// chat_history.go:chatHistorySession). X-Task-ID is only trustworthy
@@ -543,14 +546,36 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusForbidden, "task_id upload requires the task's own agent")
 				return
 			}
-			if !task.ChatSessionID.Valid {
-				writeError(w, http.StatusBadRequest, "task_id upload requires a chat task")
+			if params.CommentID.Valid || (params.IssueID.Valid && params.IssueID != task.IssueID) ||
+				(params.ChatSessionID.Valid && params.ChatSessionID != task.ChatSessionID) {
+				writeError(w, http.StatusBadRequest, "attachment must belong to the task's issue or chat")
+				return
+			}
+			if !task.IssueID.Valid && !task.ChatSessionID.Valid {
+				writeError(w, http.StatusBadRequest, "task_id upload requires an issue or chat task")
 				return
 			}
 			params.TaskID = task.ID
-			// Bind the session too so reads (groupChatMessageAttachments) and
-			// GC classify the row consistently before it gains a message id.
+			params.IssueID = task.IssueID
 			params.ChatSessionID = task.ChatSessionID
+		}
+
+		var replaced db.Attachment
+		if params.TaskID.Valid && params.IssueID.Valid {
+			attachments, err := h.Queries.ListAttachmentsByIssue(r.Context(), db.ListAttachmentsByIssueParams{
+				IssueID: params.IssueID, WorkspaceID: params.WorkspaceID,
+			})
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to list attachments")
+				return
+			}
+			for _, attachment := range attachments {
+				if attachment.TaskID.Valid && !attachment.SourceContextID.Valid &&
+					attachment.UploaderType == params.UploaderType && attachment.UploaderID == params.UploaderID &&
+					attachment.Filename == params.Filename && attachment.ContentType == params.ContentType {
+					replaced = attachment
+				}
+			}
 		}
 
 		link, err := h.Storage.Upload(r.Context(), key, data, contentType, header.Filename)
@@ -562,7 +587,22 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		params.Url = link
 
 		var att db.CreateAttachmentRow
-		if params.CommentID.Valid {
+		if replaced.ID.Valid {
+			err = h.withAttachmentOwnerLock(r.Context(), replaced, func(qtx *db.Queries) error {
+				updated, updateErr := qtx.UpdateAttachment(r.Context(), db.UpdateAttachmentParams{
+					ID: replaced.ID, WorkspaceID: params.WorkspaceID,
+					Filename: params.Filename, Url: link, ContentType: contentType, SizeBytes: params.SizeBytes,
+				})
+				att = db.CreateAttachmentRow(updated)
+				return updateErr
+			})
+			if err != nil {
+				h.deleteS3Object(r.Context(), link)
+				writeError(w, http.StatusInternalServerError, "failed to replace attachment")
+				return
+			}
+			h.deleteS3Object(r.Context(), replaced.Url)
+		} else if params.CommentID.Valid {
 			// A comment attachment is written under the comment's lock, so a
 			// delete that commits while the object uploaded cannot leave it on
 			// a tombstone. A refused upload takes its stored object with it.
@@ -590,6 +630,7 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 				h.publish(protocol.EventIssueAttachmentsChanged, workspaceID, uploaderType, uploaderID, map[string]any{
 					"issue_id":       uuidToString(att.IssueID),
 					"issue_revision": att.IssueRevision,
+					"attachment_id":  uuidToString(att.ID),
 				})
 			}
 			if att.CommentRevision > 0 && att.CommentID.Valid {

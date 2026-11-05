@@ -62,6 +62,7 @@ function setup(rows: Issue[], tasks: AgentTask[] = [], timeline: TimelineEntry[]
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const api = {
     listTimeline: vi.fn<() => Promise<TimelineEntry[]>>(async () => timeline),
+    listAttachments: vi.fn(async () => []),
     getAgentTaskSnapshot: vi.fn(async () => tasks),
     listTasksByIssue: vi.fn(async () => tasks),
     listTaskMessages: vi.fn<() => Promise<TaskMessagePayload[]>>(async () => []),
@@ -77,7 +78,9 @@ function setup(rows: Issue[], tasks: AgentTask[] = [], timeline: TimelineEntry[]
 }
 
 beforeEach(() => {
-  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) {
+    return this.hasAttribute("data-tree-card") ? 300 : 800;
+  });
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
     return this.hasAttribute("data-tree-card") ? 140 : 600;
   });

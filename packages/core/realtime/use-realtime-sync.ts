@@ -1133,9 +1133,14 @@ export function useRealtimeSync(
     });
 
     const unsubIssueAttachmentsChanged = ws.on("issue_attachments:changed", (p) => {
-      const { issue_id, issue_revision } = p as IssueAttachmentsChangedPayload;
+      const { issue_id, issue_revision, attachment_id } = p as IssueAttachmentsChangedPayload;
       if (!issue_id) return;
       qc.invalidateQueries({ queryKey: issueKeys.attachments(issue_id) });
+      if (attachment_id) {
+        for (const key of ["attachment-content", "attachment-inline-resign", "attachment-inline-blob"]) {
+          qc.invalidateQueries({ queryKey: [key, attachment_id] });
+        }
+      }
       const wsId = getCurrentWsId();
       if (wsId) onIssueAuxiliaryRevision(qc, wsId, issue_id, issue_revision);
     });

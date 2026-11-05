@@ -36,7 +36,7 @@ const ARCHIVE_EXTENSIONS = new Set(["zip", "tar", "gz", "tgz", "bz2", "xz", "7z"
 
 export function isDocumentFile(contentType: string, filename: string): boolean {
   const kind = getPreviewKind(contentType, filename);
-  if (kind === "pdf" || kind === "markdown") return true;
+  if (kind === "pdf" || kind === "markdown" || kind === "html") return true;
   return DOCUMENT_EXTENSIONS.has(extensionOf(filename));
 }
 

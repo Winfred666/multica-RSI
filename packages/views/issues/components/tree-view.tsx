@@ -9,12 +9,15 @@ import { useWorkspacePaths } from "@multica/core/paths";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { isBuiltInIssueStatus } from "@multica/core/issue-statuses";
 import { agentTaskSnapshotOptions } from "@multica/core/agents";
+import { issueAttachmentsOptions } from "@multica/core/issues/queries";
+import { collectDeliverableFiles } from "@multica/core/attachments/deliverables";
 import { issueStatusCategory, statusColumnKeys } from "@multica/core/issues";
 import { STATUS_CONFIG } from "@multica/core/issues/config";
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import { isEditableShortcutTarget } from "@multica/core/shortcuts";
 import {
   buildIssueTree, issueTreeCollaborators, layoutIssueTree, TREE_NODE_WIDTH,
+  type IssueTreeSize,
 } from "@multica/core/issues/surface/tree";
 import { Button } from "@multica/ui/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
@@ -36,6 +39,7 @@ import type { ChildProgress } from "./list-row";
 import { IssueActionsContextMenu } from "../actions";
 import { TreeCollaboratorAvatar, TreeIssueHoverContent } from "./tree-hover-content";
 import { BUILT_IN_ICON_COLOR, StatusIcon } from "./status-icon";
+import { TreeDeliverables } from "./deliverables/tree-deliverables";
 
 const EMPTY_TASKS: AgentTask[] = [];
 
@@ -60,15 +64,17 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   const setTreeViewport = useViewStore((s) => s.setTreeViewport);
   const { data: tasks = EMPTY_TASKS } = useQuery(agentTaskSnapshotOptions(wsId));
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [heights, setHeights] = useState<ReadonlyMap<string, number>>(new Map());
-  const onHeightChange = useCallback((id: string, height: number) => {
-    if (height > 0) setHeights((previous) => previous.get(id) === height ? previous : new Map(previous).set(id, height));
+  const [sizes, setSizes] = useState<ReadonlyMap<string, IssueTreeSize>>(new Map());
+  const onSizeChange = useCallback((id: string, size: IssueTreeSize) => {
+    if (size.height <= 0 || size.width <= 0) return;
+    setSizes((previous) => previous.get(id)?.height === size.height && previous.get(id)?.width === size.width
+      ? previous : new Map(previous).set(id, size));
   }, []);
   const layout = useMemo(() => layoutIssueTree(buildIssueTree(
     sortIssues(issues, sortBy, sortDirection, statusColumnKeys(catalog)),
     new Set(hiddenStatuses.filter((status) => !statusFilters.includes(status))),
     expanded,
-  ), heights), [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, heights]);
+  ), sizes), [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, sizes]);
   const canvas = useZoomCanvas({ content: layout, initialTransform: treeViewport, preserveTransform: true, panWithSpace: true });
   const selection = useIssueSurfaceSelection();
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -110,8 +116,8 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
     suppressClick.current = true;
     setRectangle(rect);
     const selected = new Set(start.selected);
-    for (const { node, x, y, height } of layout.nodes) {
-      if (!node.collapsed && x + TREE_NODE_WIDTH / 2 >= rect.x && x - TREE_NODE_WIDTH / 2 <= rect.x + rect.width && y + height >= rect.y && y <= rect.y + rect.height) selected.add(node.issues[0]!.id);
+    for (const { node, x, y, height, width } of layout.nodes) {
+      if (!node.collapsed && x + width / 2 >= rect.x && x - width / 2 <= rect.x + rect.width && y + height >= rect.y && y <= rect.y + rect.height) selected.add(node.issues[0]!.id);
     }
     selection.deselect([...selection.selectedIds].filter((id) => !selected.has(id)));
     selection.select([...selected]);
@@ -215,15 +221,15 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
             return <path key={position.node.id} d={path} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" className={tone.className} style={{ color: tone.color, opacity: 0.65 }} />;
           })}
         </svg>
-        {layout.nodes.map(({ node, x, y }) => (
-          <div key={node.id} className="absolute flex flex-col items-center" style={{ left: x - TREE_NODE_WIDTH / 2, top: y, width: TREE_NODE_WIDTH }}>
+        {layout.nodes.map(({ node, x, y, width }) => (
+          <div key={node.id} className="absolute flex flex-col items-center" style={{ left: x - width / 2, top: y, width }}>
             <TreeIssueNode
               issue={node.issues[0]!}
               tasks={tasks}
               onCreateIssue={onCreateIssue}
               childProgress={childProgressMap?.get(node.issues[0]!.id)}
               project={projectMap?.get(node.issues[0]!.project_id ?? "")}
-              onHeightChange={onHeightChange}
+              onSizeChange={onSizeChange}
               collapsed={node.collapsed ? {
                 id: node.id,
                 count: node.issues.length,
@@ -238,13 +244,13 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   );
 }
 
-function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, onHeightChange, collapsed }: {
+function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, onSizeChange, collapsed }: {
   issue: Issue;
   tasks: AgentTask[];
   onCreateIssue: (defaults?: IssueCreateDefaults) => void;
   childProgress?: ChildProgress;
   project?: Project;
-  onHeightChange: (id: string, height: number) => void;
+  onSizeChange: (id: string, size: IssueTreeSize) => void;
   collapsed?: { id: string; count: number; onExpand: () => void };
 }) {
   const { t } = useT("issues");
@@ -256,15 +262,17 @@ function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, on
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
-    const measure = () => onHeightChange(nodeId, element.offsetHeight);
+    const measure = () => onSizeChange(nodeId, { width: element.offsetWidth, height: element.offsetHeight });
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [nodeId, onHeightChange]);
+  }, [nodeId, onSizeChange]);
   // shortcut: one cached timeline per displayed issue; batch collaborators if large trees need it.
   const timeline = useIssueTimelineQuery(issue.id);
+  const attachments = useQuery({ ...issueAttachmentsOptions(issue.id), enabled: !collapsed });
+  const files = useMemo(() => collectDeliverableFiles(timeline.data ?? [], attachments.data), [timeline.data, attachments.data]);
   const collaborators = useMemo(() => issueTreeCollaborators(timeline.data ?? []), [timeline.data]);
   const report = collaborators.filter((actor) => actor.actorType === "agent").flatMap((actor) => actor.messages)
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
@@ -302,7 +310,7 @@ function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, on
   );
 
   return (
-    <div ref={ref} className="w-full" data-tree-card={issue.id}>
+    <div ref={ref} className="min-h-24 min-w-60 max-w-240 resize overflow-auto" style={{ width: TREE_NODE_WIDTH }} data-tree-card={issue.id}>
       <IssueActionsContextMenu issue={issue}>
         <div className={cn("group/card rounded-lg", selected && "outline outline-1 outline-brand")} data-selected={selected ? "" : undefined}>
           <AppLink href={paths.issueDetail(issue.id)} newTabTitle={issue.identifier} className="block">
@@ -310,6 +318,7 @@ function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, on
           </AppLink>
         </div>
       </IssueActionsContextMenu>
+      {files.length > 0 && <TreeDeliverables files={files} />}
       <div className="flex justify-center">
         <Button variant="ghost" size="icon-xs" aria-label={t(($) => $.tree.create_child)} onClick={() => onCreateIssue({ parent_issue_id: issue.id, parent_issue_identifier: issue.identifier, project_id: issue.project_id })}><Plus /></Button>
       </div>
