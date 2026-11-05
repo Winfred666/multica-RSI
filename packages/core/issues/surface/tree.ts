@@ -64,29 +64,45 @@ export interface PositionedIssueTreeNode {
   y: number;
   parentId: string | null;
   height: number;
+  width: number;
 }
+
+export interface IssueTreeSize { width: number; height: number }
 
 export const TREE_NODE_WIDTH = 300;
 export const TREE_NODE_HEIGHT = 96;
 export const TREE_LEVEL_HEIGHT = 216;
 
-export function layoutIssueTree(roots: IssueTreeNode[], heights: ReadonlyMap<string, number> = new Map()) {
+export function layoutIssueTree(roots: IssueTreeNode[], sizes: ReadonlyMap<string, IssueTreeSize> = new Map()) {
   const nodes: PositionedIssueTreeNode[] = [];
-  let leaf = 0;
   const levels: number[] = [];
-  function place(node: IssueTreeNode, depth: number, parentId: string | null): number {
-    const height = heights.get(node.id) ?? TREE_NODE_HEIGHT;
-    levels[depth] = Math.max(levels[depth] ?? TREE_LEVEL_HEIGHT, height + 64);
-    const position = { node, x: 0, y: depth, parentId, height };
-    nodes.push(position);
-    const childXs = node.children.map((child) => place(child, depth + 1, node.id));
-    const x = childXs.length
-      ? (childXs[0]! + childXs[childXs.length - 1]!) / 2
-      : leaf++ * (TREE_NODE_WIDTH + 40) + TREE_NODE_WIDTH / 2 + 48;
-    position.x = x;
-    return x;
+  const widths = new Map<string, number>();
+  function measure(node: IssueTreeNode): number {
+    const childrenWidth = node.children.reduce((sum, child) => sum + measure(child), 0) + Math.max(0, node.children.length - 1) * 40;
+    const width = Math.max(sizes.get(node.id)?.width ?? TREE_NODE_WIDTH, childrenWidth);
+    widths.set(node.id, width);
+    return width;
   }
-  roots.forEach((root) => place(root, 0, null));
+  roots.forEach(measure);
+  function place(node: IssueTreeNode, depth: number, parentId: string | null, left: number) {
+    const height = sizes.get(node.id)?.height ?? TREE_NODE_HEIGHT;
+    const width = sizes.get(node.id)?.width ?? TREE_NODE_WIDTH;
+    levels[depth] = Math.max(levels[depth] ?? TREE_LEVEL_HEIGHT, height + 64);
+    const subtreeWidth = widths.get(node.id)!;
+    const position = { node, x: left + subtreeWidth / 2, y: depth, parentId, height, width };
+    nodes.push(position);
+    const childrenWidth = node.children.reduce((sum, child) => sum + widths.get(child.id)!, 0) + Math.max(0, node.children.length - 1) * 40;
+    let childLeft = left + (subtreeWidth - childrenWidth) / 2;
+    for (const child of node.children) {
+      place(child, depth + 1, node.id, childLeft);
+      childLeft += widths.get(child.id)! + 40;
+    }
+  }
+  let right = 48;
+  for (const root of roots) {
+    place(root, 0, null, right);
+    right += widths.get(root.id)! + 40;
+  }
   let height = 48;
   const tops = levels.map((level) => {
     const top = height;
@@ -96,7 +112,7 @@ export function layoutIssueTree(roots: IssueTreeNode[], heights: ReadonlyMap<str
   for (const position of nodes) position.y = tops[position.y]!;
   return {
     nodes,
-    width: Math.max(1, leaf) * (TREE_NODE_WIDTH + 40) + 56,
+    width: Math.max(TREE_NODE_WIDTH + 96, right + 8),
     height: Math.max(TREE_LEVEL_HEIGHT + 48, height),
   };
 }

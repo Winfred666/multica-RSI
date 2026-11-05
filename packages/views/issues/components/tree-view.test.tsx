@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "zustand/vanilla";
 import { setApiInstance, type ApiClient } from "@multica/core/api";
@@ -15,6 +15,19 @@ import { TreeView } from "./tree-view";
 import type { IssueStatusPagination } from "../surface/use-issue-status-branches";
 import { IssueSurfaceSelectionProvider, useCreateIssueSurfaceSelection } from "../surface/selection-context";
 import type { ZoomTransform } from "../../editor/hooks/use-zoom-canvas";
+
+const wsHandlers = vi.hoisted(() => new Map<string, Set<(payload: unknown) => void>>());
+vi.mock("@multica/core/realtime", () => ({
+  useWSEvent: (event: string, handler: (payload: unknown) => void) => {
+    useEffect(() => {
+      const handlers = wsHandlers.get(event) ?? new Set();
+      wsHandlers.set(event, handlers);
+      handlers.add(handler);
+      return () => { handlers.delete(handler); };
+    }, [event, handler]);
+  },
+  useWSReconnect: vi.fn(),
+}));
 
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
 vi.mock("@multica/core/workspace/hooks", () => ({ useActorName: () => ({ getActorName: (_type: string, id: string) => id }) }));
@@ -49,6 +62,7 @@ function setup(rows: Issue[], tasks: AgentTask[] = [], timeline: TimelineEntry[]
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const api = {
     listTimeline: vi.fn<() => Promise<TimelineEntry[]>>(async () => timeline),
+    listAttachments: vi.fn(async () => []),
     getAgentTaskSnapshot: vi.fn(async () => tasks),
     listTasksByIssue: vi.fn(async () => tasks),
     listTaskMessages: vi.fn<() => Promise<TaskMessagePayload[]>>(async () => []),
@@ -64,7 +78,9 @@ function setup(rows: Issue[], tasks: AgentTask[] = [], timeline: TimelineEntry[]
 }
 
 beforeEach(() => {
-  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) {
+    return this.hasAttribute("data-tree-card") ? 300 : 800;
+  });
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
     return this.hasAttribute("data-tree-card") ? 140 : 600;
   });
@@ -220,6 +236,35 @@ describe("TreeView", () => {
     expect(api.listTaskMessages).not.toHaveBeenCalledWith(other.id);
     act(() => qc.setQueryData(chatKeys.taskMessages(task.id), [message(5, "text", " with live updates")]));
     expect(await screen.findByText("Found the answer with live updates")).toBeInTheDocument();
+    qc.clear();
+  });
+
+  it("updates collaborators and the open report on comment events without refetching", async () => {
+    const row = issue("Working");
+    const { qc, api } = setup([row, issue("Elsewhere")]);
+    await waitFor(() => expect(api.listTimeline).toHaveBeenCalledTimes(2));
+    await userEvent.hover(screen.getByText("Working", { selector: "span[tabindex]" }));
+    expect(await screen.findByRole("heading", { name: "Working" })).toBeInTheDocument();
+    const emit = (event: string, payload: unknown) => act(() => {
+      for (const handler of wsHandlers.get(event) ?? []) handler(payload);
+    });
+    const reply = {
+      id: "live-reply", issue_id: row.id, author_type: "agent", author_id: "live-agent",
+      content: "New agent report", type: "comment", revision: 1, created_at: "2026-01-02",
+    };
+    emit("comment:created", { comment: reply });
+    expect(await screen.findByRole("img", { name: "live-agent" })).toBeInTheDocument();
+    expect(await screen.findByText("New agent report")).toBeInTheDocument();
+    expect(qc.getQueryData(issueTimelineOptions("Elsewhere").queryKey)).toEqual([]);
+
+    emit("comment:updated", { comment: { ...reply, revision: 2, content: "Updated agent report" } });
+    expect(await screen.findByText("Updated agent report")).toBeInTheDocument();
+    expect(screen.queryByText("New agent report")).not.toBeInTheDocument();
+
+    emit("comment:deleted", { issue_id: row.id, comment_id: reply.id });
+    await waitFor(() => expect(screen.queryByRole("img", { name: "live-agent" })).not.toBeInTheDocument());
+    expect(screen.queryByText("Updated agent report")).not.toBeInTheDocument();
+    expect(api.listTimeline).toHaveBeenCalledTimes(2);
     qc.clear();
   });
 

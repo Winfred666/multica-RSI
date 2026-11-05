@@ -153,7 +153,7 @@ func TestUploadFile_TaskScopedChatAttachment(t *testing.T) {
 		if resp.UploaderType != "agent" {
 			t.Fatalf("uploader_type: want agent, got %s", resp.UploaderType)
 		}
-		// task_id is set on the row (not exposed in the DTO — verify via DB).
+		// Verify the producing task is persisted on the row.
 		var dbTask *string
 		if err := testPool.QueryRow(context.Background(),
 			`SELECT task_id::text FROM attachment WHERE id = $1`, resp.ID).Scan(&dbTask); err != nil {
@@ -217,7 +217,7 @@ func TestUploadFile_TaskScopedChatAttachment(t *testing.T) {
 		}
 	})
 
-	t.Run("non-chat task rejected", func(t *testing.T) {
+	t.Run("task without an issue or chat rejected", func(t *testing.T) {
 		issueTask := createHandlerTestTaskForAgent(t, agentID) // no chat_session_id
 		w := uploadWithTaskID(t, agentID, issueTask, issueTask)
 		if w.Code != http.StatusBadRequest {

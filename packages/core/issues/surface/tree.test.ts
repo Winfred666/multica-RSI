@@ -44,7 +44,7 @@ describe("issue tree", () => {
 
   it("spaces levels for the tallest configurable card and updates when it shrinks", () => {
     const roots = buildIssueTree([issue("p"), issue("sibling"), issue("child", "p")], new Set(), new Set());
-    const layout = layoutIssueTree(roots, new Map([["p", 450], ["sibling", 520]]));
+    const layout = layoutIssueTree(roots, new Map([["p", { width: 300, height: 450 }], ["sibling", { width: 300, height: 520 }]]));
     const parent = layout.nodes.find((node) => node.node.id === "p")!;
     const child = layout.nodes.find((node) => node.node.id === "child")!;
     expect(child.y - parent.y).toBe(520 + 64);

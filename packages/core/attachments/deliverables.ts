@@ -1,19 +1,15 @@
 /**
  * Issue deliverables — the files an issue as a whole has produced (MUL-7649).
  *
- * A deliverable file is something uploaded in a comment. Attachments on the
+ * A deliverable file is uploaded by an issue task or in a comment. Files on the
  * issue description are inputs (the brief, reference material), not output,
  * so they never count.
  *
- * Re-uploading a file under the same name and type is a new VERSION of that
- * file, not another deliverable: agents iterate on a report or a screenshot
- * across runs, and the reader wants the latest one with its history behind
- * it, not five near-identical rows.
+ * Files with the same name and type share a deliverable slot. Comment uploads
+ * keep their version history; task uploads update the existing attachment.
  *
- * Built from comment entries rather than the issue-wide attachment list: the
- * list is fetched before the upload is bound to its comment and is not
- * refreshed when that bind lands, while the timeline is patched live and
- * already carries each comment's attachments.
+ * Comments supply bound files; the attachment list also supplies task files
+ * published before a final reply.
  *
  * Pure — no React, no DOM, no platform APIs.
  */
@@ -70,21 +66,21 @@ function compareUploadOrder(a: Attachment, b: Attachment): number {
  */
 export function collectDeliverableFiles(
   comments: ReadonlyArray<DeliverableSourceComment | null | undefined>,
+  attachments: ReadonlyArray<Attachment> = [],
 ): DeliverableFile[] {
   const byKey = new Map<string, Attachment[]>();
   const seen = new Set<string>();
 
-  for (const comment of comments) {
-    if (!comment || comment.deleted_at) continue;
-    if (comment.type !== undefined && comment.type !== "comment") continue;
-    for (const attachment of comment.attachments ?? []) {
-      if (!attachment?.id || seen.has(attachment.id)) continue;
-      seen.add(attachment.id);
-      const key = deliverableKey(attachment);
-      const versions = byKey.get(key);
-      if (versions) versions.push(attachment);
-      else byKey.set(key, [attachment]);
-    }
+  const delivered = comments.flatMap((comment) =>
+    comment && !comment.deleted_at && (comment.type === undefined || comment.type === "comment")
+      ? comment.attachments ?? [] : []);
+  for (const attachment of [...delivered, ...attachments.filter((a) => a.task_id && !a.comment_id)]) {
+    if (!attachment?.id || seen.has(attachment.id)) continue;
+    seen.add(attachment.id);
+    const key = deliverableKey(attachment);
+    const versions = byKey.get(key);
+    if (versions) versions.push(attachment);
+    else byKey.set(key, [attachment]);
   }
 
   const files: DeliverableFile[] = [];

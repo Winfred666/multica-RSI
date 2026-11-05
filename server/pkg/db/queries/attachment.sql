@@ -25,6 +25,28 @@ SELECT inserted.*,
        COALESCE((SELECT revision FROM bumped_comment), 0)::bigint AS comment_revision
 FROM inserted;
 
+-- name: UpdateAttachment :one
+WITH updated AS (
+  UPDATE attachment
+  SET filename = sqlc.arg(filename), url = sqlc.arg(url),
+      content_type = sqlc.arg(content_type), size_bytes = sqlc.arg(size_bytes)
+  WHERE attachment.id = sqlc.arg(id) AND attachment.workspace_id = sqlc.arg(workspace_id)
+    AND attachment.source_context_id IS NULL
+  RETURNING *
+), bumped_issue AS (
+  UPDATE issue SET revision = revision + 1
+  WHERE id IN (SELECT issue_id FROM updated WHERE issue_id IS NOT NULL)
+  RETURNING revision
+), bumped_comment AS (
+  UPDATE comment SET revision = revision + 1
+  WHERE id IN (SELECT comment_id FROM updated WHERE comment_id IS NOT NULL)
+  RETURNING revision
+)
+SELECT updated.*,
+       COALESCE((SELECT revision FROM bumped_issue), 0)::bigint AS issue_revision,
+       COALESCE((SELECT revision FROM bumped_comment), 0)::bigint AS comment_revision
+FROM updated;
+
 -- name: ListAttachmentsByIssue :many
 SELECT * FROM attachment
 WHERE issue_id = $1 AND workspace_id = $2

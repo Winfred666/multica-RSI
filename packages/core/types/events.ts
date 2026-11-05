@@ -137,6 +137,7 @@ export interface IssueLabelsChangedPayload {
 export interface IssueAttachmentsChangedPayload {
   issue_id: string;
   issue_revision?: number;
+  attachment_id?: string;
 }
 
 export interface IssueMetadataChangedPayload {
