@@ -13,6 +13,11 @@ trigger: a tag push is the only event that can publish binaries and container im
 The verification job runs the Go tests and `govulncheck` before any publishing
 job starts. The vulnerability scan is fail-closed by default.
 
+Prepare a draft GitHub Release with installation notes before pushing the tag.
+GoReleaser reuses the draft, preserves its notes, uploads binaries, and publishes
+it. This also keeps the first fork release from listing the entire upstream
+commit history as its release notes.
+
 CI and release jobs require Go `~1.27.3`: at least 1.27.3, while accepting
 newer 1.27 patches. This security floor is independent of the development
 minimum in `server/go.mod`. A plain `1.27.x` can resolve to an older patch
