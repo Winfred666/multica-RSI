@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
     sortField: "name",
     sortDirection: "asc" as string,
     hiddenColumns: [] as string[],
+    search: "",
+    setSearch: vi.fn(),
     filters: {
       usage: [] as string[],
       origins: [] as string[],
@@ -120,7 +122,12 @@ vi.mock("@multica/ui/components/ui/tooltip", () => ({
   TooltipContent: () => null,
 }));
 vi.mock("./create-skill-dialog", () => ({ CreateSkillDialog: () => null }));
-vi.mock("./skill-list-toolbar", () => ({ SkillListToolbar: () => null }));
+vi.mock("./skill-list-controls", () => ({
+  countActiveFilterDimensions: () => 0,
+  SkillFilterMenu: () => null,
+  SkillDisplayMenu: () => null,
+  SkillCreateMenu: () => null,
+}));
 vi.mock("./skill-list-actions", () => ({
   SkillBatchToolbar: () => null,
   SkillRowActions: () => null,
