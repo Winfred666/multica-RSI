@@ -4,15 +4,17 @@
 
 *Compute is abundant; human attention is the bottleneck. **Bring Everything Inside.** Instead of scattering experiments across fragile scripts, disconnected machines, and noisy terminal tabs, organize parallel exploration, nested sub-workspaces, and evolving SOPs inside one R&D harness.*
 
-> [!IMPORTANT]
-> **Core Philosophy: Bring Everything Inside.**
-> Multica-RSI brings projects, 26+ agent CLIs, and distributed compute into a shared research workspace. Combine **nested experiment workspaces**, **up to 50 concurrent agent tasks**, **Recursive Self-Improvement (RSI)**, and **Gradual Context Reveal** to spend your attention on results. Use the AIDE sandboxed development workflow when experiments need a separate, locked evaluator.
-
 <p align="center">
   <img src="docs/assets/showcase/tree-panel-subworkspaces-and-html.png" alt="Live Multica-RSI UI with a curated research campaign, nested sub-workspace snapshots and an inline AIDE HTML delivery" width="100%" />
 </p>
 
 *Curated demonstration in the live application. Campaign states and AIDE scores illustrate the workflow.*
+
+The same canvas holds a GPU/memory snapshot and an interactive idea-probing panel alongside experiment trees. Open an HTML artifact to inspect resources or move between Idea, Probe, and Evidence tabs.
+
+| Machine state | Idea probing |
+| --- | --- |
+| ![GPU and system memory snapshot](docs/assets/showcase/machine-state.png) | ![Interactive idea-probing panel](docs/assets/showcase/idea-probe.png) |
 
 ## 🧠 Gradual Context Reveal: Engineered for Human Attention
 

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Idea lab · probing workflow</title>
+<style>
+:root{font:13px/1.4 system-ui,sans-serif;color:#25304a;background:#f3f4fa;color-scheme:light}
+*{box-sizing:border-box}body{margin:0;padding:12px}.panel{max-width:640px;margin:auto;background:#fff;border:1px solid #dfe3ef;border-radius:12px;padding:14px}
+header,footer{display:flex;align-items:center;justify-content:space-between;gap:8px}h1{font-size:15px;margin:0}.tag{font-size:10px;background:#eef0fb;color:#6263a5;padding:3px 7px;border-radius:12px}
+[role=tablist]{display:flex;gap:4px;margin:12px 0}button{font:inherit;border:0;border-radius:6px;padding:5px 9px;cursor:pointer;background:#f2f3f8;color:#515e79}button[aria-selected=true]{background:#e7eaff;color:#354ab4;font-weight:600}button:hover{filter:brightness(.96)}button:focus-visible{outline:2px solid #536cd3;outline-offset:2px}button:disabled{opacity:.4;cursor:default}
+h2{font-size:16px;margin:0 0 6px}p{margin:0;color:#66718a;min-height:40px}footer{margin-top:12px;color:#66718a;font-size:11px}.actions{display:flex;gap:5px}
+@media(max-width:420px){body{padding:6px}.panel{padding:10px}h1{font-size:12px}[role=tablist]{margin:7px 0}button{font-size:10px;padding:3px 7px}h2{font-size:12px}p{font-size:10px;min-height:28px}footer{font-size:9px;margin-top:7px}}
+</style>
+<main class="panel">
+<header><h1>Idea lab</h1><span class="tag">Demonstration</span></header>
+<div role="tablist" aria-label="Idea probing">
+<button id="idea-tab" role="tab" aria-selected="true" aria-controls="panel" data-tab="idea">Idea</button>
+<button id="probe-tab" role="tab" aria-selected="false" aria-controls="panel" tabindex="-1" data-tab="probe">Probe</button>
+<button id="evidence-tab" role="tab" aria-selected="false" aria-controls="panel" tabindex="-1" data-tab="evidence">Evidence</button>
+</div>
+<section id="panel" role="tabpanel" aria-labelledby="idea-tab" aria-live="polite"><h2 id="title"></h2><p id="detail"></p></section>
+<footer><span id="iteration"></span><div class="actions"><button id="previous" aria-label="Previous idea">←</button><button id="next" aria-label="Next idea">Next idea →</button></div></footer>
+</main>
+<script>
+const ideas = [
+  {title:'Trim recall context',idea:'Keep the current hypothesis, evidence, and next action in each recall.',probe:'Compare concise recalls with full history under the same task budget.',evidence:'Awaiting evaluation. Record validity, tokens, and execution steps.'},
+  {title:'Challenge the strongest branch',idea:'Ask one reviewer to refute the selected solution at its fixed commit.',probe:'Bound the review to dataflow and the public output contract.',evidence:'Awaiting review. Keep a finding tied to the candidate commit.'},
+  {title:'Reuse the accepted checkpoint',idea:'Start the next refinement from the strongest accepted result.',probe:'Compare checkpoint reuse with a fresh draft using the same evaluator.',evidence:'Awaiting comparison. Retain the baseline if the new branch loses.'}
+];
+let index=0, tab='idea';
+const tabs=[...document.querySelectorAll('[role=tab]')];
+function render(){
+  document.getElementById('title').textContent=ideas[index].title;
+  document.getElementById('detail').textContent=ideas[index][tab];
+  document.getElementById('iteration').textContent=`Idea ${index+1} of ${ideas.length}`;
+  document.getElementById('previous').disabled=index===0;
+  document.getElementById('next').disabled=index===ideas.length-1;
+  document.getElementById('panel').setAttribute('aria-labelledby',`${tab}-tab`);
+  tabs.forEach(button=>{const active=button.dataset.tab===tab;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1});
+}
+tabs.forEach((button,i)=>{
+  button.addEventListener('click',()=>{tab=button.dataset.tab;render()});
+  button.addEventListener('keydown',event=>{
+    const target=event.key==='ArrowRight'?(i+1)%tabs.length:event.key==='ArrowLeft'?(i+tabs.length-1)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:null;
+    if(target===null)return;event.preventDefault();tabs[target].click();tabs[target].focus();
+  });
+});
+document.getElementById('previous').addEventListener('click',()=>{index--;render()});
+document.getElementById('next').addEventListener('click',()=>{index++;render()});
+render();
+</script>
+</html>

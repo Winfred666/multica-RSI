@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Machine state · resource snapshot</title>
+<style>
+:root{font:13px/1.4 system-ui,sans-serif;color:#18312d;background:#f2f7f5;color-scheme:light}
+*{box-sizing:border-box}body{margin:0;padding:12px}.panel{max-width:740px;margin:auto;background:#fff;border:1px solid #dbe6e0;border-radius:12px;padding:14px}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:14px}h1{font-size:15px;margin:0}.tag{font-size:10px;color:#276b55;background:#e9f5ed;border-radius:12px;padding:3px 7px}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.label{font-size:11px;color:#52685e}.value{font-size:24px;line-height:1.4;font-weight:650;font-variant-numeric:tabular-nums}.unit{font-size:12px;font-weight:400;color:#60736b}
+.bar{height:5px;background:#eaf0ec;border-radius:5px;overflow:hidden;margin:5px 0 7px}.fill{height:100%;background:#369b78;border-radius:5px}.detail{font-size:10px;color:#60736b}footer{margin-top:14px;font-size:10px;color:#60736b}
+@media(max-width:420px){body{padding:6px}.panel{padding:10px}header{margin-bottom:8px}h1{font-size:12px}.metrics{gap:9px}.value{font-size:18px}.unit{font-size:9px}.label,.detail,footer{font-size:9px}footer{margin-top:8px}}
+</style>
+<main class="panel">
+<header><h1>Machine state</h1><span class="tag">Recorded snapshot</span></header>
+<div class="metrics">
+<section aria-label="GPU activity"><div class="label">GPU activity</div><div class="value">0<span class="unit"> %</span></div><div class="bar"><div class="fill" style="width:0%"></div></div><div class="detail">GTX 1080 Ti</div></section>
+<section aria-label="GPU memory"><div class="label">GPU memory</div><div class="value">0.9<span class="unit"> / 11.0 GiB</span></div><div class="bar"><div class="fill" style="width:8.6%"></div></div><div class="detail">10.1 GiB available</div></section>
+<section aria-label="System memory"><div class="label">System memory</div><div class="value">8.6<span class="unit"> / 15.6 GiB</span></div><div class="bar"><div class="fill" style="width:55.4%"></div></div><div class="detail">6.9 GiB available</div></section>
+</div>
+<footer>Local workstation · 2026-11-06 09:18 UTC</footer>
+</main>
+</html>
