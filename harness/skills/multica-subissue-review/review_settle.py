@@ -36,6 +36,10 @@ def save(sop, child, value):
 def bindings(sop, repo, child, parent):
     branch = (child.get("metadata") or {}).get("git_branch")
     target = (parent.get("metadata") or {}).get("git_branch")
+    if not target and sop.kind(parent) == "query" and branch:
+        if not sop.owned_branch(repo, branch, child, child["workspace_id"]):
+            raise ValueError("Supplied root branch ownership changed")
+        return branch, None
     if sop.kind(child) == "query" and branch == target and branch:
         if not sop.owned_branch(repo, target, parent, child["workspace_id"]):
             raise ValueError("Query parent branch ownership changed")
@@ -77,7 +81,7 @@ def settle(sop, repo, common, child, parent, value):
         if category(child) != terminal:
             raise ValueError("Child already has a different terminal outcome")
         return finish(sop, child, value)
-    owner = (parent.get("metadata") or {}).get("git_owner_issue_id", parent["id"])
+    owner = sop.branch_owner(parent, child["workspace_id"])["id"]
     token = hashlib.sha256((child["workspace_id"] + "\0" + owner).encode()).hexdigest()
     with sop.locked(common / "multica-sop" / (token + ".lock"), wait=True):
         rows = worktrees(sop, repo)
@@ -199,7 +203,7 @@ def main(argv=None):
             print(json.dumps({"ok": True, "phase": "finished", "decision": value["id"], "delivery": delivery}))
             return 0
         repo, common = sop.resolve_repository(args.repo, child, workspace)
-        if str(repo) != value["repo"]:
+        if (child.get("metadata") or {}).get("git_repository") != value["repository"]:
             raise ValueError("Repository differs from the reviewed decision")
         if not args.execute:
             profile, policy = sop.inherit_sandbox(child, workspace)
@@ -209,6 +213,20 @@ def main(argv=None):
                                   "--decision", value['id'], "--execute"], cwd=repo, timeout=None)
             settled(gate_context)
             print(result.stdout.strip())
+            return 0
+        parent = sop.issue(child["parent_issue_id"], workspace)
+        if not (parent.get("metadata") or {}).get("git_branch") and sop.kind(parent) == "query":
+            branch, _ = bindings(sop, repo, child, parent)
+            checkout = sop.base.checkout(repo, branch)
+            if (parent["id"] != value["parent_id"] or category(parent) in {"done", "cancelled"}
+                    or sop.git(repo, "rev-parse", branch).stdout.strip() != value["head"]):
+                raise ValueError("Supplied root delivery changed after review")
+            if value["action"] == "accept":
+                sop.command(["/bin/sh", "-c", value["verify"]], cwd=checkout, timeout=None)
+            sop.cli("status", child["id"], "done" if value["action"] == "accept" else "cancelled", "--no-start", workspace=workspace)
+            delivery = finish(sop, child, value)
+            settled(gate_context)
+            print(json.dumps({"ok": True, "phase": "finished", "decision": value["id"], "delivery": delivery}))
             return 0
         parent = sop.issue(child["parent_issue_id"], workspace)
         token = hashlib.sha256((workspace + "\0" + child["id"]).encode()).hexdigest()

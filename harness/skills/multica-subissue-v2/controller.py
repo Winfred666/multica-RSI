@@ -31,61 +31,58 @@ def kind(value):
 
 
 def resolve_repository(path, value, workspace):
-    current, seen = value, set()
+    current = value
     while current:
-        if current['id'] in seen:
-            raise ValueError('Issue parent cycle while resolving the repository')
-        seen.add(current['id'])
-        if metadata(current).get('git_repo_root') or kind(current) != 'query':
+        if metadata(current).get('git_repository') or metadata(current).get('git_branch') or kind(current) != 'query':
             return base.resolve_repository(path, value, workspace)
         parent = current.get('parent_issue_id')
         current = issue(parent, workspace) if parent else None
-    if path is not None or kind(value) != 'query':
+    if path is not None:
         return base.resolve_repository(path, value, workspace)
     return None, None
 
 
+def branch_owner(value, workspace):
+    branch = metadata(value).get('git_branch')
+    while value.get('parent_issue_id'):
+        parent = issue(value['parent_issue_id'], workspace)
+        if metadata(parent).get('git_branch') != branch:
+            break
+        value = parent
+    return value
+
+
 def owned_branch(repo, branch, value, workspace):
-    owner = metadata(value).get('git_owner_issue_id', value['id'])
-    return base.owned_branch(repo, branch, issue(owner, workspace) if owner != value['id'] else value, workspace)
+    return base.owned_branch(repo, branch, branch_owner(value, workspace), workspace)
 
 
 def prepare(repo, value, workspace):
-    tag = kind(value)
+    tag, props = kind(value), metadata(value)
     parent = issue(value['parent_issue_id'], workspace) if value.get('parent_issue_id') else None
-    props = metadata(value)
-    if parent is None or (tag == 'dev' and kind(parent) == 'query'
-            and props.get('git_repo_root') and props.get('git_base_branch') == 'main'
-            and props.get('git_branch') and props.get('git_owner_issue_id') == value['id']):
-        if tag == 'query':
-            profile, policy = inherit_sandbox(value, workspace)
-            return {'issue_id': value['id'], 'owner_issue_id': value['id'], 'branch': None,
-                    'base_branch': None, 'workdir': metadata(value).get('query_workdir') or str(repo or Path.cwd()),
-                    'sandbox_profile': profile, 'sandbox_policy': policy}
-        binding = base.prepare(repo, value, workspace)
-        return {**binding, 'owner_issue_id': value['id']}
-    inherited = prepare(repo, parent, workspace)
+    if tag != 'query' and props.get('git_branch') and props.get('git_base_branch'):
+        return {**base.prepare(repo, value, workspace), 'owner_issue_id': value['id']}
+    inherited = prepare(repo, parent, workspace) if parent else None
     if tag == 'query':
-        branch = inherited['branch']
-        owner = inherited['owner_issue_id']
-        if branch is None:
-            profile, policy = inherit_sandbox(value, workspace)
-            return {**inherited, 'issue_id': value['id'],
-                    'workdir': metadata(value).get('query_workdir') or inherited['workdir'],
-                    'sandbox_profile': profile, 'sandbox_policy': policy}
-        base.bind(value, 'git_base_branch', branch)
-        base.bind(value, 'git_owner_issue_id', owner)
-        base.bind(value, 'git_branch', branch)
-    else:
-        if repo is None or inherited['branch'] is None:
-            raise ValueError('A dev/exp child needs an explicitly owned parent repository branch')
-        branch = base.reserve(repo, value, workspace, inherited['branch'])
-        owner = value['id']
-    base.bind(value, 'git_repo_root', str(repo))
+        branch = props.get('git_branch') or (inherited or {}).get('branch')
+        if branch:
+            base.bind(value, 'git_base_branch', (inherited or {}).get('branch') or props['git_base_branch'])
+            base.bind(value, 'git_branch', branch)
+            base.bind_repository(repo, value)
+        profile, policy = inherit_sandbox(value, workspace)
+        workdir = base.checkout(repo, branch) if branch else repo or Path.cwd()
+        return {'issue_id': value['id'], 'owner_issue_id': branch_owner(value, workspace)['id'],
+                'branch': branch, 'base_branch': metadata(value).get('git_base_branch'),
+                'workdir': str(workdir) if workdir else None,
+                'sandbox_profile': profile, 'sandbox_policy': policy}
+    if parent and not inherited['branch']:
+        raise ValueError('A dev/exp child needs an explicitly owned parent repository branch')
+    branch = base.reserve(repo, value, workspace, inherited['branch'] if inherited else
+                          git(repo, 'branch', '--show-current').stdout.strip())
+    base.bind_repository(repo, value)
     profile, policy = inherit_sandbox(value, workspace)
-    return {'issue_id': value['id'], 'owner_issue_id': owner, 'branch': branch,
-            'workdir': metadata(value).get('query_workdir'),
-            'base_branch': inherited['branch'], 'sandbox_profile': profile, 'sandbox_policy': policy}
+    return {'issue_id': value['id'], 'owner_issue_id': value['id'], 'branch': branch,
+            'base_branch': metadata(value)['git_base_branch'],
+            'sandbox_profile': profile, 'sandbox_policy': policy}
 
 
 def label(value, tag):
@@ -113,7 +110,15 @@ def binding_for(args, context):
     args.repo = args.repo or repo
     with locked(common / 'multica-sop/branches.lock', wait=True) if common else nullcontext():
         context['external_write_attempted'] = True
-        binding = prepare(repo, value, args.workspace)
+        props = metadata(value)
+        if (props.get('git_branch') and props.get('git_base_branch')
+                and branch_owner(value, args.workspace)['id'] == value['id']):
+            binding = base.bootstrap(repo, value, args.workspace)
+            profile, policy = inherit_sandbox(value, args.workspace)
+            binding.update(issue_id=value['id'], owner_issue_id=value['id'],
+                           sandbox_profile=profile, sandbox_policy=policy)
+        else:
+            binding = prepare(repo, value, args.workspace)
     return value, repo, common, binding
 
 
@@ -135,8 +140,6 @@ def prepare_action(args, context):
 
 
 def validate_creation(args, value):
-    if args.shared_dir is not None and args.tag != 'query':
-        raise ValueError('--shared-dir is only for query creation')
     if args.experiment_group is not None or args.experiment_group_size is not None:
         if args.tag != 'exp' or not args.experiment_group or not args.experiment_group_size or args.experiment_group_size < 1:
             raise ValueError('Competitive exp creation needs an experiment group and positive group size')
@@ -173,17 +176,8 @@ def create_action(args, context):
         parent_binding = prepare(repo, value, args.workspace)
         if args.tag != 'query' and parent_binding['branch'] is None:
             raise ValueError('A dev/exp child needs an explicitly owned parent repository branch')
-        if args.tag == 'query':
-            shared = args.shared_dir or parent_binding.get('workdir')
-            if shared is None:
-                shared = base.worktree(repo, common, {**parent_binding, 'issue_id': parent_binding['owner_issue_id']}, args.workspace)
-            shared = Path(shared).expanduser().resolve(strict=True)
-            if not shared.is_dir():
-                raise ValueError('--shared-dir must identify an existing directory')
         value, assignee = base.create_child(args, value, args.workspace)
         value = issue(value['id'], args.workspace)
-        if args.tag == 'query':
-            base.bind(value, 'query_workdir', str(shared))
         label(value, args.tag)
         if args.tag == 'exp':
             base.bind(value, 'experiment_baseline', str(args.baseline_score))
@@ -311,7 +305,6 @@ workflow = Workflow(
             Parameter('--spec-file', 'Child issue specification JSON', type=Path),
             Parameter('--tag', required=False, choices=('query', 'dev', 'exp'), default='query'),
             Parameter('--start', required=False, action='store_true'),
-            Parameter('--shared-dir', required=False, type=Path),
             Parameter('--baseline-score', required=False, type=float),
             Parameter('--direction', required=False, choices=('min', 'max')),
             Parameter('--experiment-group', required=False),

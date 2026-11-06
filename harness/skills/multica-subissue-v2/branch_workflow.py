@@ -116,30 +116,44 @@ def repository(path):
 
 
 def resolve_repository(path, value, workspace):
-    """Prefer the SOP binding, then this task's CLI-exposed checkout."""
-    run_issue = value["id"]
-    seen = set()
-    while not metadata(value).get("git_repo_root"):
-        if value["id"] in seen:
-            raise WorkflowError("Issue parent cycle while resolving the repository")
-        seen.add(value["id"])
-        parent = value.get("parent_issue_id")
-        if not parent:
-            if path is None:
-                task = os.environ.get("MULTICA_TASK_ID")
-                runs = cli("runs", run_issue, "--active", workspace=workspace) if task else []
-                paths = {row.get("durable_work_dir") or row.get("work_dir") for row in runs
-                         if row.get("id") == task}
-                repositories = dict(repository(Path(p)) for p in paths if p)
-                if len(repositories) != 1:
-                    raise WorkflowError("No unambiguous repository binding or current task checkout; select --repo")
-                return next(iter(repositories.items()))
-            return repository(path)
-        value = issue(parent, workspace)
-    repo, common = repository(Path(metadata(value)["git_repo_root"]))
-    if path is not None and repository(path)[1] != common:
-        raise WorkflowError("--repo differs from the issue's SOP repository binding")
+    """Resolve local execution resources; persist only the repository URL."""
+    current, expected, project = value, None, None
+    while current:
+        expected = expected or metadata(current).get("git_repository")
+        project = project or current.get("project_id")
+        parent = current.get("parent_issue_id")
+        current = issue(parent, workspace) if parent else None
+    if path is None and project:
+        result = command(["multica", "project", "resource", "list", project, "--output", "json"],
+                         env={**os.environ, "MULTICA_WORKSPACE_ID": workspace})
+        resources = json.loads(result.stdout)["resources"]
+        daemon = os.environ.get("MULTICA_DAEMON_ID")
+        local = [r["resource_ref"]["local_path"] for r in resources
+                 if r["resource_type"] == "local_directory"
+                 and (not daemon or r["resource_ref"]["daemon_id"] == daemon)]
+        if len(local) == 1:
+            path = local[0]
+    repo, common = repository(path or Path.cwd())
+    if expected and git(repo, "remote", "get-url", "origin").stdout.strip() != expected:
+        raise WorkflowError("Checkout differs from the issue's Git repository")
     return repo, common
+
+
+def bind_repository(repo, value):
+    remote = git(repo, "remote", "get-url", "origin", check=False)
+    if remote.returncode == 0:
+        url = remote.stdout.strip()
+        if url.startswith(("/", "file:")):
+            raise WorkflowError("Git delivery requires a repository URL")
+        bind(value, "git_repository", url)
+
+
+def checkout(repo, branch):
+    for block in git(repo, "worktree", "list", "--porcelain").stdout.strip().split("\n\n"):
+        row = dict(line.split(" ", 1) for line in block.splitlines() if " " in line)
+        if row.get("branch") == "refs/heads/" + branch:
+            return Path(row["worktree"])
+    return None
 
 
 def reserve(repo, value, workspace, base):
@@ -292,7 +306,7 @@ def prepare(repo, value, workspace, seen=None):
         parent = issue(value["parent_issue_id"], workspace)
         base = prepare(repo, parent, workspace, seen)["branch"]
     branch = reserve(repo, value, workspace, base or "main")
-    bind(value, "git_repo_root", str(repo))
+    bind_repository(repo, value)
     profile, policy = inherit_sandbox(value, workspace)
     seen.remove(value["id"])
     return {"issue_id": value["id"], "branch": branch, "base_branch": base or "main",
@@ -300,27 +314,30 @@ def prepare(repo, value, workspace, seen=None):
 
 
 def worktree(repo, common, binding, workspace):
-    digest = hashlib.sha256((workspace + "\0" + binding["issue_id"]).encode()).hexdigest()[:24]
-    path = common / "multica-sop" / "worktrees" / digest
-    if path.exists():
-        if (Path(git(path, "rev-parse", "--show-toplevel").stdout.strip()).resolve() != path.resolve()
-                or git(path, "symbolic-ref", "--short", "HEAD").stdout.strip() != binding["branch"]):
-            raise WorkflowError("Existing worktree no longer matches the issue binding")
-    else:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        git(repo, "worktree", "add", str(path), binding["branch"])
+    path = checkout(repo, binding["branch"])
+    if path is not None:
+        return path
+    path = common / "multica-sop" / "worktrees" / binding["branch"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    git(repo, "worktree", "add", str(path), binding["branch"])
     return path
 
 
 def bootstrap(path, value, workspace):
-    """Bind a supplied root checkout before assignment."""
+    """Bind a supplied checkout through its Git identity before assignment."""
     repo, common = repository(path)
-    branch = reserve(repo, value, workspace, "main")
+    current = git(repo, "symbolic-ref", "--short", "HEAD").stdout.strip()
+    props = metadata(value)
+    base = props.get("git_base_branch") or current
+    branch = props.get("git_branch")
+    if branch == current and git(repo, "rev-parse", "--verify", "--quiet",
+                                 "refs/multica/local-state/" + branch, check=False).returncode:
+        record_branch(repo, branch, git(repo, "rev-parse", "HEAD").stdout.strip(), value, workspace)
+    branch = reserve(repo, value, workspace, base)
+    bind_repository(repo, value)
     target = worktree(repo, common, {"issue_id": value["id"], "branch": branch}, workspace)
-    for key, content in {"git_repo_root": str(repo), "git_workdir": str(target),
-                         "git_owner_issue_id": value["id"]}.items():
-        bind(value, key, content)
-    return {"repo_root": str(repo), "workdir": str(target), "branch": branch, "base_branch": "main", "tag": "dev"}
+    return {"repository": metadata(value).get("git_repository"), "workdir": str(target),
+            "branch": branch, "base_branch": base, "tag": "dev"}
 
 
 def create_child(args, parent, workspace):
@@ -347,3 +364,13 @@ def create_child(args, parent, workspace):
     if not isinstance(value, dict) or not value.get("id"):
         raise WorkflowError("Create response lacks id; inspect children before any further create")
     return value, spec.get("assignee_id")
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Bind a supplied Git branch before issue assignment.')
+    parser.add_argument('--issue', required=True)
+    parser.add_argument('--repo', type=Path, required=True)
+    args = parser.parse_args()
+    workspace = os.environ['MULTICA_WORKSPACE_ID']
+    print(json.dumps(bootstrap(args.repo, issue(args.issue, workspace), workspace)))
