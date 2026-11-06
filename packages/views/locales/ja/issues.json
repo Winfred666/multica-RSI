@@ -1,7 +1,7 @@
 {
   "tree": {
-    "input_trend": "現在のコンテキスト：{{tokens}} トークン",
-    "input_drops": "コンテキスト圧縮回数：{{count}}",
+    "input_trend": "コンテキスト：{{tokens}} / {{limit}} トークン",
+    "input_drops": "圧縮回数：{{count}}",
     "input_trend_hint": "完了した実行から推定。リングはコンテキスト上限を256Kトークンと仮定して表示します。",
     "pan_hint": "ドラッグで範囲選択 · スペースを押しながら移動",
     "loading": "ツリーを読み込み中…",
