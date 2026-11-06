@@ -6,6 +6,10 @@ Each issue or sub-workspace occupies its measured size. Children start below the
 
 The implementation lives in `packages/core/issues/surface/tree.ts`, workspace composition in `packages/core/workspace/tree.ts`, and canvas measurement in `packages/views/issues/components/tree-view.tsx`. Web and desktop share it. Pan and zoom remain local view preferences.
 
+## Planned: compact sibling subtrees
+
+Measure each sibling subtree as a block, including its descendants, nested workspaces and artifacts. Pack those blocks into the available space with a small gap, preserving readable connections and preventing overlap. Recalculate after card or artifact resizing.
+
 ## Planned: drag and remember root trees
 
 Status: proposed; implement only when requested.
