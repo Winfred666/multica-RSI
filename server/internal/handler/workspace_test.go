@@ -1477,13 +1477,14 @@ func TestCreateWorkspace_ChineseNameDerivesPrefixFromSlug(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("database not available")
 	}
+	workspaceHarnessServer(t)
 
 	ctx := context.Background()
 	const slug = "handler-tests-frontend-team"
 	_, _ = testPool.Exec(ctx, `DELETE FROM workspace WHERE slug = $1`, slug)
 	dbfx.Cleanup(t, `DELETE FROM workspace WHERE slug = $1`, slug)
 
-	req := newRequest("POST", "/api/workspaces", map[string]any{
+	req := workspaceHarnessRequest(map[string]any{
 		"name": "前端团队",
 		"slug": slug,
 	})
@@ -1491,6 +1492,7 @@ func TestCreateWorkspace_ChineseNameDerivesPrefixFromSlug(t *testing.T) {
 
 	var resp WorkspaceResponse
 	w.JSON(&resp)
+	cleanupWorkspaceHarness(t, resp.ID)
 	if resp.IssuePrefix != "HAND" {
 		t.Fatalf("issue_prefix = %q, want %q (derived from the slug, not the name)", resp.IssuePrefix, "HAND")
 	}
@@ -1505,13 +1507,14 @@ func TestCreateWorkspace_HonorsExplicitIssuePrefix(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("database not available")
 	}
+	workspaceHarnessServer(t)
 
 	ctx := context.Background()
 	const slug = "handler-tests-explicit-prefix"
 	_, _ = testPool.Exec(ctx, `DELETE FROM workspace WHERE slug = $1`, slug)
 	dbfx.Cleanup(t, `DELETE FROM workspace WHERE slug = $1`, slug)
 
-	req := newRequest("POST", "/api/workspaces", map[string]any{
+	req := workspaceHarnessRequest(map[string]any{
 		"name":         "前端团队",
 		"slug":         slug,
 		"issue_prefix": "fe",
@@ -1520,6 +1523,7 @@ func TestCreateWorkspace_HonorsExplicitIssuePrefix(t *testing.T) {
 
 	var resp WorkspaceResponse
 	w.JSON(&resp)
+	cleanupWorkspaceHarness(t, resp.ID)
 	if resp.IssuePrefix != "FE" {
 		t.Fatalf("issue_prefix = %q, want %q", resp.IssuePrefix, "FE")
 	}

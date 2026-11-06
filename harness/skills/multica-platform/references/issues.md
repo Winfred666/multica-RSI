@@ -7,7 +7,7 @@ Product contracts the runtime brief does not fully encode.
 - [Custom properties: typed workflow state](#custom-properties-typed-workflow-state)
 - [Status changes have server side effects](#status-changes-have-server-side-effects)
 - [Who else is running right now](#who-else-is-running-right-now)
-- [Sub-issues: todo starts work now, backlog parks it](#sub-issues-todo-starts-work-now-backlog-parks-it)
+- [Sub-issues and stages](#sub-issues-and-stages)
 - [Charts and files in a comment](#charts-and-files-in-a-comment)
 - [Incorrect to correct](#incorrect-to-correct)
 
@@ -122,6 +122,24 @@ page, it reads through an empty page. A failed request, malformed page, or
 duplicate issue stops the operation before any position write. This protects
 against truncated or repeated pages, but does not promise a snapshot across
 concurrent edits. There is no CLI bulk-export or `--all` mode.
+
+### Saved views
+
+When a request names a saved view ("the Bugs view", a view link), read it
+with `view issues` instead of rebuilding its filters from `issue list` flags:
+the server applies every condition the view saves — "is not", the advanced
+condition tree, relative due dates, project status — which `issue list`
+cannot express.
+
+```bash
+multica view list --output json
+multica view issues "Bugs" --output json --fields identifier,title,status
+```
+
+`<view>` is an ID, ID prefix, or exact name. Pages hold at most 100 issues;
+while `has_more` is true, pass `next_cursor` to `--cursor`. Views and their
+"me" conditions resolve against the runtime owner, so a member's private view
+is only visible when that member owns the runtime.
 
 ## Custom properties: typed workflow state
 
@@ -311,7 +329,7 @@ a run you see may finish a second later, and one you don't see may start a
 second later. Coordinate through the issue's comments — the reads tell you whom
 to coordinate with.
 
-## Sub-issues: todo starts work now, backlog parks it
+## Sub-issues and stages
 
 On an agent-assigned issue, create status decides whether the assignee fires
 immediately. A non-backlog status (e.g. `todo`) enqueues the agent at create
@@ -381,14 +399,14 @@ Where content goes decides how it shows:
   `report.html` is a deliverable to open, not an inline chart. Use it for
   something the reader keeps or downloads.
 
-For HTML that should follow light / dark mode, style it with the page's theme
-variables: `var(--background)`, `var(--foreground)`, `var(--muted)`,
-`var(--muted-foreground)`, `var(--border)`, `var(--primary)`,
-`var(--chart-1)` … `var(--chart-5)`, `var(--font-sans)`. Using any of them opts
-the block into the app's color scheme, so also set the page background
-(`body { background: var(--background); color: var(--foreground) }`). HTML
-that uses none keeps its own look. Size to the content, not the viewport:
-`100vh` heights have no fixed viewport to fill here.
+For HTML that follows light / dark mode, style it with `var(--background)`,
+`var(--foreground)`, `var(--muted)`, `var(--muted-foreground)`, `var(--border)`,
+`var(--primary)`, `var(--chart-1)` … `var(--chart-5)`, `var(--font-sans)`. Any
+of them opts the block into the app's color scheme, so set the page background
+(`body { background: var(--background); color: var(--foreground) }`). Never put
+token text on a fixed light fill: it is near-white in dark mode, so a pastel
+`background:#fde2e4` needs a fixed dark `color`. HTML that uses no token keeps
+its own look. Size to the content: `100vh` has no fixed viewport to fill here.
 
 ````markdown
 ```html title="p95 latency, last 7 days"
@@ -407,20 +425,6 @@ PR title (link the issue):
 Fix login redirect                  # incorrect — no issue key, won't link
 Body-only "Part of MUL-123"         # incorrect — passing mention, won't link
 MUL-123: fix login redirect        # correct — links the PR
-```
-
-Serial / phased sub-issues (don't start the whole chain at once):
-
-```bash
-# incorrect — all fire immediately, no ordering
-multica issue create --title "Step 2" --parent <issue-id> --assignee <agent> --status todo
-multica issue create --title "Step 3" --parent <issue-id> --assignee <agent> --status todo
-
-# correct — stage them; Stage 1 runs, later stages park and are promoted as
-# each stage's barrier closes
-multica issue create --title "Step 1" --parent <issue-id> --assignee <agent> --stage 1 --status todo
-multica issue create --title "Step 2" --parent <issue-id> --assignee <agent> --stage 2 --status backlog
-multica issue create --title "Step 3" --parent <issue-id> --assignee <agent> --stage 3 --status backlog
 ```
 
 ## Issue wakeups

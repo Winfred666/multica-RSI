@@ -121,6 +121,13 @@ mindmap
 
 ## 🛠️ 快速开始与技术参考
 
+使用预编译发布包安装 CLI、后端和前端（需要 Docker）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Winfred666/multica-RSI/main/scripts/install.sh | bash -s -- --with-server
+multica setup self-host
+```
+
 先按[自托管指南](SELF_HOSTING.md)或[开发环境说明](CONTRIBUTING.md)完成安装，再通过 [CLI 与守护进程指南](CLI_AND_DAEMON.md)连接运行时并创建工作区。创建工作区时会安装默认研发工具包。准备基准任务后，按 [SOP #1](docs/SOP_SHOWCASE.md)开展 AIDE 研究。
 
 - **工作区启动工具包与 SOP 环境：** [`harness/`](harness/)
