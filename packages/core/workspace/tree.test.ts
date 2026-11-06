@@ -15,7 +15,7 @@ afterEach(() => { vi.unstubAllGlobals(); setCurrentWorkspace(null, null); });
 it("captures each workspace once, paginates with explicit scope, and renders shared and cyclic references once", async () => {
   setCurrentWorkspace("parent", "parent-id");
   const fetch = vi.fn()
-    .mockResolvedValueOnce(Response.json([{ id: child, slug: "playground", name: "Playground" }, { id: nested, slug: "nested", name: "Nested" }]))
+    .mockResolvedValueOnce(Response.json([{ id: child, slug: "playground", name: "Playground", created_at: "2026-01-01" }, { id: nested, slug: "nested", name: "Nested", created_at: "2026-01-01" }]))
     .mockResolvedValueOnce(Response.json({ issues: [row("one", child, nested)], total: 2 }))
     .mockResolvedValueOnce(Response.json({ issues: [row("two", child)], total: 2 }))
     .mockResolvedValueOnce(Response.json({ issues: [row("three", nested, child)], total: 1 }));
@@ -28,6 +28,7 @@ it("captures each workspace once, paginates with explicit scope, and renders sha
   const unsubscribe = observer.subscribe(() => {});
   await vi.waitFor(() => expect(observer.getCurrentResult().isSuccess).toBe(true));
   const snapshots = observer.getCurrentResult().data!;
+  expect(snapshots[child]!.error).toBeUndefined();
   expect(snapshots[child]!.issues.map((issue) => issue.id)).toEqual(["one", "two"]);
   expect(fetch.mock.calls.slice(1).map(([, init]) => init.headers["X-Workspace-Slug"])).toEqual(["playground", "playground", "nested"]);
   expect(fetch.mock.calls[2]![0]).toContain("offset=1");
