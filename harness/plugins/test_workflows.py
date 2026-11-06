@@ -39,6 +39,7 @@ class FakeAPI(runtime.API):
         self.denied = set()
         self.timeline = {}
         self.timeline_headers = {}
+        self.comments = {}
 
     @staticmethod
     def row(issue_id, status, parent=None):
@@ -81,6 +82,11 @@ class FakeAPI(runtime.API):
             if response_headers is not None:
                 response_headers.update(self.timeline_headers.get(issue_id, {}))
             return self.timeline.get(issue_id, [])
+        if parts[4] == "comments" and method == "GET":
+            query = parse_qs(parsed.query)
+            if "tail" in query and "thread" not in query:
+                raise ValueError("tail requires thread")
+            return self.comments.get(issue_id, [])
         if parts[4] == "comments" and method == "POST":
             self.writes.append(dict(body, issue_id=issue_id))
             return self.writes[-1]
@@ -114,6 +120,19 @@ class ChildWakeupTests(unittest.TestCase):
             self.check(hook, event=False)
         self.assertEqual(len(self.api.writes), 3)
         self.assertTrue(all(row["instruction"].endswith("Configured instruction") for row in self.api.writes))
+
+    def test_parent_steering_contains_child_reply_and_git_binding(self):
+        self.api.rows['child']['metadata'] = {'git_branch': 'issue/child', 'git_parent_branch': 'issue/parent'}
+        self.api.comments['child'] = [{'id': 'reply', 'author_type': 'agent', 'author_id': 'agent',
+                                      'content': 'Score: 0.42. Improved model. Commit: abc123.'}]
+        self.api.status('child', 'in_review')
+        self.check('in_review')
+        prompt = self.api.writes[0]['instruction']
+        self.assertIn('issue/child', prompt)
+        self.assertIn('issue/parent', prompt)
+        self.assertIn('Score: 0.42', prompt)
+        self.assertIn('Commit: abc123', prompt)
+        self.assertEqual(set(self.api.rows['child']['metadata']), {'git_branch', 'git_parent_branch'})
 
     def test_rework_and_new_children_rearm(self):
         for status in ("in_review", "in_progress", "in_review"):

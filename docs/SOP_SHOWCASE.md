@@ -56,7 +56,7 @@ The [client SOP](https://github.com/Winfred666/multica-AIDE/blob/main/multica_ai
 
 Compose a refutation step with the native child-issue and review SOPs when the campaign needs an independent audit. Give the reviewer a fixed candidate commit, the public contract, a named dataflow or correctness question, a bounded scope, and a read-only assignment. Keep its report attached to that candidate; a changed candidate needs new evidence.
 
-Use [multica-subissue-v2](../harness/skills/multica-subissue-v2/SKILL.md) for child preparation and [multica-subissue-review](../harness/skills/multica-subissue-review/SKILL.md) for parent acceptance. The parent reads the delivered evidence, requests a concrete correction or cancellation when necessary, and accepts only a passed delivery in review. Code acceptance requires the delivered commit and an integration verification command. Explicit experiment groups compare the completed group and can retain the baseline when it wins.
+Use [multica-subissue-distribute](../harness/skills/multica-subissue-distribute/SKILL.md) for parent dispatch and [multica-subissue-review](../harness/skills/multica-subissue-review/SKILL.md) for parent acceptance. The parent reads the delivered evidence, requests a concrete correction or cancellation when necessary, and accepts only reviewed delivery replies in review. Code acceptance requires the delivered commit and an integration verification command. Explicit experiment groups compare the completed group and can retain the baseline when it wins.
 
 AIDE's built-in review paragraph and an independent refutation child are separate steps. The campaign SOP must request the child audit; the standalone AIDE package does not create an independent refutation for every candidate.
 

@@ -1,3 +1,18 @@
+def child_reply(api, child):
+    lines = []
+    for key in ('git_repository', 'git_branch', 'git_parent_branch'):
+        value = (child.get('metadata') or {}).get(key)
+        if value:
+            lines.append(key + ': ' + value)
+    comments = api.request('GET', f"/api/issues/{child['id']}/comments?recent=3&fold=true")
+    replies = [c for c in comments if c.get('author_type') == 'agent' and
+               c.get('author_id') == child.get('assignee_id') and not c.get('deleted_at') and c.get('content')]
+    if replies:
+        reply = replies[-1]
+        lines.append('Child reply ' + reply['id'] + ':\n' + reply['content'][:6000])
+    return '\n'.join(lines)
+
+
 def transition(api, issue):
     headers = {}
     rows = api.request("GET", f"/api/issues/{issue['id']}/timeline", response_headers=headers)
@@ -51,6 +66,9 @@ def main(api, payload):
                     api.state(key, state)
                 continue
             delivery = fingerprint([key, parent["id"], observation])
+            if hook != 'all_finished':
+                child = next(c for c in children if c['id'] == entity)
+                fact += '\n' + child_reply(api, child)
             if api.wake(parent, delivery, fact + "\n\n" + prompt):
                 api.state(key, state)
                 count += 1
