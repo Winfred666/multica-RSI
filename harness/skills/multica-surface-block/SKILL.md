@@ -9,4 +9,4 @@ Use before marking the current issue blocked:
 python3 <this-skill-directory>/wrapper.py
 ```
 
-Answer the returned questions in the ordinary issue context, then follow their callbacks. The caller owns the answers and recovery. Only `continue` sets `blocked --no-start` and notifies the parent. Resume an interrupted call to reconcile its native notification.
+Answer the returned questions, then supply `--reason` with the concrete barrier and required help. The script posts that reply before marking the issue blocked; native steering asks the parent to help. Follow returned error guidance, reconcile writes before retrying, and use `repaired` once for assertion failures; report repeated failure to the parent.

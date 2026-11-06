@@ -7,7 +7,10 @@ installs this kit directly with Python; no agent run performs setup.
 The kit keeps one owner per deliverable, reuses current-task context and worktrees,
 establishes working artifacts early and preserves measured improvements. Delegation
 remains available for independently useful work. Lifecycle SOPs handle child review,
-delivery and blockers.
+delivery and blockers. `multica-subissue-distribute` creates children from the parent;
+children use `multica-surface-delivery` or `multica-surface-block`. Replies carry
+results and native steering asks the parent to review or help. Each SOP runs
+within one agent task and issue.
 
 Run the installer with the target workspace's native credentials:
 

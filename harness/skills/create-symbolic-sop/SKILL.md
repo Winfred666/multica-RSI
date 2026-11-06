@@ -7,6 +7,10 @@ Copy [assets/template/](assets/template/) and replace its child-review procedure
 Name Multica SOPs with the `multica-` prefix. Keep their `SKILL.md` limited to when
 to use the skill, required inputs, the entry command and how to follow its choices.
 Implementation details belong in code.
+Each invocation stays within one agent task and issue. For another issue or agent,
+use native steering or a mention asking its model to call the named SOP. Exchange
+results through reply comments and steering prompts; keep delivery and review
+records out of issue metadata.
 
 The standalone package contains `SKILL.md`, `controller.py`, `sop.py`, `wrapper.py`
 and procedure dependencies. The wrapper creates `.state/<task_id>.json` at runtime.
