@@ -53,14 +53,36 @@ describe("issue tree", () => {
     expect(nodes.every(({ node }) => !node.collapsed)).toBe(true);
   });
 
-  it("spaces levels for the tallest configurable card and updates when it shrinks", () => {
-    const roots = buildIssueTree([issue("p"), issue("sibling"), issue("child", "p")], new Set(), new Set());
+  it("places children below their own parent regardless of taller neighboring cards", () => {
+    const roots = buildIssueTree([issue("root"), issue("p", "root"), issue("sibling", "root"), issue("child", "p"), issue("other-child", "sibling")], new Set(), new Set());
     const layout = layoutIssueTree(roots, new Map([["p", { width: 300, height: 450 }], ["sibling", { width: 300, height: 520 }]]));
     const parent = layout.nodes.find((node) => node.node.id === "p")!;
     const child = layout.nodes.find((node) => node.node.id === "child")!;
-    expect(child.y - parent.y).toBe(520 + 64);
+    expect(child.y - parent.y).toBe(450 + 64);
+    expect(layout.nodes.find(({ node }) => node.id === "other-child")!.y).toBeGreaterThan(child.y);
     expect(parent.height).toBe(450);
     expect(layoutIssueTree(roots).height).toBeLessThan(layout.height);
+  });
+
+  it("wraps root bounding boxes to the viewport ratio without overlapping their descendants", () => {
+    const rows = Array.from({ length: 6 }, (_, i) => [issue(`root-${i}`), issue(`child-${i}`, `root-${i}`)]).flat();
+    const roots = buildIssueTree(rows, new Set(), new Set());
+    const wide = layoutIssueTree(roots, new Map(), 3);
+    const narrow = layoutIssueTree(roots, new Map(), 0.5);
+    const rootRows = (layout: typeof wide) => new Set(layout.nodes.filter(({ parentId }) => !parentId).map(({ y }) => y)).size;
+    expect(rootRows(wide)).toBeGreaterThan(1);
+    expect(rootRows(narrow)).toBeGreaterThan(rootRows(wide));
+    for (const layout of [wide, narrow]) {
+      for (const [index, a] of layout.nodes.entries()) {
+        expect(a.x - a.width / 2).toBeGreaterThanOrEqual(0);
+        expect(a.x + a.width / 2).toBeLessThanOrEqual(layout.width);
+        expect(a.y + a.height).toBeLessThanOrEqual(layout.height);
+        for (const b of layout.nodes.slice(index + 1)) {
+          const overlaps = Math.abs(a.x - b.x) < (a.width + b.width) / 2 && a.y < b.y + b.height && b.y < a.y + a.height;
+          expect(overlaps, `${a.node.id} overlaps ${b.node.id}`).toBe(false);
+        }
+      }
+    }
   });
 
   it("ranks actual collaborators by message count, then recency, and keeps each history newest first", () => {

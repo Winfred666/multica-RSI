@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { issueWorkspaceId, layoutWorkspaceTree, workspaceTreeOptions } from "@multica/core/workspace/tree";
 import { EyeOff, Layers, Plus, RotateCcw } from "lucide-react";
@@ -74,6 +74,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   const setTreeViewport = useViewStore((s) => s.setTreeViewport);
   const { data: tasks = EMPTY_TASKS } = useQuery(agentTaskSnapshotOptions(wsId));
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [aspectRatio, setAspectRatio] = useState(1.5);
   const [sizes, setSizes] = useState<ReadonlyMap<string, IssueTreeSize>>(new Map());
   const onSizeChange = useCallback((id: string, size: IssueTreeSize) => {
     if (size.height <= 0 || size.width <= 0) return;
@@ -88,11 +89,22 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   const layout = useMemo(() => layoutWorkspaceTree(buildIssueTree(
       sortIssues(issues, sortBy, sortDirection, statusColumnKeys(catalog)),
       new Set(hiddenStatuses.filter((status) => !statusFilters.includes(status))), expanded,
-    ), wsId, snapshots.data, sizes), [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, sizes, wsId, snapshots.data]);
+    ), wsId, snapshots.data, sizes, aspectRatio), [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, sizes, wsId, snapshots.data, aspectRatio]);
   const isSnapshot = (node: IssueTreeNode) => !!snapshots.data?.[node.issues[0]!.workspace_id];
   const canvas = useZoomCanvas({ content: layout, initialTransform: treeViewport, preserveTransform: true, panWithSpace: true });
   const selection = useIssueSurfaceSelection();
   const canvasRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = canvasRef.current;
+    if (!element) return;
+    const measure = () => {
+      if (element.offsetWidth > 0 && element.offsetHeight > 0) setAspectRatio(element.offsetWidth / element.offsetHeight);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const drag = useRef<{ pointerId: number; x: number; y: number; selected: Set<string> } | null>(null);
   const suppressClick = useRef(false);
   const [rectangle, setRectangle] = useState<{ x: number; y: number; width: number; height: number } | null>(null);

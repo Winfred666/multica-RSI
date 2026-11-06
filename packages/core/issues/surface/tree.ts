@@ -71,49 +71,54 @@ export interface IssueTreeSize { width: number; height: number }
 
 export const TREE_NODE_WIDTH = 300;
 export const TREE_NODE_HEIGHT = 96;
-export const TREE_LEVEL_HEIGHT = 216;
-
-export function layoutIssueTree(roots: IssueTreeNode[], sizes: ReadonlyMap<string, IssueTreeSize> = new Map()) {
+export function layoutIssueTree(roots: IssueTreeNode[], sizes: ReadonlyMap<string, IssueTreeSize> = new Map(), aspectRatio = 1.5) {
   const nodes: PositionedIssueTreeNode[] = [];
-  const levels: number[] = [];
-  const widths = new Map<string, number>();
-  function measure(node: IssueTreeNode): number {
-    const childrenWidth = node.children.reduce((sum, child) => sum + measure(child), 0) + Math.max(0, node.children.length - 1) * 40;
-    const width = Math.max(sizes.get(node.id)?.width ?? TREE_NODE_WIDTH, childrenWidth);
-    widths.set(node.id, width);
-    return width;
+  const bounds = new Map<string, IssueTreeSize>();
+  function measure(node: IssueTreeNode): IssueTreeSize {
+    const children = node.children.map(measure);
+    const size = {
+      width: Math.max(sizes.get(node.id)?.width ?? TREE_NODE_WIDTH,
+        children.reduce((sum, child) => sum + child.width, 0) + Math.max(0, children.length - 1) * 40),
+      height: (sizes.get(node.id)?.height ?? TREE_NODE_HEIGHT) +
+        (children.length ? 64 + Math.max(...children.map((child) => child.height)) : 0),
+    };
+    bounds.set(node.id, size);
+    return size;
   }
-  roots.forEach(measure);
-  function place(node: IssueTreeNode, depth: number, parentId: string | null, left: number) {
+  const rootBounds = roots.map(measure);
+  function place(node: IssueTreeNode, y: number, parentId: string | null, left: number) {
     const height = sizes.get(node.id)?.height ?? TREE_NODE_HEIGHT;
     const width = sizes.get(node.id)?.width ?? TREE_NODE_WIDTH;
-    levels[depth] = Math.max(levels[depth] ?? TREE_LEVEL_HEIGHT, height + 64);
-    const subtreeWidth = widths.get(node.id)!;
-    const position = { node, x: left + subtreeWidth / 2, y: depth, parentId, height, width };
-    nodes.push(position);
-    const childrenWidth = node.children.reduce((sum, child) => sum + widths.get(child.id)!, 0) + Math.max(0, node.children.length - 1) * 40;
+    const subtreeWidth = bounds.get(node.id)!.width;
+    nodes.push({ node, x: left + subtreeWidth / 2, y, parentId, height, width });
+    const childrenWidth = node.children.reduce((sum, child) => sum + bounds.get(child.id)!.width, 0) + Math.max(0, node.children.length - 1) * 40;
     let childLeft = left + (subtreeWidth - childrenWidth) / 2;
     for (const child of node.children) {
-      place(child, depth + 1, node.id, childLeft);
-      childLeft += widths.get(child.id)! + 40;
+      place(child, y + height + 64, node.id, childLeft);
+      childLeft += bounds.get(child.id)!.width + 40;
     }
   }
-  let right = 48;
+  // Pack whole trees in order; their bounding boxes keep descendants apart.
+  const area = rootBounds.reduce((sum, size) => sum + (size.width + 40) * (size.height + 40), 0);
+  const rowWidth = Math.max(TREE_NODE_WIDTH, ...rootBounds.map((size) => size.width), Math.sqrt(area * aspectRatio));
+  let left = 48, top = 48, rowHeight = 0, right = 48, bottom = 48;
   for (const root of roots) {
-    place(root, 0, null, right);
-    right += widths.get(root.id)! + 40;
+    const size = bounds.get(root.id)!;
+    if (left > 48 && left + size.width > rowWidth + 48) {
+      left = 48;
+      top += rowHeight + 40;
+      rowHeight = 0;
+    }
+    place(root, top, null, left);
+    right = Math.max(right, left + size.width);
+    bottom = Math.max(bottom, top + size.height);
+    rowHeight = Math.max(rowHeight, size.height);
+    left += size.width + 40;
   }
-  let height = 48;
-  const tops = levels.map((level) => {
-    const top = height;
-    height += level;
-    return top;
-  });
-  for (const position of nodes) position.y = tops[position.y]!;
   return {
     nodes,
-    width: Math.max(TREE_NODE_WIDTH + 96, right + 8),
-    height: Math.max(TREE_LEVEL_HEIGHT + 48, height),
+    width: Math.max(TREE_NODE_WIDTH + 96, right + 48),
+    height: Math.max(TREE_NODE_HEIGHT + 96, bottom + 48),
   };
 }
 

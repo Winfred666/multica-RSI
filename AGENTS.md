@@ -4,6 +4,7 @@ Multica is a task management platform where people and agents collaborate on iss
 
 ## Scope and Reading Order
 
+- Before changing tree layout or adding saved root positions, read [the tree layout plan](docs/PLAN.md).
 - Keep [the fork development reference](docs/engineering/fork-development.md) current when changing fork-specific behavior. Keep implementation differences there and the research overview in `README.md`.
 
 - Before changing `apps/mobile/`, also read [apps/mobile/AGENTS.md](apps/mobile/AGENTS.md), even if your tool does not load nested instructions automatically. Platform-specific sections below apply only to the named platform.

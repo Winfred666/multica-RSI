@@ -33,7 +33,8 @@ installs the kit through its self-contained Python installer.
   stacks, and preview collaborators' messages and runs. We added context-usage
   rings and compression counts, plus saved pan and zoom positions. Issue-owned
   sub-workspaces appear as static nested snapshots, with links to their own
-  workspace. Uploaded HTML deliverables render inside tree cards and open in
+  workspace. Each branch uses its own measured card heights; complete root
+  trees wrap into rows using the canvas aspect ratio. Uploaded HTML deliverables render inside tree cards and open in
   the artifact viewer.
 - **Settings.** You can manage hosted plugin execution credentials and personal
   sub-issue following from workspace settings.

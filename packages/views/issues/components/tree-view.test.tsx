@@ -88,6 +88,26 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("TreeView", () => {
+  it("repacks roots when the canvas becomes narrower", () => {
+    const observers: (() => void)[] = [];
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { observers.push(callback); }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    try {
+      const { container } = setup(Array.from({ length: 6 }, (_, index) => issue(`Root ${index}`)));
+      const rootRows = () => new Set([...container.querySelectorAll("[data-tree-card]")].map((card) => (card.parentElement as HTMLElement).style.top)).size;
+      const wideRows = rootRows();
+      vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(300);
+      act(() => observers.forEach((resize) => resize()));
+      expect(rootRows()).toBeGreaterThan(wideRows);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("shows one timestamped frame per workspace with nested issue links and connectors behind cards", () => {
     const child = "0c99f8e3-543b-4394-bfe8-a5b60141352e", nested = "1c99f8e3-543b-4394-bfe8-a5b60141352e", denied = "2c99f8e3-543b-4394-bfe8-a5b60141352e";
     const link = (id: string, workspace_id: string, target: string) => ({ ...issue(id), workspace_id, metadata: { sub_workspace_id: target } });
@@ -163,6 +183,9 @@ describe("TreeView", () => {
   });
 
   it("rectangle-selects visible issues at the current zoom, supports additive selection, and clears with Escape", () => {
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-tree-card") ? 300 : 6000;
+    });
     const { container, qc } = setup([issue("First"), issue("Second"), issue("Third"), issue("Hidden", null, "done"), issue("Hidden too", null, "done")], [], [], { scale: 0.5, x: 80, y: 35 });
     const canvas = screen.getByRole("application", { name: "Tree" });
     const selected = () => [...container.querySelectorAll("[data-tree-card]:has([data-selected])")].map((card) => card.getAttribute("data-tree-card"));
