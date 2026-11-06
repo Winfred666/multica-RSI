@@ -236,11 +236,12 @@ describe("SkillsPage source link vs row navigation", () => {
 });
 
 describe("SkillsPage docs link", () => {
-  it("points Learn more at the viewer's docs locale", () => {
+  it("points the empty-state documentation link at the viewer's docs locale", () => {
+    mocks.skills = [];
     renderPage(makeAdapter(), "fr");
 
     expect(
-      screen.getByRole("link", { name: "En savoir plus →" }),
+      screen.getByRole("link", { name: "Lire la documentation" }),
     ).toHaveAttribute("href", "https://multica.ai/docs/fr/skills");
   });
 });
