@@ -2095,6 +2095,7 @@ func TestWorkspaceCRUD(t *testing.T) {
 }
 
 func TestCreateWorkspaceUsesRequestedSlug(t *testing.T) {
+	workspaceHarnessServer(t)
 	const slug = "handler-create-workspace-requested"
 	ctx := context.Background()
 
@@ -2102,7 +2103,7 @@ func TestCreateWorkspaceUsesRequestedSlug(t *testing.T) {
 		testPool.Exec(ctx, `DELETE FROM workspace WHERE slug = $1`, slug)
 	})
 
-	req := newRequest("POST", "/api/workspaces", map[string]string{
+	req := workspaceHarnessRequest(map[string]string{
 		"name": "Handler Create Workspace Requested",
 		"slug": slug,
 	})
@@ -2110,6 +2111,7 @@ func TestCreateWorkspaceUsesRequestedSlug(t *testing.T) {
 
 	var created WorkspaceResponse
 	w.JSON(&created)
+	cleanupWorkspaceHarness(t, created.ID)
 	if created.Slug != slug {
 		t.Fatalf("CreateWorkspace: expected slug %q, got %q", slug, created.Slug)
 	}

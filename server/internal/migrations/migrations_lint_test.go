@@ -3,7 +3,6 @@ package migrations
 import (
 	"fmt"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,6 +20,17 @@ func TestMigrationNumericPrefixesAreUnique(t *testing.T) {
 	for _, file := range files {
 		stem, _, ok := splitMigrationFilename(filepath.Base(file))
 		if !ok {
+			continue
+		}
+		// Applied RSI migrations retain their full identifiers when upstream's
+		// independent migration sequence reaches the same numeric prefixes.
+		switch stem {
+		case "595_plugin_workspace_execution_key",
+			"596_retire_child_done_system_wakeup",
+			"598_agent_concurrency_default_fifty",
+			"599_runtime_profile_add_devin",
+			"600_agent_task_process_cleanup_index",
+			"601_skill_is_system_skill":
 			continue
 		}
 		prefix, _, ok := strings.Cut(stem, "_")
@@ -79,11 +89,13 @@ func migrationFilesForLint(t *testing.T, pattern string) []string {
 func realMigrationsDir(t *testing.T) string {
 	t.Helper()
 
-	_, self, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve migration lint test path")
+	// Relative to the package directory go test runs in; runtime.Caller
+	// would return a module path under -trimpath.
+	dir, err := filepath.Abs(filepath.Join("..", "..", "migrations"))
+	if err != nil {
+		t.Fatalf("resolve migrations dir: %v", err)
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(self), "..", "..", "migrations"))
+	return dir
 }
 
 func splitMigrationFilename(name string) (stem, direction string, ok bool) {

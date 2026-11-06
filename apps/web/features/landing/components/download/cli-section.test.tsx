@@ -25,7 +25,7 @@ vi.mock("../../i18n", () => ({
 }));
 
 const WINDOWS_CMD =
-  "irm https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.ps1 | iex";
+  "irm https://raw.githubusercontent.com/Winfred666/multica-RSI/main/scripts/install.ps1 | iex";
 
 describe("CliSection", () => {
   // The switch itself is covered in @multica/views; this checks the landing

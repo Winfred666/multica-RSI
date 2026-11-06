@@ -117,6 +117,13 @@ See [multica-AIDE](https://github.com/Winfred666/multica-AIDE) for SearchTree ex
 
 ## 🛠️ Quickstart & Technical Reference
 
+Install the CLI, backend, and frontend using prebuilt releases (Docker required):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Winfred666/multica-RSI/main/scripts/install.sh | bash -s -- --with-server
+multica setup self-host
+```
+
 Start with [self-hosting](SELF_HOSTING.md) or the [contributing setup](CONTRIBUTING.md), connect a runtime through the [CLI and daemon guide](CLI_AND_DAEMON.md), and create a workspace. Workspace creation installs the default harness. Then prepare a benchmark and follow [SOP #1](docs/SOP_SHOWCASE.md) to run an AIDE campaign.
 
 - **Workspace Startup Kit & SOP Harness:** [`harness/`](harness/)

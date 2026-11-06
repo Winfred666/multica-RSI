@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { issueWorkspaceId, layoutWorkspaceTree, workspaceTreeOptions } from "@multica/core/workspace/tree";
-import { EyeOff, Layers, Plus, RotateCcw } from "lucide-react";
+import { EyeOff, Layers, Plus, RotateCcw } from "@multica/ui/icons";
 import type { AgentTask, Issue, Project } from "@multica/core/types";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { paths, useWorkspacePaths } from "@multica/core/paths";

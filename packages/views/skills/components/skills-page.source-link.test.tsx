@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
     sortField: "name",
     sortDirection: "asc" as string,
     hiddenColumns: [] as string[],
+    search: "",
+    setSearch: vi.fn(),
     filters: {
       usage: [] as string[],
       origins: [] as string[],
@@ -120,7 +122,13 @@ vi.mock("@multica/ui/components/ui/tooltip", () => ({
   TooltipContent: () => null,
 }));
 vi.mock("./create-skill-dialog", () => ({ CreateSkillDialog: () => null }));
-vi.mock("./skill-list-toolbar", () => ({ SkillListToolbar: () => null }));
+vi.mock("./skill-list-controls", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./skill-list-controls")>()),
+  countActiveFilterDimensions: () => 0,
+  SkillFilterMenu: () => null,
+  SkillDisplayMenu: () => null,
+  SkillCreateMenu: () => null,
+}));
 vi.mock("./skill-list-actions", () => ({
   SkillBatchToolbar: () => null,
   SkillRowActions: () => null,
@@ -229,11 +237,12 @@ describe("SkillsPage source link vs row navigation", () => {
 });
 
 describe("SkillsPage docs link", () => {
-  it("points Learn more at the viewer's docs locale", () => {
+  it("points the empty-state documentation link at the viewer's docs locale", () => {
+    mocks.skills = [];
     renderPage(makeAdapter(), "fr");
 
     expect(
-      screen.getByRole("link", { name: "En savoir plus →" }),
+      screen.getByRole("link", { name: "Lire la documentation" }),
     ).toHaveAttribute("href", "https://multica.ai/docs/fr/skills");
   });
 });
