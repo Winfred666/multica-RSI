@@ -35,7 +35,7 @@ vi.mock("@multica/core/issue-statuses/hooks", () => {
   const catalog = { statuses: [], activeStatuses: [], isLoaded: true, colorOf: () => null, iconOf: () => null };
   return { useIssueStatuses: () => catalog };
 });
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/issues/${id}` }) }));
+vi.mock("@multica/core/paths", async (importOriginal) => ({ ...await importOriginal<typeof import("@multica/core/paths")>(), useWorkspacePaths: () => ({ issueDetail: (id: string) => `/issues/${id}` }) }));
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ push: vi.fn() }), AppLink: ({ href, children, className }: { href: string; children: ReactNode; className?: string }) => <a href={href} className={className}>{children}</a> }));
 vi.mock("../actions", () => ({ IssueActionsContextMenu: ({ children }: { children: ReactNode }) => children }));
 vi.mock("./issue-agent-activity-indicator", () => ({ IssueAgentActivityIndicator: () => null }));
@@ -88,6 +88,27 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("TreeView", () => {
+  it("shows one timestamped frame per workspace with nested issue links and connectors behind cards", () => {
+    const child = "0c99f8e3-543b-4394-bfe8-a5b60141352e", nested = "1c99f8e3-543b-4394-bfe8-a5b60141352e", denied = "2c99f8e3-543b-4394-bfe8-a5b60141352e";
+    const link = (id: string, workspace_id: string, target: string) => ({ ...issue(id), workspace_id, metadata: { sub_workspace_id: target } });
+    const { qc, container, rerender, render } = setup([issue("Owner")]);
+    act(() => { qc.setQueryData(["workspace-tree-snapshot", "ws-1"], {
+      [child]: { workspace: { id: child, slug: "playground", name: "Playground" }, issues: [link("Replay", child, nested)], capturedAt: new Date(2026, 10, 6, 12, 34, 56).getTime() },
+      [nested]: { workspace: { id: nested, slug: "nested", name: "Nested" }, issues: [link("Nested issue", nested, child)], capturedAt: Date.now() },
+      [denied]: { issues: [], capturedAt: Date.now() },
+    }); });
+    rerender(render([link("Owner", "ws-1", child), link("Other owner", "ws-1", child), link("Denied owner", "ws-1", denied)]));
+    expect(screen.getByRole("link", { name: "Playground workspace, static at 11-06 12:34:56" })).toHaveAttribute("href", "/playground/issues");
+    expect(screen.getByRole("link", { name: /Nested workspace, static at/ })).toHaveAttribute("href", "/nested/issues");
+    expect(screen.getByRole("link", { name: /Replay/ })).toHaveAttribute("href", "/playground/issues/Replay");
+    expect(screen.getByRole("link", { name: /Nested issue/ })).toHaveAttribute("href", "/nested/issues/Nested%20issue");
+    expect(screen.getByRole("img", { name: "Workspace unavailable" })).toBeInTheDocument();
+    expect(container.querySelectorAll(".zoom-canvas-content > svg rect")).toHaveLength(3);
+    expect(container.querySelectorAll(".zoom-canvas-content > svg path.text-muted-foreground")).toHaveLength(5);
+    expect(container.querySelector(".zoom-canvas-content > svg")!.compareDocumentPosition(screen.getByRole("link", { name: /Replay/ }))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    act(() => qc.clear());
+  });
+
   it("expands collapsed issues, creates a child under its parent, and reacts to new filtered rows", async () => {
     const user = userEvent.setup();
     const root = issue("Parent");

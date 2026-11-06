@@ -1,5 +1,6 @@
 {
   "tree": {
+    "workspace_static_at": "{{name}} 워크스페이스, {{time}} 기준 스냅샷",
     "workspace_no_access": "워크스페이스에 접근할 수 없습니다",
     "input_trend": "현재 컨텍스트: {{tokens}} 토큰",
     "input_drops": "컨텍스트 압축 횟수: {{count}}",

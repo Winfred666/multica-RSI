@@ -98,12 +98,6 @@ import type {
 import type { CloudRuntimeNode } from "../runtimes/cloud-runtime";
 import type { CreateFeedbackResponse } from "../feedback/types";
 
-export const WorkspaceTreeIdentitySchema = z.object({
-  id: z.string().uuid(),
-  slug: z.string().min(1),
-  name: z.string().default(""),
-});
-
 export const PluginConfigFieldSchema = z.object({
   key: z.string(),
   type: z.string().default("string"),

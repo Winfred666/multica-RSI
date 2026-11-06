@@ -1,6 +1,8 @@
 import { queryOptions } from "@tanstack/react-query";
-import { api, ApiError } from "../api";
-import type { Issue } from "../types";
+import { api } from "../api";
+import type { Issue, Workspace } from "../types";
+import { workspaceListOptions } from "./queries";
+import { buildIssueTree, layoutIssueTree, type IssueTreeNode, type IssueTreeSize } from "../issues/surface/tree";
 
 export function issueWorkspaceId(issue: Pick<Issue, "metadata">): string | null {
   const id = issue.metadata?.sub_workspace_id;
@@ -9,26 +11,79 @@ export function issueWorkspaceId(issue: Pick<Issue, "metadata">): string | null 
 }
 
 export interface WorkspaceTree {
-  workspace: { id: string; slug: string; name: string };
+  workspace?: Pick<Workspace, "id" | "slug" | "name">;
   issues: Issue[];
+  capturedAt: number;
+  error?: Error;
 }
 
-export function workspaceTreeOptions(wsId: string) {
+export function workspaceTreeOptions(wsId: string, roots: Issue[]) {
   return queryOptions({
-    queryKey: ["workspaces", wsId, "tree"] as const,
-    queryFn: async (): Promise<WorkspaceTree> => {
-      const workspace = await api.getWorkspaceTreeIdentity(wsId);
-      const issues: Issue[] = [];
-      while (true) {
-        const page = await api.listIssues({ workspace_id: wsId, offset: issues.length, limit: 100 }, workspace.slug);
-        issues.push(...page.issues);
-        if (issues.length >= page.total) break;
-        if (page.issues.length === 0) throw new Error("Workspace issue pagination made no progress");
-      }
-      return { workspace, issues };
-    },
+    queryKey: ["workspace-tree-snapshot", wsId] as const,
+    staleTime: "static",
+    gcTime: Infinity,
     retry: false,
-    refetchInterval: (query) => query.state.error instanceof ApiError &&
-      [403, 404].includes(query.state.error.status) ? false : 10_000,
+    retryOnMount: false,
+    enabled: roots.some(issueWorkspaceId),
+    queryFn: async ({ client }): Promise<Record<string, WorkspaceTree>> => {
+      const workspaces = await client.ensureQueryData(workspaceListOptions());
+      const snapshots: Record<string, WorkspaceTree> = {};
+      const seen = new Set([wsId]);
+      const queue = roots.map(issueWorkspaceId);
+      for (const id of queue) {
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const workspace = workspaces.find((w) => w.id === id);
+        const snapshot = snapshots[id] = { workspace, issues: [] as Issue[], capturedAt: Date.now() };
+        if (!workspace) continue;
+        try {
+          while (true) {
+            const page = await api.listIssues({ workspace_id: id, offset: snapshot.issues.length, limit: 100 }, workspace.slug);
+            snapshot.issues.push(...page.issues);
+            if (snapshot.issues.length >= page.total) break;
+            if (!page.issues.length) throw new Error("Workspace issue pagination made no progress");
+          }
+          queue.push(...snapshot.issues.map(issueWorkspaceId));
+        } catch (error) {
+          snapshot.issues = [];
+          snapshots[id].error = error instanceof Error ? error : new Error(String(error));
+        }
+        snapshot.capturedAt = Date.now();
+      }
+      return snapshots;
+    },
   });
+}
+
+export function layoutWorkspaceTree(roots: IssueTreeNode[], wsId: string, snapshots?: Record<string, WorkspaceTree>, sizes: ReadonlyMap<string, IssueTreeSize> = new Map()) {
+  const seen = new Set([wsId]);
+  const measured = new Map(sizes);
+  const nested = new Map<string, ReturnType<typeof layoutIssueTree>>();
+  const links: { source: string; target: string }[] = [];
+  function build(nodes: IssueTreeNode[]): ReturnType<typeof layoutIssueTree> {
+    const visit = (node: IssueTreeNode): IssueTreeNode => {
+      const children = node.children.map(visit);
+      const id = issueWorkspaceId(node.issues[0]!);
+      if (id && id !== wsId && !node.collapsed && (!snapshots || id in snapshots)) {
+        const frameId = `workspace:${id}`;
+        if (seen.has(id)) links.push({ source: node.id, target: frameId });
+        else {
+          seen.add(id);
+          const snapshot = snapshots?.[id];
+          const content = snapshot?.workspace && !snapshot.error
+            ? build(buildIssueTree(snapshot.issues, new Set(), new Set())) : undefined;
+          if (content) nested.set(frameId, content);
+          measured.set(frameId, content ? { width: content.width, height: content.height + 40 } : { width: 300, height: 40 });
+          children.unshift({ id: frameId, issues: node.issues, collapsed: false, children: [] });
+        }
+      }
+      return { ...node, children };
+    };
+    const layout = layoutIssueTree(nodes.map(visit), measured);
+    layout.nodes = layout.nodes.flatMap((position) => [position, ...(nested.get(position.node.id)?.nodes ?? []).map((child) => ({
+      ...child, x: child.x + position.x - position.width / 2, y: child.y + position.y + 40,
+    }))]);
+    return layout;
+  }
+  return { ...build(roots), links };
 }

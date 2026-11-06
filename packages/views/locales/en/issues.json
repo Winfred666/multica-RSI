@@ -1,5 +1,6 @@
 {
   "tree": {
+    "workspace_static_at": "{{name}} workspace, static at {{time}}",
     "workspace_no_access": "Workspace unavailable",
     "input_trend": "Current context: {{tokens}} tokens",
     "input_drops": "Context compressions: {{count}}",

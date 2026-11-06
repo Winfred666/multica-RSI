@@ -258,7 +258,6 @@ import { createRequestId, createSafeId } from "../utils";
 import { getCurrentSlug } from "../platform/workspace-storage";
 import { parseWithFallback } from "./schema";
 import {
-  WorkspaceTreeIdentitySchema,
   RuntimeProfileSchema,
   RuntimeProfileListSchema,
   AgentTaskListSchema,
@@ -3066,17 +3065,6 @@ export class ApiClient {
   }
 
   // Workspaces
-  async getWorkspaceTreeIdentity(id: string) {
-    const raw = await this.fetch<unknown>(`/api/workspaces/${id}`, {
-      headers: { "X-Workspace-Slug": "", "X-Workspace-ID": id },
-    });
-    const workspace = parseWithFallback<{ id: string; slug: string; name: string } | null>(raw, WorkspaceTreeIdentitySchema.nullable(), null, {
-      endpoint: "GET /api/workspaces/{id}",
-    });
-    if (!workspace || workspace.id !== id) throw new Error("Invalid workspace identity");
-    return workspace;
-  }
-
   async listWorkspaces(): Promise<Workspace[]> {
     return this.fetch("/api/workspaces");
   }

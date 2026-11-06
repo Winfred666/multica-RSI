@@ -1,5 +1,6 @@
 {
   "tree": {
+    "workspace_static_at": "{{name}} 工作区，静态快照 {{time}}",
     "workspace_no_access": "无法访问工作区",
     "input_trend": "当前上下文：{{tokens}} tokens",
     "input_drops": "上下文压缩次数：{{count}}",

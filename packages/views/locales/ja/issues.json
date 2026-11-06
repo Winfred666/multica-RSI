@@ -1,5 +1,6 @@
 {
   "tree": {
+    "workspace_static_at": "{{name}} ワークスペース、{{time}} 時点",
     "workspace_no_access": "ワークスペースにアクセスできません",
     "input_trend": "現在のコンテキスト：{{tokens}} トークン",
     "input_drops": "コンテキスト圧縮回数：{{count}}",

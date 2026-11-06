@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
-import { issueWorkspaceId, workspaceTreeOptions } from "@multica/core/workspace/tree";
-import { EyeOff, Plus, RotateCcw } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { issueWorkspaceId, layoutWorkspaceTree, workspaceTreeOptions } from "@multica/core/workspace/tree";
+import { EyeOff, Layers, Plus, RotateCcw } from "lucide-react";
 import type { AgentTask, Issue, Project } from "@multica/core/types";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { paths, useWorkspacePaths } from "@multica/core/paths";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { isBuiltInIssueStatus } from "@multica/core/issue-statuses";
 import { agentTaskSnapshotOptions } from "@multica/core/agents";
@@ -17,7 +17,7 @@ import { STATUS_CONFIG } from "@multica/core/issues/config";
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import { isEditableShortcutTarget } from "@multica/core/shortcuts";
 import {
-  buildIssueTree, issueTreeCollaborators, layoutIssueTree, TREE_NODE_WIDTH,
+  buildIssueTree, issueTreeCollaborators, TREE_NODE_WIDTH,
   type IssueTreeNode, type IssueTreeSize,
 } from "@multica/core/issues/surface/tree";
 import { Button } from "@multica/ui/components/ui/button";
@@ -41,9 +41,13 @@ import { IssueActionsContextMenu } from "../actions";
 import { TreeCollaboratorAvatar, TreeIssueHoverContent } from "./tree-hover-content";
 import { BUILT_IN_ICON_COLOR, StatusIcon } from "./status-icon";
 import { TreeDeliverables } from "./deliverables/tree-deliverables";
-import { WorkspaceTreeFrame } from "./workspace-tree-frame";
 
 const EMPTY_TASKS: AgentTask[] = [];
+function snapshotTime(timestamp: number) {
+  const date = new Date(timestamp);
+  const [month, day, hour, minute, second] = [date.getMonth() + 1, date.getDate(), date.getHours(), date.getMinutes(), date.getSeconds()].map((part) => String(part).padStart(2, "0"));
+  return `${month}-${day} ${hour}:${minute}:${second}`;
+}
 
 function isWorkspaceNode(node: IssueTreeNode) {
   return node.id.startsWith("workspace:");
@@ -76,26 +80,16 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
     setSizes((previous) => previous.get(id)?.height === size.height && previous.get(id)?.width === size.width
       ? previous : new Map(previous).set(id, size));
   }, []);
-  const workspaceIds = [...new Set(issues.map(issueWorkspaceId).filter((id): id is string => !!id && id !== wsId))];
-  const workspaceQueries = useQueries({ queries: workspaceIds.map(workspaceTreeOptions) });
-  const frames = new Map(workspaceIds.map((id, index) => [id, workspaceQueries[index]!]));
-  const layout = useMemo(() => {
-    const roots = buildIssueTree(
+  const pages = Object.values(statusPagination);
+  const pending = pages.some((page) => page.hasMore || page.isFetching);
+  const failed = pages.some((page) => page.isError);
+  const options = workspaceTreeOptions(wsId, issues);
+  const snapshots = useQuery({ ...options, enabled: options.enabled && !pending });
+  const layout = useMemo(() => layoutWorkspaceTree(buildIssueTree(
       sortIssues(issues, sortBy, sortDirection, statusColumnKeys(catalog)),
       new Set(hiddenStatuses.filter((status) => !statusFilters.includes(status))), expanded,
-    );
-    function withWorkspaces(nodes: IssueTreeNode[]): IssueTreeNode[] {
-      return nodes.map((node) => {
-        const workspace = issueWorkspaceId(node.issues[0]!);
-        const children = withWorkspaces(node.children);
-        if (!node.collapsed && workspace && workspace !== wsId) {
-          children.unshift({ id: `workspace:${node.id}`, issues: node.issues, collapsed: false, children: [] });
-        }
-        return { ...node, children };
-      });
-    }
-    return layoutIssueTree(withWorkspaces(roots), sizes);
-  }, [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, sizes, wsId]);
+    ), wsId, snapshots.data, sizes), [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, sizes, wsId, snapshots.data]);
+  const isSnapshot = (node: IssueTreeNode) => !!snapshots.data?.[node.issues[0]!.workspace_id];
   const canvas = useZoomCanvas({ content: layout, initialTransform: treeViewport, preserveTransform: true, panWithSpace: true });
   const selection = useIssueSurfaceSelection();
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -138,7 +132,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
     setRectangle(rect);
     const selected = new Set(start.selected);
     for (const { node, x, y, height, width } of layout.nodes) {
-      if (!node.collapsed && !isWorkspaceNode(node) && x + width / 2 >= rect.x && x - width / 2 <= rect.x + rect.width && y + height >= rect.y && y <= rect.y + rect.height) selected.add(node.issues[0]!.id);
+      if (!node.collapsed && !isWorkspaceNode(node) && !isSnapshot(node) && x + width / 2 >= rect.x && x - width / 2 <= rect.x + rect.width && y + height >= rect.y && y <= rect.y + rect.height) selected.add(node.issues[0]!.id);
     }
     selection.deselect([...selection.selectedIds].filter((id) => !selected.has(id)));
     selection.select([...selected]);
@@ -155,9 +149,6 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
     setTreeViewport(canvas.transform);
   }, [canvas.transform, setTreeViewport]);
   const byId = useMemo(() => new Map(layout.nodes.map((node) => [node.node.id, node])), [layout]);
-  const pages = Object.values(statusPagination);
-  const pending = pages.some((page) => page.hasMore || page.isFetching);
-  const failed = pages.some((page) => page.isError);
   useEffect(() => {
     // A canvas needs all matching branches to place parents and children correctly.
     for (const page of Object.values(statusPagination)) {
@@ -218,7 +209,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
             if (event.key === "Escape") selection.clear();
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
               event.preventDefault();
-              selection.select(layout.nodes.filter(({ node }) => !node.collapsed && !isWorkspaceNode(node)).map(({ node }) => node.issues[0]!.id));
+              selection.select(layout.nodes.filter(({ node }) => !node.collapsed && !isWorkspaceNode(node) && !isSnapshot(node)).map(({ node }) => node.issues[0]!.id));
               return;
             }
           }
@@ -227,7 +218,9 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
       }} canvasRef={canvasRef} className={cn("tree-canvas", canvas.isSpacePressed && "is-space-pressed")} content={layout} label={t(($) => $.view.tree)}>
         {rectangle && <div aria-hidden="true" data-tree-selection className="pointer-events-none absolute z-10 border border-brand bg-brand/10" style={{ left: rectangle.x, top: rectangle.y, width: rectangle.width, height: rectangle.height }} />}
         <svg width={layout.width} height={layout.height} className="pointer-events-none absolute inset-0" aria-hidden="true">
-          {layout.nodes.map((position) => {
+          {layout.nodes.filter(({ node }) => isWorkspaceNode(node)).map(({ node, x, y, width, height }) =>
+            <rect key={node.id} x={x - width / 2} y={y} width={width} height={height} rx={8} className="fill-background stroke-surface-border" />)}
+          {[...layout.nodes, ...layout.links.flatMap(({ source, target }) => byId.has(target) ? [{ ...byId.get(target)!, parentId: source }] : [])].map((position) => {
             const parent = position.parentId ? byId.get(position.parentId) : null;
             if (!parent) return null;
             const startY = parent.y + parent.height;
@@ -239,15 +232,29 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
             const path = dx === 0
               ? `M ${parent.x} ${startY} V ${endY}`
               : `M ${parent.x} ${startY} V ${midY - radius} Q ${parent.x} ${midY} ${parent.x + direction * radius} ${midY} H ${position.x - direction * radius} Q ${position.x} ${midY} ${position.x} ${midY + radius} V ${endY}`;
-            const tone = isWorkspaceNode(position.node) ? { className: "text-muted-foreground", color: undefined } : color(position.node.issues[0]!);
-            return <path key={position.node.id} d={path} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" className={tone.className} style={{ color: tone.color, opacity: 0.65 }} />;
+            const tone = isWorkspaceNode(position.node) || isSnapshot(position.node) ? { className: "text-muted-foreground", color: undefined } : color(position.node.issues[0]!);
+            return <path key={`${position.parentId}:${position.node.id}`} d={path} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" className={tone.className} style={{ color: tone.color, opacity: 0.65 }} />;
           })}
         </svg>
         {layout.nodes.map(({ node, x, y, width }) => {
-          const frame = isWorkspaceNode(node) ? frames.get(issueWorkspaceId(node.issues[0]!) ?? "") : undefined;
-          return <div key={node.id} className="absolute flex flex-col items-center" style={{ left: x - width / 2, top: y, width: frame ? undefined : width }}
-            ref={frame ? (element) => { if (element) onSizeChange(node.id, { width: element.offsetWidth, height: element.offsetHeight }); } : undefined}>
-            {frame ? <WorkspaceTreeFrame data={frame.error ? undefined : frame.data} error={frame.error} retry={() => void frame.refetch()} /> : <TreeIssueNode
+          const issue = node.issues[0]!;
+          const frame = isWorkspaceNode(node);
+          const snapshot = snapshots.data?.[frame ? issueWorkspaceId(issue)! : issue.workspace_id];
+          const workspace = snapshot?.workspace;
+          const style = { left: x - width / 2, top: y, width };
+          if (frame) return <div key={node.id} data-workspace-frame className="absolute" style={style}>
+            {workspace && !snapshot.error ? <AppLink href={paths.workspace(workspace.slug).issues()} className="flex h-10 items-center gap-2 overflow-hidden border-b px-3 text-caption font-medium">
+              <Layers className="size-4 shrink-0" /><span className="truncate">{t(($) => $.tree.workspace_static_at, { name: workspace.name, time: snapshotTime(snapshot.capturedAt) })}</span>
+            </AppLink> : <span className="flex h-10 items-center justify-center text-caption text-muted-foreground">
+              {snapshot || snapshots.error ? <EyeOff className="size-4" role="img" aria-label={t(($) => $.tree.workspace_no_access)} /> : t(($) => $.tree.loading)}
+            </span>}
+          </div>;
+          return <div key={node.id} data-workspace-frame={isSnapshot(node) ? "" : undefined} className="absolute flex flex-col" style={style}>
+            {workspace ? <AppLink href={paths.workspace(workspace.slug).issueDetail(issue.id)} newTabTitle={issue.identifier}
+              className="flex h-24 flex-col gap-2 overflow-hidden rounded-lg border border-surface-border bg-surface p-3 hover:bg-muted">
+              <span className="flex items-center gap-2 text-micro text-muted-foreground"><StatusIcon status={issue.status} category={issueStatusCategory(issue) ?? undefined} />{issue.identifier}</span>
+              <span className="line-clamp-2 text-caption">{issue.title}</span>
+            </AppLink> : <TreeIssueNode
               issue={node.issues[0]!}
               tasks={tasks}
               onCreateIssue={onCreateIssue}
