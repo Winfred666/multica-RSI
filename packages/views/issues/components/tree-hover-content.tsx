@@ -17,6 +17,9 @@ import { useT, useTimeAgo } from "../../i18n";
 import { AttachmentList } from "./comment-card";
 import { ProgressRing } from "./progress-ring";
 
+// shortcut: assumed window until run history reports the effective context limit.
+const CONTEXT_WINDOW = 256_000;
+
 export function TreeIssueHoverContent({ issue, report, timeline }: {
   issue: Issue;
   report?: TimelineEntry;
@@ -67,8 +70,6 @@ export function TreeCollaboratorAvatar({ collaborator, issue, tasks }: {
   const contextRuns = history.data?.filter((task) => isAgent && task.agent_id === collaborator.actorId && task.issue_id === issue.id && task.status === "completed" && task.input_trend)
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)) ?? [];
   const inputRun = contextRuns[0];
-  // shortcut: assumed window until run history reports the effective context limit.
-  const ringTotal = 256_000;
   const trend = inputRun?.input_trend;
   const latest = collaborator.messages[0];
   const name = latest?.actor_name || getActorName(collaborator.actorType, collaborator.actorId);
@@ -77,8 +78,8 @@ export function TreeCollaboratorAvatar({ collaborator, issue, tasks }: {
       <HoverCardTrigger render={<span />} tabIndex={0} aria-label={name} className="inline-flex flex-col items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="relative inline-flex size-7 items-center justify-center">
           <ActorAvatar actorType={collaborator.actorType} actorId={collaborator.actorId} name={name} avatarUrl={latest?.actor_avatar_url} size="sm" profileLink={false} />
-          {trend && <span className="pointer-events-none absolute inset-0" role="img" aria-label={t(($) => $.tree.input_trend, { tokens: trend.current_context.toLocaleString() })}>
-            <ProgressRing done={trend.current_context} total={ringTotal} size={28} />
+          {trend && <span className="pointer-events-none absolute inset-0" role="img" aria-label={t(($) => $.tree.input_trend, { tokens: trend.current_context.toLocaleString(), limit: CONTEXT_WINDOW.toLocaleString() })}>
+            <ProgressRing done={trend.current_context} total={CONTEXT_WINDOW} size={28} />
           </span>}
         </span>
         {trend && <span className="text-micro tabular-nums text-muted-foreground" aria-label={t(($) => $.tree.input_drops, { count: trend.context_compression_count })}>{trend.context_compression_count}</span>}
@@ -122,7 +123,7 @@ function TreeCollaboratorHoverContent({ collaborator, issue, tasks, history, inp
         </div>
         <p className="break-words text-caption text-muted-foreground">{issue.identifier} · {issue.title}</p>
         {trend && <div className="mt-2 space-y-1 text-caption text-muted-foreground">
-          <p>{t(($) => $.tree.input_trend, { tokens: trend.current_context.toLocaleString() })}</p>
+          <p>{t(($) => $.tree.input_trend, { tokens: trend.current_context.toLocaleString(), limit: CONTEXT_WINDOW.toLocaleString() })}</p>
           <p>{t(($) => $.tree.input_drops, { count: trend.context_compression_count })}{inputRun.completed_at && <> · {timeAgo(inputRun.completed_at)}</>}</p>
           <p>{t(($) => $.tree.input_trend_hint)}</p>
         </div>}

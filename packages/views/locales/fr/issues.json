@@ -2,8 +2,8 @@
   "tree": {
     "workspace_static_at": "Espace {{name}}, instantané du {{time}}",
     "workspace_no_access": "Espace de travail inaccessible",
-    "input_trend": "Contexte actuel : {{tokens}} tokens",
-    "input_drops": "Compressions du contexte : {{count}}",
+    "input_trend": "Contexte : {{tokens}} / {{limit}} tokens",
+    "input_drops": "Compression : {{count}}",
     "input_trend_hint": "Estimation à partir des exécutions terminées ; anneau basé sur une fenêtre supposée de 256K tokens.",
     "pan_hint": "Glissez pour sélectionner · Maintenez Espace pour déplacer",
     "loading": "Chargement de l’arbre…",
