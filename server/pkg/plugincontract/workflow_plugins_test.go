@@ -9,7 +9,7 @@ import (
 func TestWorkflowPluginManifests(t *testing.T) {
 	for _, name := range []string{"wakeup-for-sub-issue", "in-progress-ralph", "issue-reframe-compress"} {
 		t.Run(name, func(t *testing.T) {
-			raw, err := os.ReadFile(filepath.Join("..", "..", "..", "plugins", name, ManifestFilename))
+			raw, err := os.ReadFile(filepath.Join("..", "..", "..", "harness", "plugins", name, ManifestFilename))
 			if err != nil {
 				t.Fatal(err)
 			}
