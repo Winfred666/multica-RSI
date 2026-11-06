@@ -305,7 +305,8 @@
     "columns_section": "Columnas",
     "columns_locked_by_filter": "Quita el filtro de estado para mostrar u ocultar columnas.",
     "columns_shown": "{{count}} visibles",
-    "layout_options": "Opciones de {{layout}}"
+    "layout_options": "Opciones de {{layout}}",
+    "card_collaborators": "Colaboradores"
   },
   "view": {
     "tooltip_board": "Vista de tablero",
@@ -318,7 +319,9 @@
     "list": "Lista",
     "table": "Tabla",
     "gantt": "Gantt",
-    "swimlane": "Carriles"
+    "swimlane": "Carriles",
+    "tree": "Árbol",
+    "tooltip_tree": "Vista de árbol"
   },
   "table": {
     "select_all": "Seleccionar todas las tareas visibles",
@@ -1866,5 +1869,28 @@
       "empty_title": "Aún no hay vistas guardadas",
       "empty_description": "Configura los filtros y las opciones de visualización de una lista de tareas y guárdalos como vista."
     }
+  },
+  "tree": {
+    "workspace_static_at": "Espacio de trabajo {{name}}, instantánea de {{time}}",
+    "workspace_no_access": "Espacio de trabajo no disponible",
+    "input_trend": "Contexto: {{tokens}} / {{limit}} tokens",
+    "input_drops": "Compactaciones: {{count}}",
+    "input_trend_hint": "Estimación a partir de ejecuciones completadas; el anillo supone una ventana de contexto de 256K tokens.",
+    "pan_hint": "Arrastra para seleccionar · Mantén Espacio para desplazar",
+    "loading": "Cargando árbol…",
+    "load_failed": "No se pudieron cargar algunas ramas",
+    "hide_statuses": "Contraer estados",
+    "collapse": "Contraer estados ocultos",
+    "expand": "Expandir tareas ocultas ({{count}})",
+    "report": "Último informe del agente",
+    "no_report": "Aún no hay informe del agente",
+    "description": "Descripción",
+    "no_description": "Sin descripción",
+    "agent_reply": "Respuesta",
+    "message_count_one": "{{count}} mensaje",
+    "message_count_other": "{{count}} mensajes",
+    "loading_report": "Cargando informe...",
+    "create_child": "Crear subtarea",
+    "retry_agents": "Recargar colaboradores"
   }
 }

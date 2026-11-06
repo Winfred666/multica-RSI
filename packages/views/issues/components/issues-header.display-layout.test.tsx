@@ -53,7 +53,7 @@ describe("Display layout", () => {
     const layouts = await screen.findByRole("group", { name: "View" });
     expect(
       within(layouts).getAllByRole("button").map((button) => button.textContent),
-    ).toEqual(["Board", "List", "Table", "Swimlane"]);
+    ).toEqual(["Board", "List", "Table", "Swimlane", "Tree"]);
     expect(within(layouts).getByRole("button", { name: "Board" })).toHaveAttribute(
       "aria-pressed",
       "true",
