@@ -58,15 +58,16 @@ export function TreeIssueHoverContent({ issue, report, timeline }: {
   );
 }
 
-export function TreeCollaboratorAvatar({ collaborator, issue, tasks }: {
+export function TreeCollaboratorAvatar({ collaborator, issue, tasks, workspaceSlug }: {
   collaborator: IssueTreeCollaborator;
   issue: Issue;
   tasks: AgentTask[];
+  workspaceSlug?: string;
 }) {
   const { t } = useT("issues");
   const { getActorName } = useActorName();
   const isAgent = collaborator.actorType === "agent";
-  const history = useQuery({ ...issueTasksOptions(issue.id), enabled: isAgent, notifyOnChangeProps: ["data", "isError"] });
+  const history = useQuery({ ...issueTasksOptions(issue.id, workspaceSlug), enabled: isAgent, notifyOnChangeProps: ["data", "isError"] });
   const contextRuns = history.data?.filter((task) => isAgent && task.agent_id === collaborator.actorId && task.issue_id === issue.id && task.status === "completed" && task.input_trend)
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)) ?? [];
   const inputRun = contextRuns[0];
@@ -85,16 +86,17 @@ export function TreeCollaboratorAvatar({ collaborator, issue, tasks }: {
         {trend && <span className="text-micro tabular-nums text-muted-foreground" aria-label={t(($) => $.tree.input_drops, { count: trend.context_compression_count })}>{trend.context_compression_count}</span>}
       </HoverCardTrigger>
       <HoverCardContent align="start" className="w-120 max-w-[calc(100vw-1rem)] p-3">
-        <TreeCollaboratorHoverContent collaborator={collaborator} issue={issue} tasks={tasks} history={history} inputRun={inputRun} />
+        <TreeCollaboratorHoverContent collaborator={collaborator} issue={issue} tasks={tasks} history={history} inputRun={inputRun} workspaceSlug={workspaceSlug} />
       </HoverCardContent>
     </HoverCard>
   );
 }
 
-function TreeCollaboratorHoverContent({ collaborator, issue, tasks, history, inputRun }: {
+function TreeCollaboratorHoverContent({ collaborator, issue, tasks, history, inputRun, workspaceSlug }: {
   collaborator: IssueTreeCollaborator;
   issue: Issue;
   tasks: AgentTask[];
+  workspaceSlug?: string;
   history: UseQueryResult<AgentTask[]>;
   inputRun?: AgentTask;
 }) {
@@ -106,7 +108,7 @@ function TreeCollaboratorHoverContent({ collaborator, issue, tasks, history, inp
     .filter((task) => isAgent && task.agent_id === collaborator.actorId && task.issue_id === issue.id)
     .sort((a, b) => Number(b.status === "running") - Number(a.status === "running") || Date.parse(b.created_at) - Date.parse(a.created_at));
   const task = candidates[0];
-  const messages = useTaskMessages(task?.id ?? "", task?.status === "running");
+  const messages = useTaskMessages(task?.id ?? "", task?.status === "running", true, workspaceSlug);
   const entries = useMemo(() => buildTimeline(messages.data ?? [])
     .filter((entry) => (entry.type === "text" || entry.type === "thinking") && entry.content?.trim())
     .reverse(), [messages.data]);

@@ -23,10 +23,10 @@ import type { SidebarIssuesRequest } from "./sidebar-list";
 import { ALL_STATUSES } from "./config";
 import { issueColumnCategory } from "./status-category";
 
-export function issueTasksOptions(issueId: string) {
+export function issueTasksOptions(issueId: string, workspaceSlug?: string) {
   return queryOptions({
     queryKey: issueKeys.tasks(issueId),
-    queryFn: () => api.listTasksByIssue(issueId),
+    queryFn: () => api.listTasksByIssue(issueId, workspaceSlug),
     enabled: !!issueId,
     staleTime: 30_000,
     refetchOnWindowFocus: true,
@@ -676,10 +676,10 @@ export function childrenByParentsOptions(
  * entries per issue) it added complexity without a UX win and broke reply
  * threads at page boundaries.
  */
-export function issueTimelineOptions(issueId: string) {
+export function issueTimelineOptions(issueId: string, workspaceSlug?: string) {
   return queryOptions({
     queryKey: issueKeys.timeline(issueId),
-    queryFn: () => api.listTimeline(issueId),
+    queryFn: () => api.listTimeline(issueId, workspaceSlug),
   });
 }
 

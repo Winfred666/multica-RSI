@@ -10,7 +10,7 @@ import { paths, useWorkspacePaths } from "@multica/core/paths";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { isBuiltInIssueStatus } from "@multica/core/issue-statuses";
 import { agentTaskSnapshotOptions } from "@multica/core/agents";
-import { issueAttachmentsOptions } from "@multica/core/issues/queries";
+import { issueAttachmentsOptions, issueTimelineOptions } from "@multica/core/issues/queries";
 import { collectDeliverableFiles } from "@multica/core/attachments/deliverables";
 import { issueStatusCategory, statusColumnKeys } from "@multica/core/issues";
 import { STATUS_CONFIG } from "@multica/core/issues/config";
@@ -18,7 +18,7 @@ import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import { isEditableShortcutTarget } from "@multica/core/shortcuts";
 import {
   buildIssueTree, issueTreeCollaborators, TREE_NODE_WIDTH,
-  type IssueTreeNode, type IssueTreeSize,
+  type IssueTreeNode, type IssueTreeSize, type IssueTreeCollaborator,
 } from "@multica/core/issues/surface/tree";
 import { Button } from "@multica/ui/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
@@ -304,12 +304,30 @@ function TreeSnapshotNode({ issue, workspaceSlug, onSizeChange }: {
   onSizeChange: (id: string, size: IssueTreeSize) => void;
 }) {
   const ref = useTreeNodeSize(issue.id, onSizeChange);
+  const timeline = useQuery({ ...issueTimelineOptions(issue.id, workspaceSlug), staleTime: "static" });
+  const collaborators = useMemo(() => issueTreeCollaborators(timeline.data ?? []), [timeline.data]);
   return (
     <div ref={ref} className="group/card" data-tree-card={issue.id}>
       <AppLink href={paths.workspace(workspaceSlug).issueDetail(issue.id)} newTabTitle={issue.identifier} className="block">
-        <BoardCardContent issue={issue} collaborators={null} />
+        <BoardCardContent issue={issue} collaborators={collaborators.length > 0 ? <TreeCollaborators issue={issue} collaborators={collaborators} tasks={EMPTY_TASKS} workspaceSlug={workspaceSlug} /> : null} />
       </AppLink>
     </div>
+  );
+}
+
+function TreeCollaborators({ issue, collaborators, tasks, workspaceSlug }: {
+  issue: Issue;
+  collaborators: IssueTreeCollaborator[];
+  tasks: AgentTask[];
+  workspaceSlug?: string;
+}) {
+  const { t } = useT("issues");
+  return (
+    <span className="flex flex-wrap gap-1.5" aria-label={t(($) => $.display.card_collaborators)}>
+      {collaborators.map((collaborator) => (
+        <TreeCollaboratorAvatar key={`${collaborator.actorType}:${collaborator.actorId}`} collaborator={collaborator} issue={issue} tasks={tasks} workspaceSlug={workspaceSlug} />
+      ))}
+    </span>
   );
 }
 
@@ -348,11 +366,7 @@ function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, on
         </IssueHoverCard>
       }
       collaborators={collaborators.length > 0 ? (
-        <span className="flex flex-wrap gap-1.5" aria-label={t(($) => $.display.card_collaborators)}>
-          {collaborators.map((collaborator) => (
-            <TreeCollaboratorAvatar key={`${collaborator.actorType}:${collaborator.actorId}`} collaborator={collaborator} issue={issue} tasks={tasks} />
-          ))}
-        </span>
+        <TreeCollaborators issue={issue} collaborators={collaborators} tasks={tasks} />
       ) : null}
     />
   );

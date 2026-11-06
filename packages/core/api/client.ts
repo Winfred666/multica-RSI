@@ -1760,9 +1760,10 @@ export class ApiClient {
     });
   }
 
-  async listTimeline(issueId: string): Promise<TimelineEntry[]> {
+  async listTimeline(issueId: string, workspaceSlug?: string): Promise<TimelineEntry[]> {
     const raw = await this.fetch<unknown>(
       `/api/issues/${issueId}/timeline`,
+      { headers: workspaceHeader(workspaceSlug) },
     );
     return parseWithFallback(raw, TimelineEntriesSchema, EMPTY_TIMELINE_ENTRIES, {
       endpoint: "GET /api/issues/:id/timeline",
@@ -2910,15 +2911,15 @@ export class ApiClient {
     return this.fetch(`/api/issues/${issueId}/active-task`);
   }
 
-  async listTaskMessages(taskId: string): Promise<TaskMessagePayload[]> {
-    const raw = await this.fetch<unknown>(`/api/tasks/${taskId}/messages`);
+  async listTaskMessages(taskId: string, workspaceSlug?: string): Promise<TaskMessagePayload[]> {
+    const raw = await this.fetch<unknown>(`/api/tasks/${taskId}/messages`, { headers: workspaceHeader(workspaceSlug) });
     return parseWithFallback<TaskMessagePayload[]>(raw, TaskMessageListSchema, [], {
       endpoint: "GET /api/tasks/:id/messages",
     });
   }
 
-  async listTasksByIssue(issueId: string): Promise<AgentTask[]> {
-    const raw = await this.fetch<unknown>(`/api/issues/${issueId}/task-runs`);
+  async listTasksByIssue(issueId: string, workspaceSlug?: string): Promise<AgentTask[]> {
+    const raw = await this.fetch<unknown>(`/api/issues/${issueId}/task-runs`, { headers: workspaceHeader(workspaceSlug) });
     return parseWithFallback<AgentTask[]>(raw, AgentTaskListSchema, [], {
       endpoint: "GET /api/issues/:id/task-runs",
     });
