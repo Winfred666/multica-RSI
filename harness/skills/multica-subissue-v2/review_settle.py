@@ -45,7 +45,7 @@ def bindings(sop, repo, child, parent):
             raise ValueError("Query parent branch ownership changed")
         return branch, target
     if (not branch or not target or branch == target or
-            (child.get("metadata") or {}).get("git_base_branch") != target):
+            (child.get("metadata") or {}).get("git_parent_branch") != target):
         raise ValueError("Child must have a distinct branch based on its direct parent's bound branch")
     for value, name in ((child, branch), (parent, target)):
         if sop.git(repo, "check-ref-format", "refs/heads/" + name, check=False).returncode:

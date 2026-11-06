@@ -49,13 +49,13 @@ class GitDelegation(unittest.TestCase):
     def test_supplied_branch_reuses_its_checkout_without_path_metadata(self):
         self.git('checkout', '-qb', 'refinement')
         self.git('remote', 'add', 'origin', 'git@example.com:owner/repo.git')
-        root = self.issue('root', git_branch='refinement', git_base_branch='main')
+        root = self.issue('root', git_branch='refinement', git_parent_branch='main')
         bound = self.base.bootstrap(self.repo, root, 'workspace')
         self.assertEqual(bound['workdir'], str(self.repo))
         self.assertEqual(root['metadata'], {'git_repository': 'git@example.com:owner/repo.git',
-                         'git_branch': 'refinement', 'git_base_branch': 'main'})
+                         'git_branch': 'refinement', 'git_parent_branch': 'main'})
         self.assertTrue(self.base.owned_branch(self.repo, 'refinement', root, 'workspace'))
-        other = self.issue('other', git_branch='refinement', git_base_branch='main')
+        other = self.issue('other', git_branch='refinement', git_parent_branch='main')
         with self.assertRaisesRegex(self.base.WorkflowError, 'not owned'):
             self.base.bootstrap(self.repo, other, 'workspace')
 
@@ -73,9 +73,9 @@ class GitDelegation(unittest.TestCase):
         child = self.issue('child', parent='query')
         bound = self.sop.prepare(self.repo, child, 'workspace')
         self.assertNotEqual(bound['branch'], inherited['branch'])
-        self.assertEqual(child['metadata']['git_base_branch'], inherited['branch'])
-        self.assertEqual(set(child['metadata']), {'git_branch', 'git_base_branch'})
-        self.assertEqual(set(query['metadata']), {'git_branch', 'git_base_branch'})
+        self.assertEqual(child['metadata']['git_parent_branch'], inherited['branch'])
+        self.assertEqual(set(child['metadata']), {'git_branch', 'git_parent_branch'})
+        self.assertEqual(set(query['metadata']), {'git_branch', 'git_parent_branch'})
 
     def test_review_merges_the_child_through_git_branch_bindings(self):
         parent = self.issue('parent')
@@ -107,7 +107,7 @@ class GitDelegation(unittest.TestCase):
     def test_review_of_supplied_root_saves_no_local_path(self):
         self.issue('parent', tag='query')
         self.git('checkout', '-qb', 'candidate')
-        child = self.issue('child', parent='parent', git_branch='candidate', git_base_branch='main')
+        child = self.issue('child', parent='parent', git_branch='candidate', git_parent_branch='main')
         child.update(status='in_review', assignee_id='agent')
         self.base.bootstrap(self.repo, child, 'workspace')
         head = self.git('rev-parse', 'HEAD')

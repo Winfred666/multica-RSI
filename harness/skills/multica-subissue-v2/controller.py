@@ -59,19 +59,19 @@ def owned_branch(repo, branch, value, workspace):
 def prepare(repo, value, workspace):
     tag, props = kind(value), metadata(value)
     parent = issue(value['parent_issue_id'], workspace) if value.get('parent_issue_id') else None
-    if tag != 'query' and props.get('git_branch') and props.get('git_base_branch'):
+    if tag != 'query' and props.get('git_branch') and props.get('git_parent_branch'):
         return {**base.prepare(repo, value, workspace), 'owner_issue_id': value['id']}
     inherited = prepare(repo, parent, workspace) if parent else None
     if tag == 'query':
         branch = props.get('git_branch') or (inherited or {}).get('branch')
         if branch:
-            base.bind(value, 'git_base_branch', (inherited or {}).get('branch') or props['git_base_branch'])
+            base.bind(value, 'git_parent_branch', (inherited or {}).get('branch') or props['git_parent_branch'])
             base.bind(value, 'git_branch', branch)
             base.bind_repository(repo, value)
         profile, policy = inherit_sandbox(value, workspace)
         workdir = base.checkout(repo, branch) if branch else repo or Path.cwd()
         return {'issue_id': value['id'], 'owner_issue_id': branch_owner(value, workspace)['id'],
-                'branch': branch, 'base_branch': metadata(value).get('git_base_branch'),
+                'branch': branch, 'base_branch': metadata(value).get('git_parent_branch'),
                 'workdir': str(workdir) if workdir else None,
                 'sandbox_profile': profile, 'sandbox_policy': policy}
     if parent and not inherited['branch']:
@@ -81,7 +81,7 @@ def prepare(repo, value, workspace):
     base.bind_repository(repo, value)
     profile, policy = inherit_sandbox(value, workspace)
     return {'issue_id': value['id'], 'owner_issue_id': value['id'], 'branch': branch,
-            'base_branch': metadata(value)['git_base_branch'],
+            'base_branch': metadata(value)['git_parent_branch'],
             'sandbox_profile': profile, 'sandbox_policy': policy}
 
 
@@ -111,7 +111,7 @@ def binding_for(args, context):
     with locked(common / 'multica-sop/branches.lock', wait=True) if common else nullcontext():
         context['external_write_attempted'] = True
         props = metadata(value)
-        if (props.get('git_branch') and props.get('git_base_branch')
+        if (props.get('git_branch') and props.get('git_parent_branch')
                 and branch_owner(value, args.workspace)['id'] == value['id']):
             binding = base.bootstrap(repo, value, args.workspace)
             profile, policy = inherit_sandbox(value, args.workspace)

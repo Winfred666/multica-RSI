@@ -181,7 +181,7 @@ def reserve(repo, value, workspace, base):
     if exists.returncode != 0 and git(repo, "remote", "get-url", "origin", check=False).returncode == 0:
         git(repo, "push", "--set-upstream", "origin", f"refs/heads/{branch}:refs/heads/{branch}")
     # The presence of git_branch publishes the complete branch/base binding.
-    bind(value, "git_base_branch", base)
+    bind(value, "git_parent_branch", base)
     bind(value, "git_branch", branch)
     return branch
 
@@ -301,7 +301,7 @@ def prepare(repo, value, workspace, seen=None):
     if value["id"] in seen:
         raise WorkflowError("Issue parent cycle while preparing branches")
     seen.add(value["id"])
-    base = metadata(value).get("git_base_branch", "")
+    base = metadata(value).get("git_parent_branch", "")
     if not base and value.get("parent_issue_id"):
         parent = issue(value["parent_issue_id"], workspace)
         base = prepare(repo, parent, workspace, seen)["branch"]
@@ -328,7 +328,7 @@ def bootstrap(path, value, workspace):
     repo, common = repository(path)
     current = git(repo, "symbolic-ref", "--short", "HEAD").stdout.strip()
     props = metadata(value)
-    base = props.get("git_base_branch") or current
+    base = props.get("git_parent_branch") or current
     branch = props.get("git_branch")
     if branch == current and git(repo, "rev-parse", "--verify", "--quiet",
                                  "refs/multica/local-state/" + branch, check=False).returncode:
