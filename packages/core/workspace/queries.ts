@@ -45,11 +45,11 @@ export function memberListOptions(wsId: string) {
   });
 }
 
-export function agentListOptions(wsId: string) {
+export function agentListOptions(wsId: string, workspaceSlug?: string) {
   return queryOptions({
     queryKey: workspaceKeys.agents(wsId),
     queryFn: () =>
-      api.listAgents({ workspace_id: wsId, include_archived: true }),
+      api.listAgents({ workspace_id: wsId, include_archived: true }, workspaceSlug),
     // Projected unstable can age offline without an event; polling online also
     // covers a missed demotion. Offline recovery is event/reconnect-driven.
     refetchInterval: (query) =>
@@ -97,10 +97,10 @@ export function cacheAgentResponse(
   });
 }
 
-export function squadListOptions(wsId: string) {
+export function squadListOptions(wsId: string, workspaceSlug?: string) {
   return queryOptions<Squad[]>({
     queryKey: workspaceKeys.squads(wsId),
-    queryFn: () => api.listSquads(),
+    queryFn: () => api.listSquads(workspaceSlug),
     enabled: !!wsId,
   });
 }

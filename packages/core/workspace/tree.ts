@@ -74,7 +74,7 @@ export function layoutWorkspaceTree(roots: IssueTreeNode[], wsId: string, snapsh
             ? build(buildIssueTree(snapshot.issues, new Set(), new Set())) : undefined;
           if (content) nested.set(frameId, content);
           measured.set(frameId, content ? { width: content.width, height: content.height + 40 } : { width: 300, height: 40 });
-          children.unshift({ id: frameId, issues: node.issues, collapsed: false, children: [] });
+          children.push({ id: frameId, issues: node.issues, collapsed: false, children: [] });
         }
       }
       return { ...node, children };

@@ -196,10 +196,10 @@ export function chatDraftRestoresOptions(sessionId: string) {
  * task is running) and AssistantMessage (for completed tasks). WS
  * `task:message` events seed this cache in real time via useRealtimeSync.
  */
-export function taskMessagesOptions(taskId: string) {
+export function taskMessagesOptions(taskId: string, workspaceSlug?: string) {
   return queryOptions({
     queryKey: chatKeys.taskMessages(taskId),
-    queryFn: () => api.listTaskMessages(taskId),
+    queryFn: () => api.listTaskMessages(taskId, workspaceSlug),
     enabled: isTaskMessageTaskId(taskId),
     staleTime: Infinity,
     // Every write to this cache — this fetch, a backfill, or a realtime batch —
@@ -215,9 +215,9 @@ export function taskMessagesOptions(taskId: string) {
 }
 
 /** A visible run follows WS updates and backfills on mount and completion. */
-export function useTaskMessages(taskId: string, isLive: boolean, enabled = true) {
+export function useTaskMessages(taskId: string, isLive: boolean, enabled = true, workspaceSlug?: string) {
   const query = useQuery({
-    ...taskMessagesOptions(taskId),
+    ...taskMessagesOptions(taskId, workspaceSlug),
     enabled: enabled && isTaskMessageTaskId(taskId),
     refetchOnMount: "always",
     refetchOnWindowFocus: "always",

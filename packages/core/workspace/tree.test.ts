@@ -21,7 +21,7 @@ it("captures each workspace once, paginates with explicit scope, and renders sha
     .mockResolvedValueOnce(Response.json({ issues: [row("three", nested, child)], total: 1 }));
   vi.stubGlobal("fetch", fetch);
   setApiInstance(new ApiClient("https://api.example.test"));
-  const roots = [row("owner", "parent-id", child), row("other-owner", "parent-id", child)];
+  const roots = [row("owner", "parent-id", child), row("other-owner", "parent-id", child), { ...row("sibling", "parent-id"), parent_issue_id: "owner" }];
   const client = new QueryClient();
   const options = workspaceTreeOptions("parent-id", roots);
   const observer = new QueryObserver(client, options);
@@ -42,6 +42,8 @@ it("captures each workspace once, paginates with explicit scope, and renders sha
   expect(layout.links).toEqual([{ source: "three", target: `workspace:${child}` }, { source: "other-owner", target: `workspace:${child}` }]);
   const outer = layout.nodes.find(({ node }) => node.id === `workspace:${child}`)!;
   const inner = layout.nodes.find(({ node }) => node.id === `workspace:${nested}`)!;
+  const sibling = layout.nodes.find(({ node }) => node.id === "sibling")!;
+  expect(sibling.x + sibling.width / 2).toBeLessThan(outer.x - outer.width / 2);
   expect(inner.y + inner.height).toBeLessThan(outer.y + outer.height);
   remount();
   client.clear();

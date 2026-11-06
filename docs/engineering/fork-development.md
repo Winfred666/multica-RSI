@@ -32,8 +32,8 @@ installs the kit through its self-contained Python installer.
 - **Issue tree.** You can inspect parent/child issues, expand collapsed card
   stacks, and preview collaborators' messages and runs. We added context-usage
   rings and compression counts, plus saved pan and zoom positions. Issue-owned
-  sub-workspaces appear as static nested snapshots, with links to their own
-  workspace. Each branch uses its own measured card heights; complete root
+  sub-workspaces follow sibling issues as static nested snapshots, with collaborators
+  from their own workspace and links to open it. Each branch uses its own measured card heights; complete root
   trees wrap into rows using the canvas aspect ratio. Uploaded HTML deliverables render inside tree cards and open in
   the artifact viewer.
 - **Settings.** You can manage hosted plugin execution credentials and personal

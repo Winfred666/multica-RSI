@@ -91,11 +91,12 @@ export function buildActorNameResolver(directories: {
   };
 }
 
-export function useActorName() {
-  const wsId = useWorkspaceId();
+export function useActorName(workspaceId?: string, workspaceSlug?: string) {
+  const currentWorkspaceId = useWorkspaceId();
+  const wsId = workspaceId ?? currentWorkspaceId;
   const { data: memberData } = useQuery(memberListOptions(wsId));
-  const { data: agentData } = useQuery(agentListOptions(wsId));
-  const { data: squadData } = useQuery(squadListOptions(wsId));
+  const { data: agentData } = useQuery(agentListOptions(wsId, workspaceSlug));
+  const { data: squadData } = useQuery(squadListOptions(wsId, workspaceSlug));
   const members = memberData ?? EMPTY_MEMBERS;
   const agents = agentData ?? EMPTY_AGENTS;
   const squads = squadData ?? EMPTY_SQUADS;
