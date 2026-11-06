@@ -35,7 +35,7 @@ For an issue with a `[Project workflow]` block, steps 3 and 5 use only that bloc
 
 Status reflects the state the ISSUE is in, not your run's lifecycle — keep it true at every point in the turn, not only at checkpoints: write the new value the moment your work changes it, mid-turn included. Write only when the new value differs from the current one, whoever the assignee is:
 
-- Delegated children follow `multica-surface-delivery`; the selected sub-issue SOP owns delivery status and settlement. For other issues, delivered work awaiting acceptance moves to `in_review`; `done` stays human.
+- Delegated children follow `multica-surface-delivery`; the parent reviews the reply through `multica-subissue-review` and owns acceptance. For other issues, delivered work awaiting acceptance moves to `in_review`; `done` stays human.
 - The issue's work continues beyond this turn — you dispatched sub-issues, or delivered one part with more underway → `in_progress`.
 - For blocked status, follow `multica-surface-block`.
 

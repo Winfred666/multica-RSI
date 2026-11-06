@@ -1,6 +1,5 @@
 """Verified issue delivery through explicit options and read-only state checks."""
 import importlib.util
-import json
 from pathlib import Path
 import shlex
 import sys
@@ -91,7 +90,7 @@ def publish(args, context):
         raise context['error']('changed_commit', 'The branch changed after preparation.', 'Use recheck to verify the new evidence.')
     result = delivery.publish(args, context, issue, path, receipt)
     return finished(context, facts['target_status'], 'Delivery recorded. End without another reply; parent review owns the next decision.',
-                    {'issue_id': issue['id'], 'status': facts['target_status'], 'comment_ids': result['comment_ids'], 'handoff': result['handoff']})
+                    {'issue_id': issue['id'], 'status': facts['target_status'], 'comment_ids': result['comment_ids']})
 
 
 def commit_view(context):
@@ -128,10 +127,8 @@ def verify_result(context, args, initial, result):
         require(category(issue) in {'in_review', 'done', 'cancelled'}, 'Delivery status was not persisted')
     if args.event == 'publish' and result.get('data', {}).get('comment_ids'):
         require(category(issue) == result['data']['status'], 'Delivery status differs from the promised result')
-        if issue.get('parent_issue_id'):
-            receipt = (issue.get('metadata') or {}).get('subissue_result')
-            receipt = json.loads(receipt) if isinstance(receipt, str) else receipt
-            require(receipt and receipt.get('delivery_id'), 'Child delivery receipt was not persisted')
+        comments = context['cli']('comment', 'list', issue['id'], '--full')
+        require(set(result['data']['comment_ids']) <= {c['id'] for c in comments}, 'Delivery reply was not posted')
 
 
 def precheck(context):
@@ -152,7 +149,7 @@ workflow = Workflow(
             Parameter('--report-file', 'Absolute path to the delivery JSON', type=Path),
             Parameter('--retry-post', required=False, action='store_true'))),
         Option('recheck', 'check', 'Recheck changed evidence before publication.', recheck))),
-    State('finished', 'Delivery status and receipts are persisted.', final=True, precheck=precheck),
+    State('finished', 'Delivery reply is posted; native steering brings child work to parent review.', final=True, precheck=precheck),
     params=(Parameter('--thread', required=False, action='append', default=[]),
             Parameter('--attachment', required=False, action='append', type=Path, default=[]),
             Parameter('--allow-external-file', required=False, action='store_true')),

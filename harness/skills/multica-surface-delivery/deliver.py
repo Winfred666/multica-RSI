@@ -2,11 +2,12 @@
 import hashlib
 import importlib.util
 import json
+import math
 from pathlib import Path
 
 
 def branch_sop():
-    path = Path(__file__).resolve().parent.parent / 'multica-subissue-v2/controller.py'
+    path = Path(__file__).resolve().parent.parent / 'multica-subissue-distribute/controller.py'
     spec = importlib.util.spec_from_file_location('surface_subissue', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -65,7 +66,7 @@ def resolve(args, context, issue, previous=None):
         repo, _ = sop.resolve_repository(None, issue, issue['workspace_id'])
         branch = props.get('git_branch')
         if not branch or not sop.owned_branch(repo, branch, issue, issue['workspace_id']):
-            raise error('unowned_branch', 'No verified issue-owned feature branch.', 'Run the existing sub-issue prepare SOP before delivery.')
+            raise error('unowned_branch', 'No verified issue-owned feature branch.', 'Use the issue worktree prepared by its parent or native Git binding.')
         if sop.git(Path.cwd(), 'branch', '--show-current').stdout.strip() != branch:
             raise error('wrong_branch', 'Current workdir is not on the issue branch.', 'Return to the existing issue worktree; do not create another branch.')
     return {'issue_id': issue['id'], 'surface': 'issue', 'tag': tag, 'threads': threads,
@@ -98,7 +99,19 @@ def committed(facts, *, publish=False):
 def report(path, tag):
     if path is None:
         raise ValueError('Provide --report-file with claim, metric, method and appendix.')
-    return branch_sop().delivery.validate_report(json.loads(path.read_text()), tag)
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict) or set(value) != {'claim', 'metric', 'method', 'appendix'}:
+        raise ValueError('Report must contain exactly claim, metric, method and appendix.')
+    if any(not isinstance(value[k], str) or not value[k].strip() for k in ('claim', 'method', 'appendix')):
+        raise ValueError('claim, method and appendix must be nonempty text.')
+    metric = value['metric']
+    if isinstance(metric, bool) or not (metric is None or isinstance(metric, (str, int, float))):
+        raise ValueError('metric must be measured text, a finite number, or null.')
+    if isinstance(metric, (int, float)) and not math.isfinite(metric) or isinstance(metric, str) and not metric.strip():
+        raise ValueError('metric must be finite measured data or null.')
+    if tag == 'exp' and not isinstance(metric, (int, float)):
+        raise ValueError('exp requires a finite numeric measured score.')
+    return value
 
 
 def publish(args, context, issue, path, receipt):
@@ -111,6 +124,8 @@ def publish(args, context, issue, path, receipt):
     marker = '<!-- multica-delivery:' + receipt['id'] + ' -->'
     body = '\n\n'.join([value['claim'].strip(), *([] if value['metric'] is None else [str(value['metric'])]),
                         value['method'].strip(), value['appendix'].strip()])
+    if facts['branch']:
+        body += '\n\nGit branch: ' + facts['branch'] + '\nCommit: ' + receipt['head']
     content = '/note\n' + body + '\n\n' + marker
     body_path = Path(facts['workdir']) / ('.multica-delivery-' + receipt['id'][:16] + '.md')
     body_path.write_text(content, encoding='utf-8')
@@ -149,19 +164,7 @@ def publish(args, context, issue, path, receipt):
         if ({"done": "done", "closed": "cancelled"}.get(current.get("status_category"), current["status"])) in {'blocked', 'cancelled', 'done'}:
             raise error('changed_status', 'Issue changed state during delivery.', 'Inspect the current issue before continuing.')
         cli('status', issue['id'], facts['target_status'], '--no-start', write=True)
-    result = {'head': receipt.get('head'), 'score': value['metric'] if facts['tag'] == 'exp' else None,
-              'answers': value, 'thread_id': next(iter(facts['threads']), comments.get('root')),
-              'delivery_id': receipt['id'], 'comment_ids': list(comments.values())}
-    current = cli('get', issue['id'])
-    stored = (current.get('metadata') or {}).get('subissue_result')
-    encoded = json.dumps(result, sort_keys=True, allow_nan=False)
-    if stored != encoded:
-        cli('metadata', 'set', issue['id'], '--key', 'subissue_result', '--value', encoded, '--type', 'string', write=True)
-    sop = branch_sop()
-    if facts['parent_id']:
-        result['handoff'] = sop.delivery.notify(sop.base, sop.issue(issue['id'], issue['workspace_id']), issue['workspace_id'])
-    else:
-        result['handoff'] = {'ready': False, 'reason': 'root complete'}
+    result = {'comment_ids': list(comments.values())}
     receipt.update(finished=True, result=result)
     save(path, receipt)
     return result
