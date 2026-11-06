@@ -1,11 +1,14 @@
 # Release runbook
 
+The fork publishes CLI archives to `Winfred666/multica-RSI` and backend/web
+images to `ghcr.io/winfred666`. Make both container packages public after their
+first publication so self-hosters can pull without authentication.
+
 ## Normal release
 
 Release from a reviewed commit on `main` by creating and pushing a new semantic
 version tag such as `v0.18.4`. The Release workflow intentionally has no manual
-trigger: a tag push is the only event that can publish binaries, Homebrew
-formulae, and container images.
+trigger: a tag push is the only event that can publish binaries and container images.
 
 The verification job runs the Go tests and `govulncheck` before any publishing
 job starts. The vulnerability scan is fail-closed by default.

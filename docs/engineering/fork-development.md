@@ -64,6 +64,14 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   continue claiming work after a partial batch. New agents created through the
   CLI default to 50 concurrent tasks; use `--max-concurrent-tasks` to set a limit.
 
+## Distribution
+
+GitHub Releases provides the CLI and daemon binaries. The Bash and PowerShell
+installers, in-app install commands, and CLI update checks use this fork.
+Self-host Compose pulls backend/web images from `ghcr.io/winfred666`.
+Use the [self-hosting installer](../../SELF_HOSTING.md#quick-install-recommended);
+users do not need to build the images.
+
 ## Development
 
 Build this checkout using the [contributing guide](../../CONTRIBUTING.md).
