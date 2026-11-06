@@ -4,6 +4,8 @@ Multica is a task management platform where people and agents collaborate on iss
 
 ## Scope and Reading Order
 
+- Keep [the fork development reference](docs/engineering/fork-development.md) current when changing fork-specific behavior. Keep implementation differences there and the research overview in `README.md`.
+
 - Before changing `apps/mobile/`, also read [apps/mobile/AGENTS.md](apps/mobile/AGENTS.md), even if your tool does not load nested instructions automatically. Platform-specific sections below apply only to the named platform.
 - For naming, translations, or Chinese UI/docs copy, read [conventions.mdx](apps/docs/content/docs/developers/conventions.mdx) and [conventions.zh.mdx](apps/docs/content/docs/developers/conventions.zh.mdx).
 - Maintain shared rules here and mobile-specific rules in the mobile file. `CLAUDE.md` files only import them. Update instructions in the same change that alters the referenced workflow or boundary; do not add incident timelines, dependency version lists, or duplicate rules.
