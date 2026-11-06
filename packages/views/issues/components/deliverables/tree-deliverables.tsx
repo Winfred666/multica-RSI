@@ -24,7 +24,7 @@ export function TreeDeliverables({ files }: { files: ReadonlyArray<DeliverableFi
         {others.map(({ key, latest }) => (
           <button key={key} type="button" onClick={() => open(latest)} title={latest.filename}
             className="relative flex w-full items-center gap-2 rounded-md border border-surface-border bg-surface p-2 text-caption shadow-sm hover:z-10 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-ring">
-            <DeliverableThumbnail attachment={latest} showTypeLabel={false} className="size-6 shrink-0 rounded" />
+            <DeliverableThumbnail attachment={latest} showTypeLabel={false} className="size-6 shrink-0 rounded-md" />
             <span className="min-w-0 truncate">{latest.filename}</span>
           </button>
         ))}
