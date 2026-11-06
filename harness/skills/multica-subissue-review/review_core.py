@@ -99,7 +99,8 @@ def parent_context(sop, repo, parent, evidence):
     if head.returncode:
         return {'error': 'Cannot resolve bound parent commit; verify before delivery.'}
     ref = head.stdout.strip()
-    context = {'commit': ref, 'branch': props.get('git_branch'), 'workdir': props.get('git_workdir')}
+    workdir = sop.base.checkout(repo, props['git_branch']) if props.get('git_branch') else repo
+    context = {'commit': ref, 'branch': props.get('git_branch'), 'workdir': str(workdir) if workdir else None}
     summary = sop.git(repo, 'show', '--stat', '--oneline', '--no-renames', ref, check=False)
     if summary.returncode == 0 and len(summary.stdout) <= 4000:
         context['commit_summary'] = summary.stdout
@@ -234,18 +235,19 @@ def decide(args, context, action):
         target = (parent.get("metadata") or {}).get("git_branch")
         head = None
         if not query:
-            repo, _ = sop.repository(repo)
+            repo, _ = sop.resolve_repository(args.repo, child, context.get('workspace_id', child['workspace_id']))
             branch, target = settle.bindings(sop, repo, child, parent)
             head = sop.git(repo, "rev-parse", "refs/heads/" + branch).stdout.strip()
         if action == "accept" and not query and (args.commit != head or delivery.get("head") != head):
             raise error("changed_head", "Child head changed after delivery; report and review its current committed evidence.")
         decision = {"id": uuid.uuid4().hex, "action": action, "phase": "requested",
                     "parent_id": parent["id"], "parent_branch": target, "child_branch": branch,
-                    "head": head, "repo": str(repo) if repo else "", "verify": args.verify or "", "reason": args.reason or ""}
+                    "head": head, "repository": (child.get("metadata") or {}).get("git_repository"),
+                    "verify": args.verify or "", "reason": args.reason or ""}
         cli("metadata", "set", child["id"], "--key", settle.KEY,
             "--value", json.dumps(decision), write=True)
     dispatch(cli, child, decision, failure)
-    workdir = (parent.get('metadata') or {}).get('git_workdir')
+    workdir = sop.base.checkout(args.repo, (parent.get('metadata') or {}).get('git_branch', '')) if args.repo else None
     prefix = 'cd ' + shlex.quote(str(workdir)) + ' && ' if workdir else None
     return {"instruction": (
             "Child resumed asynchronously. Prepare authorized parent delivery using parent_context and "
@@ -305,7 +307,8 @@ def overview(context):
             if delivery and tag == 'query':
                 options.append(decision_option('accept', child, 'Accept the reviewed query answer.'))
             elif delivery and (tag != 'exp' or not (child.get('metadata') or {}).get('experiment_group')):
-                head = sop.git(args.repo, 'rev-parse', '--verify', 'refs/heads/' + (row['branch'] or ''), check=False)
+                child_repo, _ = sop.resolve_repository(args.repo, child, context['workspace_id'])
+                head = sop.git(child_repo, 'rev-parse', '--verify', 'refs/heads/' + (row['branch'] or ''), check=False)
                 row['head'] = head.stdout.strip() if head.returncode == 0 else None
                 if row['head'] and row['head'] == delivery.get('head'):
                     options.append(decision_option('accept', child, 'Accept the reviewed commit.', head=row['head']))
@@ -313,8 +316,9 @@ def overview(context):
                             decision_option('handle', child, 'Handle the blocker in parent scope.')))
         options.append(decision_option('resteer', child, 'Return a concrete correction.'))
     evidence = [item for row in rows for item in row.get('cited_evidence', [])]
+    workdir = sop.base.checkout(args.repo, (parent.get('metadata') or {}).get('git_branch', '')) if args.repo else None
     return {'data': {'children': rows, 'parent_context': parent_context(sop, args.repo, parent, evidence),
-                     'parent_delivery': delivery_guidance((parent.get('metadata') or {}).get('git_workdir'))
+                     'parent_delivery': delivery_guidance(workdir)
                          if any(row.get('delivery') for row in rows) else {},
-                     'repository': str(args.repo), 'workdir': (parent.get('metadata') or {}).get('git_workdir')},
+                     'repository': (parent.get('metadata') or {}).get('git_repository'), 'workdir': str(workdir) if workdir else None},
             'options': options, 'children': children}

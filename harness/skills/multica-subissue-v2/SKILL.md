@@ -16,12 +16,13 @@ prepares one child; add `--start` to dispatch its assigned agent. The JSON spec 
 and `assignee_id`. Starting requires `assignee_id`.
 
 `query` is the default, including when no lifecycle label is present. It shares the
-parent's workdir; `--shared-dir FOLDER` selects a subfolder. In the child, `prepare`
+parent's Git branch and project resources. In the child, `prepare`
 exposes that workdir as `shared/`; use relative paths through it. `exec -- COMMAND
 ARGS` runs there under the inherited sandbox without owning a new branch or
 locking shared query work. `dev` and `exp` own branches from the parent's branch.
 For branch work, supply `--repo` only if issue ancestry and the current checkout
-cannot identify one repository.
+cannot identify one repository. Metadata binds only the repository URL, branch
+and parent branch; Git records ownership and locates its worktree.
 
 The first `exp` needs `--baseline-score SCORE --direction min|max`; matching siblings
 reuse those values. Competitive experiments also need one fresh

@@ -42,7 +42,7 @@ Project resources (also written to `.multica/project/resources.json`):
 
 <current-project-resources>
 
-Resources are pointers; open them only when relevant. For repository work, resolve the current issue or ancestor's `git_repo_root` metadata and run repository commands through `multica-subissue-v2 exec` in its prepared worktree. The `github_repo` resource does not require another checkout. Do not run `multica repo checkout` for query or untagged issues; that command creates a branch.
+Resources are pointers; open them only when relevant. For repository work, resolve the current issue or ancestor's Git repository and project resources and run repository commands through `multica-subissue-v2 exec` in its prepared worktree. The `github_repo` resource does not require another checkout. Do not run `multica repo checkout` for query or untagged issues; that command creates a branch.
 
 ## Runtime input mapping
 
