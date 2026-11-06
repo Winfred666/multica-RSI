@@ -14,6 +14,8 @@ The verification job runs the Go tests and `govulncheck` before any publishing
 job starts. The vulnerability scan is fail-closed by default.
 
 Prepare a draft GitHub Release with installation notes before pushing the tag.
+Use the tag itself (for example `v0.8.2`) as the draft title so it matches
+GoReleaser’s release name.
 GoReleaser reuses the draft, preserves its notes, uploads binaries, and publishes
 it. This also keeps the first fork release from listing the entire upstream
 commit history as its release notes.
