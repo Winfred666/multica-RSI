@@ -1445,7 +1445,7 @@ describe("IssueDetail (shared)", () => {
     expect(within(run as HTMLElement).getByRole("button", { name: "Open full log" })).toBe(logButton);
     fireEvent.click(within(run as HTMLElement).getByRole("button", { name: "Open full log" }));
     await screen.findByRole("dialog");
-    expect(mockApiObj.listTaskMessages).toHaveBeenCalledWith(taskId);
+    expect(mockApiObj.listTaskMessages).toHaveBeenCalledWith(taskId, undefined);
   });
 
   it("places one coalesced queued block after the batch's latest reply", async () => {

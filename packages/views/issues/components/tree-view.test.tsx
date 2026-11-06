@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, type ReactNode } from "react";
@@ -30,7 +30,7 @@ vi.mock("@multica/core/realtime", () => ({
 }));
 
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
-vi.mock("@multica/core/workspace/hooks", () => ({ useActorName: () => ({ getActorName: (_type: string, id: string) => id }) }));
+vi.mock("@multica/core/workspace/hooks", () => ({ useActorName: () => ({ getActorName: (_type: string, id: string) => id, getActorAvatarUrl: () => null }) }));
 vi.mock("@multica/core/issue-statuses/hooks", () => {
   const catalog = { statuses: [], activeStatuses: [], isLoaded: true, colorOf: () => null, iconOf: () => null };
   return { useIssueStatuses: () => catalog };
@@ -108,10 +108,10 @@ describe("TreeView", () => {
     }
   });
 
-  it("shows one timestamped frame per workspace with nested issue links and connectors behind cards", () => {
+  it("shows one timestamped frame per workspace with nested issue links and connectors behind cards", async () => {
     const child = "0c99f8e3-543b-4394-bfe8-a5b60141352e", nested = "1c99f8e3-543b-4394-bfe8-a5b60141352e", denied = "2c99f8e3-543b-4394-bfe8-a5b60141352e";
     const link = (id: string, workspace_id: string, target: string) => ({ ...issue(id), workspace_id, metadata: { sub_workspace_id: target } });
-    const { qc, container, rerender, render, store } = setup([issue("Owner")]);
+    const { qc, container, rerender, render, store, api } = setup([issue("Owner")], [], [comment("nested-reviewer")]);
     const replay = { ...link("Replay", child, nested), status: "done", description: "Evaluate the selected branch", labels: [{ id: "evaluation", name: "Evaluation", color: "#529879" } as NonNullable<Issue["labels"]>[number]] };
     act(() => store.setState({ cardProperties: { ...store.getState().cardProperties, description: true, labels: true } }));
     act(() => { qc.setQueryData(["workspace-tree-snapshot", "ws-1"], {
@@ -130,6 +130,10 @@ describe("TreeView", () => {
     expect(container.querySelector(".zoom-canvas-content > svg path.text-info")).toBeInTheDocument();
     expect(screen.getByText("Evaluate the selected branch")).toBeInTheDocument();
     expect(screen.getByText("Evaluation")).toBeInTheDocument();
+    const replayCard = within(container.querySelector('[data-tree-card="Replay"]') as HTMLElement);
+    expect(await replayCard.findByLabelText("nested-reviewer", { selector: "span[tabindex]" })).toBeInTheDocument();
+    expect(api.listTimeline).toHaveBeenCalledWith("Replay", "playground");
+    expect(api.listTasksByIssue).toHaveBeenCalledWith("Replay", "playground");
     act(() => store.setState({ cardProperties: { ...store.getState().cardProperties, description: false, labels: false } }));
     expect(screen.queryByText("Evaluate the selected branch")).not.toBeInTheDocument();
     expect(screen.queryByText("Evaluation")).not.toBeInTheDocument();
@@ -284,8 +288,8 @@ describe("TreeView", () => {
     expect(screen.getByText("Found the answer")).toBeInTheDocument();
     expect(screen.getByText("Thinking")).toBeInTheDocument();
     expect(screen.queryByText("Internal tool details")).not.toBeInTheDocument();
-    expect(api.listTaskMessages).toHaveBeenCalledWith(task.id);
-    expect(api.listTaskMessages).not.toHaveBeenCalledWith(other.id);
+    expect(api.listTaskMessages).toHaveBeenCalledWith(task.id, undefined);
+    expect(api.listTaskMessages).not.toHaveBeenCalledWith(other.id, undefined);
     act(() => qc.setQueryData(chatKeys.taskMessages(task.id), [message(5, "text", " with live updates")]));
     expect(await screen.findByText("Found the answer with live updates")).toBeInTheDocument();
     qc.clear();
@@ -328,7 +332,7 @@ describe("TreeView", () => {
     api.listTaskMessages.mockResolvedValue([{ task_id: task.id, issue_id: row.id, seq: 1, type: "text", content: "Previous run reply" }]);
     await userEvent.hover(await screen.findByRole("img", { name: "agent-Past" }));
     expect(await screen.findByText("Previous run reply", {}, { timeout: 3000 })).toBeInTheDocument();
-    expect(api.listTaskMessages).toHaveBeenCalledWith(task.id);
+    expect(api.listTaskMessages).toHaveBeenCalledWith(task.id, undefined);
     qc.clear();
   });
 

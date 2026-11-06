@@ -136,7 +136,7 @@ describe("useActorName", () => {
     expect(result.current.hasActor("member", "user-1")).toBeUndefined();
   });
 
-  it("resolves names once the directories are loaded", () => {
+  it.each([undefined, "nested-workspace"])("resolves names in workspace %s once the directories are loaded", (workspaceId) => {
     // Seed the caches directly so the hook reads resolved directories on its
     // first render — this guards that stabilizing the loading default did not
     // break name resolution when data IS present.
@@ -148,11 +148,12 @@ describe("useActorName", () => {
       listAgents: () => Promise.resolve(agents),
       listSquads: () => Promise.resolve(squads),
     } as unknown as ApiClient);
-    qc.setQueryData(workspaceKeys.members("ws-1"), members);
-    qc.setQueryData(workspaceKeys.agents("ws-1"), agents);
-    qc.setQueryData(workspaceKeys.squads("ws-1"), squads);
+    const wsId = workspaceId ?? "ws-1";
+    qc.setQueryData(workspaceKeys.members(wsId), members);
+    qc.setQueryData(workspaceKeys.agents(wsId), agents);
+    qc.setQueryData(workspaceKeys.squads(wsId), squads);
 
-    const { result } = renderHook(() => useActorName(), {
+    const { result } = renderHook(() => useActorName(workspaceId), {
       wrapper: createWrapper(qc),
     });
 

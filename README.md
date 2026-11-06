@@ -5,10 +5,10 @@ English · [简体中文](README.zh.md)
 *Compute is abundant; human attention is the bottleneck. **Bring All Projects, All Agents, and All Machines Inside.** Instead of scattering experiments across fragile scripts, disconnected machines, and noisy terminal tabs, organize parallel exploration, nested sub-workspaces, and evolving SOPs inside one R&D harness.*
 
 <p align="center">
-  <img src="docs/assets/showcase/tree-panel-subworkspaces-and-html.png" alt="Focused sub-workspace issues with status-colored links and the LAB-5 context popup" width="100%" />
+  <img src="docs/assets/showcase/tree-panel-subworkspaces-and-html.png" alt="Tree Panel with nested workspaces, collaborators and the EXP-3 context popup" width="100%" />
 </p>
 
-*Figure 1. Sub-workspace issues and the LAB-5 review; context values are illustrative.*
+*Figure 1. Sub-workspace issues and the EXP-3 review; context values are illustrative.*
 
 **Vision:** Turn key system resources and logs into HTML widgets that people can inspect and agents can use.
 
@@ -19,23 +19,23 @@ English · [简体中文](README.zh.md)
 
 ## 🧠 Gradual Context Reveal: Engineered for Human Attention
 
-**Layers 0–2 stay inside Multica, accessible from any web browser.** At Layer 3, leave the platform to log into a machine.
+**Layers 0–2 stay inside Multica, accessible from any web browser.** Leave room for life outside the platform.
 
 ```mermaid
 flowchart LR
     subgraph Web["Inside Multica · any web browser"]
         L0["🔔 Layer 0: Outcome-Only Inbox<br/>Deliveries and decision blockers"] --> L1["🌳 Layer 1: Tree Panel<br/>Topology, sub-issues and sub-workspaces"]
-        L1 --> L2["🔬 Layer 2: Execution Audit<br/>Git commits, reviews, logs and investigation"]
+        L1 --> L2["🔬 Layer 2: Execution Audit<br/>GitHub links, reviews and execution tracks"]
     end
-    L2 --> L3["💻 Layer 3: Machine Login<br/>Outside the platform"]
+    L2 --> L3["💻 Layer 3: Outside the Platform<br/>❌ Machine logins and late-night debugging<br/>✅ Read, brainstorm, meet people, enjoy life"]
 ```
 
-*Figure 4. Browser access through Layer 2; direct machine access at Layer 3.*
+*Figure 4. Three browser layers, then time away from the screen.*
 
 - **Layer 0 · Outcome-Only Inbox:** Surface final deliveries and decision blockers through programmable notification policies.
 - **Layer 1 · Tree Panel:** Scan topology, sub-issues, and sub-workspaces. Inspect context rings and HTML widgets alongside the work.
-- **Layer 2 · Execution Audit:** Investigate Git commits, reviews, and logs through artifacts and issue threads inside the platform.
-- **Layer 3 · Machine Login:** Log into a machine outside Multica for direct system access.
+- **Layer 2 · Execution Audit:** Inspect GitHub links, reviews, and [execution tracks](https://github.com/multica-ai/multica#stay-in-the-loop).
+- **Layer 3 · Outside the Platform:** ❌ Machine logins and late-night debugging. ✅ Read, brainstorm, meet people, enjoy life.
 
 <p align="center">
   <img src="docs/assets/showcase/gradual-reveal-inbox.png" alt="Outcome-focused Inbox in the demonstration research workspace" width="100%" />
@@ -113,11 +113,7 @@ Use lifecycle hooks to continue work, route reviews, and surface decisions. Plug
 
 Run parallel experiments across projects, agents, and machines with isolated workspaces and configurable execution capacity.
 
-<p align="center">
-  <img src="docs/assets/showcase/aide-rsi-canvas.png" alt="AIDE SearchTree demonstration with branching solutions, illustrative scores, execution steps and bounded review" width="100%" />
-</p>
-
-*Figure 7. AIDE SearchTree with illustrative scores and review steps.*
+See [multica-AIDE](https://github.com/Winfred666/multica-AIDE) for SearchTree experiments and review workflows.
 
 ## 🛠️ Quickstart & Technical Reference
 

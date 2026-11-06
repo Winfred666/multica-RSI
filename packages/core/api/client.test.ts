@@ -11,6 +11,20 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("ApiClient nested workspace activity", () => {
+  it("scopes activity and actor directories to the nested workspace", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => Response.json([]));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://api.example.test");
+    await client.listTimeline("issue-1", "research");
+    await client.listTasksByIssue("issue-1", "research");
+    await client.listTaskMessages("task-1", "research");
+    await client.listAgents({ workspace_id: "workspace-1" }, "research");
+    await client.listSquads("research");
+    expect(fetchMock.mock.calls.map(([, init]) => init.headers["X-Workspace-Slug"])).toEqual(Array(5).fill("research"));
+  });
+});
+
 describe("ApiClient status reorder", () => {
   it("opts into built-in ordering and tolerates malformed responses", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ statuses: "invalid" }), {
