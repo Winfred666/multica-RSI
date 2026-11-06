@@ -22,6 +22,17 @@ func TestMigrationNumericPrefixesAreUnique(t *testing.T) {
 		if !ok {
 			continue
 		}
+		// Applied RSI migrations retain their full identifiers when upstream's
+		// independent migration sequence reaches the same numeric prefixes.
+		switch stem {
+		case "595_plugin_workspace_execution_key",
+			"596_retire_child_done_system_wakeup",
+			"598_agent_concurrency_default_fifty",
+			"599_runtime_profile_add_devin",
+			"600_agent_task_process_cleanup_index",
+			"601_skill_is_system_skill":
+			continue
+		}
 		prefix, _, ok := strings.Cut(stem, "_")
 		if !ok {
 			continue

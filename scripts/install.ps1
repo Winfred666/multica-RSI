@@ -135,7 +135,7 @@ function Pull-OfficialSelfHostImages {
     }
 
     Write-Host ""
-    Write-Warn "Official images for the selected self-host channel are not published yet."
+    Write-Warn "Multica-RSI images for the selected self-host channel are not published yet."
     Write-Host "This can happen before the first GHCR release is available."
     Write-Host "From $InstallDir, build from source instead:"
     Write-Host "  docker compose -f docker-compose.selfhost.yml -f docker-compose.selfhost.build.yml up -d --build"
@@ -439,7 +439,7 @@ function Install-Server {
         Write-Ok "Using existing .env"
     }
 
-    Write-Info "Pulling official Multica images..."
+    Write-Info "Pulling Multica-RSI images..."
     Pull-OfficialSelfHostImages
     Write-Info "Starting Multica services (this may take a few minutes on first run)..."
     docker compose -f docker-compose.selfhost.yml up -d
