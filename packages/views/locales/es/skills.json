@@ -51,7 +51,8 @@
     "source_runtime_unknown": "De un runtime",
     "source_clawhub": "De ClawHub",
     "source_skills_sh": "De Skills.sh",
-    "source_github": "De GitHub"
+    "source_github": "De GitHub",
+    "system_skill": "Sistema"
   },
   "actions": {
     "row_menu": "Acciones",

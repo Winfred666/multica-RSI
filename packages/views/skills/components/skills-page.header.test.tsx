@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { SkillSummary } from "@multica/core/types";
 import {
   EMPTY_SKILL_FILTERS,
@@ -15,7 +16,8 @@ const mocks = vi.hoisted(() => ({
   skills: [] as SkillSummary[],
 }));
 
-vi.mock("@tanstack/react-query", () => ({
+vi.mock("@tanstack/react-query", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-query")>()),
   useQuery: (options: { queryKey?: readonly unknown[] }) => ({
     data: options.queryKey?.[0] === "skills" ? mocks.skills : [],
     isLoading: false,
@@ -106,9 +108,11 @@ function renderPage() {
     getShareableUrl: (p) => p,
   };
   renderWithI18n(
-    <NavigationProvider value={adapter}>
-      <SkillsPage />
-    </NavigationProvider>,
+    <QueryClientProvider client={new QueryClient()}>
+      <NavigationProvider value={adapter}>
+        <SkillsPage />
+      </NavigationProvider>
+    </QueryClientProvider>,
   );
   return screen.getByRole("banner");
 }
