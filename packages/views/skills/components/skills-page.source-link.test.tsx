@@ -122,7 +122,8 @@ vi.mock("@multica/ui/components/ui/tooltip", () => ({
   TooltipContent: () => null,
 }));
 vi.mock("./create-skill-dialog", () => ({ CreateSkillDialog: () => null }));
-vi.mock("./skill-list-controls", () => ({
+vi.mock("./skill-list-controls", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./skill-list-controls")>()),
   countActiveFilterDimensions: () => 0,
   SkillFilterMenu: () => null,
   SkillDisplayMenu: () => null,
