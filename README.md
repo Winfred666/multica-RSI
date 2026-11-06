@@ -1,45 +1,52 @@
 # ⚡ Multica-RSI: The All-in-One Personal R&D Platform
 
-### Unify All Projects, All Agents, and All Machines. Go Deep with Gradual Context Reveal.
+English · [简体中文](README.zh.md)
 
-*Compute is abundant; human attention is the bottleneck. **Bring Everything Inside.** Instead of scattering experiments across fragile scripts, disconnected machines, and noisy terminal tabs, organize parallel exploration, nested sub-workspaces, and evolving SOPs inside one R&D harness.*
+*Compute is abundant; human attention is the bottleneck. **Bring All Projects, All Agents, and All Machines Inside.** Instead of scattering experiments across fragile scripts, disconnected machines, and noisy terminal tabs, organize parallel exploration, nested sub-workspaces, and evolving SOPs inside one R&D harness.*
 
 <p align="center">
-  <img src="docs/assets/showcase/tree-panel-subworkspaces-and-html.png" alt="Live Multica-RSI UI with a curated research campaign, nested sub-workspace snapshots and an inline AIDE HTML delivery" width="100%" />
+  <img src="docs/assets/showcase/tree-panel-subworkspaces-and-html.png" alt="Focused sub-workspace issues with status-colored links and the LAB-5 context popup" width="100%" />
 </p>
 
-*Curated demonstration in the live application. Campaign states and AIDE scores illustrate the workflow.*
+*Figure 1. Sub-workspace issues and the LAB-5 review; context values are illustrative.*
 
-The same canvas holds a GPU/memory snapshot and an interactive idea-probing panel alongside experiment trees. Open an HTML artifact to inspect resources or move between Idea, Probe, and Evidence tabs.
+**Vision:** Turn key system resources and logs into HTML widgets that people can inspect and agents can use.
 
 | Machine state | Idea probing |
 | --- | --- |
-| ![GPU and system memory snapshot](docs/assets/showcase/machine-state.png) | ![Interactive idea-probing panel](docs/assets/showcase/idea-probe.png) |
+| ![GPU and system memory snapshot](docs/assets/showcase/machine-state.png) | ![Editable idea checklist](docs/assets/showcase/idea-probe.png) |
+| *Figure 2. Resource snapshot.* | *Figure 3. Editable idea checklist.* |
 
 ## 🧠 Gradual Context Reveal: Engineered for Human Attention
 
-Open the layer you need, from a delivered outcome to the commit and evaluation behind it.
+**Layers 0–2 stay inside Multica, accessible from any web browser.** At Layer 3, leave the platform to log into a machine.
 
 ```mermaid
 flowchart LR
-    L0["🔔 Layer 0: Outcome-Only Inbox<br/>Deliveries and decision blockers"] --> L1["🌳 Layer 1: Tree Panel<br/>Topology, sub-workspaces and context"]
-    L1 --> L2["🖼️ Layer 2: HTML Artifacts<br/>SearchTree canvas and metrics"]
-    L2 --> L3["🔬 Layer 3: Execution Audit<br/>Git commits, reviews and logs"]
+    subgraph Web["Inside Multica · any web browser"]
+        L0["🔔 Layer 0: Outcome-Only Inbox<br/>Deliveries and decision blockers"] --> L1["🌳 Layer 1: Tree Panel<br/>Topology, sub-issues and sub-workspaces"]
+        L1 --> L2["🔬 Layer 2: Execution Audit<br/>Git commits, reviews, logs and investigation"]
+    end
+    L2 --> L3["💻 Layer 3: Machine Login<br/>Outside the platform"]
 ```
 
-- **Layer 0 — Outcome-Only Inbox:** Configure sub-issue subscriptions and SOP delivery rules so routine child work stays with its parent. Plugins handle parent wakeups; `multica-surface-delivery` and `multica-surface-block` handle verified handoffs and decisions. The Inbox remains available for the notifications you choose to follow.
-- **Layer 1 — Visual Tree Panel & Nested Sub-Workspaces:** Scan parent/child relationships, expand collapsed stacks, and open linked workspace snapshots. Inspect agent context rings and compression counts where completed runs provide telemetry.
-- **Layer 2 — Inline HTML Artifact Previews:** Inspect uploaded HTML deliverables inside tree cards, then open the interactive artifact viewer. AIDE's SearchTree canvas exposes branches, scores, reviews, and execution timing.
-- **Layer 3 — Deep Worktree & Execution Audit:** Inspect a solution's Git commit, evaluation output, bounded refutation, and logs when you need the supporting evidence.
+*Figure 4. Browser access through Layer 2; direct machine access at Layer 3.*
+
+- **Layer 0 · Outcome-Only Inbox:** Surface final deliveries and decision blockers through programmable notification policies.
+- **Layer 1 · Tree Panel:** Scan topology, sub-issues, and sub-workspaces. Inspect context rings and HTML widgets alongside the work.
+- **Layer 2 · Execution Audit:** Investigate Git commits, reviews, and logs through artifacts and issue threads inside the platform.
+- **Layer 3 · Machine Login:** Log into a machine outside Multica for direct system access.
 
 <p align="center">
   <img src="docs/assets/showcase/gradual-reveal-inbox.png" alt="Outcome-focused Inbox in the demonstration research workspace" width="100%" />
 </p>
 
+*Figure 5. Curated outcome notification.*
+
 ## 🗺️ Research Mind Map & System Road Map
 
 ```mermaid
-%%{init: {'theme': 'neutral'}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryTextColor': '#1e293b', 'lineColor': '#94a3b8', 'cScale0': '#dbeafe', 'cScale1': '#ccfbf1', 'cScale2': '#ede9fe', 'cScale3': '#fef3c7', 'cScale4': '#fce7f3', 'cScaleLabel0': '#1e3a5f', 'cScaleLabel1': '#134e4a', 'cScaleLabel2': '#4c1d95', 'cScaleLabel3': '#78350f', 'cScaleLabel4': '#831843'}}}%%
 mindmap
   root((Multica-RSI<br/>Personal R&D Platform))
     Human Attention Friendly
@@ -65,6 +72,8 @@ mindmap
       Multica Multi-Agent and Multi-Runtime Core
 ```
 
+*Figure 6. Research directions across the four platform pillars.*
+
 ### Phase 1: Core Personal R&D Platform
 
 - [x] **Human-attention-friendly control:** Visual Issue Tree, nested workspace snapshots, context telemetry, HTML previews, and configurable subscriptions.
@@ -75,7 +84,7 @@ mindmap
 
 ### Phase 2: Single-Agent Evolving SOPs · In Progress
 
-- [x] **Symbolic SOP system:** Executable states, choices, prechecks, and recall protocols on Multica's multi-agent, multi-machine core; configurable concurrency up to 50 tasks.
+- [x] **Symbolic SOP system:** Executable states, choices, prechecks, and recall protocols on Multica's multi-agent, multi-machine core.
 - [x] **First Symbolic SOP package: [multica-AIDE](https://github.com/Winfred666/multica-AIDE):** Persistent experiment branches, measured search, and optional sandboxed development with locked validation. [Walk through SOP #1](docs/SOP_SHOWCASE.md).
 - [ ] **Expandable Symbolic SOP ecosystem:** Domain-specific research packages with reproducible benchmarks and measured SOP improvements.
 
@@ -90,25 +99,25 @@ mindmap
 
 ### 1. Human-Attention-Friendly Control · Gradual Context Reveal
 
-Follow final deliveries, then open the tree, artifact, or execution evidence on demand. Keep intermediate work in child issues with explicit ownership and review. Nested workspace snapshots let you inspect a campaign's structure without leaving its parent.
+Review outcomes, scan task topology, and inspect evidence from the browser. Open a machine session when investigation requires direct access.
 
 ### 2. Symbolic SOP System · Active Railing
 
-A symbolic SOP gives an agent an executable next step: inspect the current state, choose an allowed action, satisfy its preconditions, and retain the result for the next recall. Researchers can change branching, delegation, and evaluation procedures in Python skills without editing the platform core. Independent AIDE trees can search both solutions and SOP variants.
+Guide agents through explicit states, actions, and recall protocols. Change branching, delegation, and evaluation through SOP skills; evolve those skills alongside the research.
 
 ### 3. Plugin System · Passive Hooks & Activation
 
-Lifecycle hooks activate work at the right moment. The shipped packages continue idle in-progress issues, wake parents for child review or blockers, and prune stale discussion through a review procedure. Plugins supply activation policy; SOPs guide the work that follows.
+Use lifecycle hooks to continue work, route reviews, and surface decisions. Plugins control when agents run; SOPs guide what they do.
 
 ### 4. High-Throughput Experiment Substrate
 
-Multica supplies agent runtimes across machines and configurable execution slots. AIDE creates persistent Git worktrees for clients and solution nodes, then branches refinements from selected commits. In `separate` mode, developers run commands through `bubblewrap`; validators keep the evaluator and private data outside candidate repositories.
+Run parallel experiments across projects, agents, and machines with isolated workspaces and configurable execution capacity.
 
 <p align="center">
   <img src="docs/assets/showcase/aide-rsi-canvas.png" alt="AIDE SearchTree demonstration with branching solutions, illustrative scores, execution steps and bounded review" width="100%" />
 </p>
 
-*50 concurrent tasks is a configuration limit, not a measured 50× speedup. Sandbox coverage belongs to the selected workflow. See the [SOP scope and limitations](docs/SOP_SHOWCASE.md#scope-and-limitations).*
+*Figure 7. AIDE SearchTree with illustrative scores and review steps.*
 
 ## 🛠️ Quickstart & Technical Reference
 

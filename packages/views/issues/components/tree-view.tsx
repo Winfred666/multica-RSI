@@ -244,7 +244,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
             const path = dx === 0
               ? `M ${parent.x} ${startY} V ${endY}`
               : `M ${parent.x} ${startY} V ${midY - radius} Q ${parent.x} ${midY} ${parent.x + direction * radius} ${midY} H ${position.x - direction * radius} Q ${position.x} ${midY} ${position.x} ${midY + radius} V ${endY}`;
-            const tone = isWorkspaceNode(position.node) || isSnapshot(position.node) ? { className: "text-muted-foreground", color: undefined } : color(position.node.issues[0]!);
+            const tone = isWorkspaceNode(position.node) ? { className: "text-muted-foreground", color: undefined } : color(position.node.issues[0]!);
             return <path key={`${position.parentId}:${position.node.id}`} d={path} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" className={tone.className} style={{ color: tone.color, opacity: 0.65 }} />;
           })}
         </svg>
@@ -262,11 +262,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
             </span>}
           </div>;
           return <div key={node.id} data-workspace-frame={isSnapshot(node) ? "" : undefined} className="absolute flex flex-col" style={style}>
-            {workspace ? <AppLink href={paths.workspace(workspace.slug).issueDetail(issue.id)} newTabTitle={issue.identifier}
-              className="flex h-24 flex-col gap-2 overflow-hidden rounded-lg border border-surface-border bg-surface p-3 hover:bg-muted">
-              <span className="flex items-center gap-2 text-micro text-muted-foreground"><StatusIcon status={issue.status} category={issueStatusCategory(issue) ?? undefined} />{issue.identifier}</span>
-              <span className="line-clamp-2 text-caption">{issue.title}</span>
-            </AppLink> : <TreeIssueNode
+            {workspace ? <TreeSnapshotNode issue={issue} workspaceSlug={workspace.slug} onSizeChange={onSizeChange} /> : <TreeIssueNode
               issue={node.issues[0]!}
               tasks={tasks}
               onCreateIssue={onCreateIssue}
@@ -287,6 +283,36 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   );
 }
 
+function useTreeNodeSize(nodeId: string, onSizeChange: (id: string, size: IssueTreeSize) => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => onSizeChange(nodeId, { width: element.offsetWidth, height: element.offsetHeight });
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [nodeId, onSizeChange]);
+  return ref;
+}
+
+function TreeSnapshotNode({ issue, workspaceSlug, onSizeChange }: {
+  issue: Issue;
+  workspaceSlug: string;
+  onSizeChange: (id: string, size: IssueTreeSize) => void;
+}) {
+  const ref = useTreeNodeSize(issue.id, onSizeChange);
+  return (
+    <div ref={ref} className="group/card" data-tree-card={issue.id}>
+      <AppLink href={paths.workspace(workspaceSlug).issueDetail(issue.id)} newTabTitle={issue.identifier} className="block">
+        <BoardCardContent issue={issue} collaborators={null} />
+      </AppLink>
+    </div>
+  );
+}
+
 function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, onSizeChange, collapsed }: {
   issue: Issue;
   tasks: AgentTask[];
@@ -300,18 +326,8 @@ function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, on
   const paths = useWorkspacePaths();
   const selection = useIssueSurfaceSelection();
   const selected = selection.selectedIds.has(issue.id);
-  const ref = useRef<HTMLDivElement>(null);
   const nodeId = collapsed?.id ?? issue.id;
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    const measure = () => onSizeChange(nodeId, { width: element.offsetWidth, height: element.offsetHeight });
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [nodeId, onSizeChange]);
+  const ref = useTreeNodeSize(nodeId, onSizeChange);
   // shortcut: one cached timeline per displayed issue; batch collaborators if large trees need it.
   const timeline = useIssueTimelineQuery(issue.id);
   const attachments = useQuery({ ...issueAttachmentsOptions(issue.id), enabled: !collapsed });

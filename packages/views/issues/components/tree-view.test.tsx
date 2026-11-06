@@ -111,9 +111,11 @@ describe("TreeView", () => {
   it("shows one timestamped frame per workspace with nested issue links and connectors behind cards", () => {
     const child = "0c99f8e3-543b-4394-bfe8-a5b60141352e", nested = "1c99f8e3-543b-4394-bfe8-a5b60141352e", denied = "2c99f8e3-543b-4394-bfe8-a5b60141352e";
     const link = (id: string, workspace_id: string, target: string) => ({ ...issue(id), workspace_id, metadata: { sub_workspace_id: target } });
-    const { qc, container, rerender, render } = setup([issue("Owner")]);
+    const { qc, container, rerender, render, store } = setup([issue("Owner")]);
+    const replay = { ...link("Replay", child, nested), status: "done", description: "Evaluate the selected branch", labels: [{ id: "evaluation", name: "Evaluation", color: "#529879" } as NonNullable<Issue["labels"]>[number]] };
+    act(() => store.setState({ cardProperties: { ...store.getState().cardProperties, description: true, labels: true } }));
     act(() => { qc.setQueryData(["workspace-tree-snapshot", "ws-1"], {
-      [child]: { workspace: { id: child, slug: "playground", name: "Playground" }, issues: [link("Replay", child, nested)], capturedAt: new Date(2026, 10, 6, 12, 34, 56).getTime() },
+      [child]: { workspace: { id: child, slug: "playground", name: "Playground" }, issues: [replay, { ...issue("Reviewed", "Replay", "done"), workspace_id: child }], capturedAt: new Date(2026, 10, 6, 12, 34, 56).getTime() },
       [nested]: { workspace: { id: nested, slug: "nested", name: "Nested" }, issues: [link("Nested issue", nested, child)], capturedAt: Date.now() },
       [denied]: { issues: [], capturedAt: Date.now() },
     }); });
@@ -125,6 +127,12 @@ describe("TreeView", () => {
     expect(screen.getByRole("img", { name: "Workspace unavailable" })).toBeInTheDocument();
     expect(container.querySelectorAll(".zoom-canvas-content > svg rect")).toHaveLength(3);
     expect(container.querySelectorAll(".zoom-canvas-content > svg path.text-muted-foreground")).toHaveLength(5);
+    expect(container.querySelector(".zoom-canvas-content > svg path.text-info")).toBeInTheDocument();
+    expect(screen.getByText("Evaluate the selected branch")).toBeInTheDocument();
+    expect(screen.getByText("Evaluation")).toBeInTheDocument();
+    act(() => store.setState({ cardProperties: { ...store.getState().cardProperties, description: false, labels: false } }));
+    expect(screen.queryByText("Evaluate the selected branch")).not.toBeInTheDocument();
+    expect(screen.queryByText("Evaluation")).not.toBeInTheDocument();
     expect(container.querySelector(".zoom-canvas-content > svg")!.compareDocumentPosition(screen.getByRole("link", { name: /Replay/ }))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     act(() => qc.clear());
   });
