@@ -75,3 +75,28 @@ Every import commits or rolls back as one transaction and enqueues no agent work
 explicit context transactionally. It installs no startup resources. Onboarding
 fetches `/package/default` and imports the checklist selection before runtime
 setup; leaving every box unchecked installs nothing.
+
+## CLI
+
+`workspace package` returns counts. Page through an expandable category to find
+IDs, then pass the backend selection object through `--selection-file`:
+
+```sh
+multica workspace package SOURCE
+multica workspace package SOURCE --category skills --limit 50 --offset 0
+# selection.json: {"agents":["AGENT_ID"],"skills":["SKILL_ID"],"system_prompt":true}
+multica workspace export SOURCE --selection-file selection.json --file workspace.json
+multica workspace import DESTINATION --file workspace.json --inspect
+multica workspace import DESTINATION --file workspace.json --inspect --category skills
+multica workspace import DESTINATION --file workspace.json
+multica workspace import DESTINATION --file workspace.json --selection-file selection.json
+multica workspace package DESTINATION --default > startup.json
+```
+
+The optional workspace accepts an ID, slug or short ID prefix and otherwise uses
+the current profile's workspace. Export selects nothing when no selection file
+is supplied; import selects everything when it is omitted and nothing for `{}`.
+Import selection IDs come from the package, not destination resources. Use
+`--replace-existing` to consent to replacing colliding skills, MCPs or installed
+plugins. Imported agents remain offline and require runtime setup. Export writes
+JSON to stdout unless `--file` is supplied; new package files use mode `0600`.
