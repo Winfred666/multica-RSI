@@ -38,7 +38,7 @@ func TestCreateWorkspace_InstallsStartupKit(t *testing.T) {
 	if err := json.Unmarshal(manifestRaw, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"default", "custom"} {
+	for _, name := range []string{"default", "custom", "false", "skip", "skip-custom"} {
 		t.Run(name, func(t *testing.T) {
 			prompt, err := harness.Files.ReadFile("startup.gotmpl")
 			if err != nil {
@@ -46,7 +46,11 @@ func TestCreateWorkspace_InstallsStartupKit(t *testing.T) {
 			}
 			want := string(prompt)
 			body := map[string]any{"name": "Startup prompt", "slug": "handler-tests-startup-" + name}
-			if name == "custom" {
+			skip := strings.HasPrefix(name, "skip")
+			if skip || name == "false" {
+				body["skip_startup_kit"] = skip
+			}
+			if strings.HasSuffix(name, "custom") {
 				want += "\nWorkspace-specific instructions."
 				body["context"] = want
 			}
@@ -56,13 +60,31 @@ func TestCreateWorkspace_InstallsStartupKit(t *testing.T) {
 			dbfx.Cleanup(t, `DELETE FROM member WHERE workspace_id = $1`, created.ID)
 			dbfx.Cleanup(t, `DELETE FROM issue_status WHERE workspace_id = $1`, created.ID)
 			cleanupWorkspaceHarness(t, created.ID)
-			if created.Context == nil || *created.Context != want {
+			if name == "skip" {
+				if created.Context != nil {
+					t.Fatalf("skipped kit supplied context = %q, want nil", *created.Context)
+				}
+			} else if created.Context == nil || *created.Context != want {
 				t.Fatalf("created context = %v, want supplied or bundled prompt", created.Context)
+			}
+			var role string
+			dbfx.QueryRow(t, `SELECT role FROM member WHERE workspace_id = $1 AND user_id = $2`, created.ID, testUserID).Scan(&role)
+			if role != "owner" {
+				t.Fatalf("creator membership = %q, want owner", role)
+			}
+			var statuses int
+			dbfx.QueryRow(t, `SELECT count(*) FROM issue_status WHERE workspace_id = $1`, created.ID).Scan(&statuses)
+			if statuses != 7 {
+				t.Fatalf("built-in statuses = %d, want 7", statuses)
 			}
 			var systems, libraries int
 			dbfx.QueryRow(t, `SELECT count(*) FILTER (WHERE is_system_skill), count(*) FILTER (WHERE NOT is_system_skill) FROM skill WHERE workspace_id = $1`, created.ID).Scan(&systems, &libraries)
-			if systems != len(manifest.SystemSkills) || libraries != len(manifest.Skills) {
-				t.Fatalf("installed system/library skills = %d/%d, want %d/%d", systems, libraries, len(manifest.SystemSkills), len(manifest.Skills))
+			wantSystems, wantLibraries := len(manifest.SystemSkills), len(manifest.Skills)
+			if skip {
+				wantSystems, wantLibraries = 0, 0
+			}
+			if systems != wantSystems || libraries != wantLibraries {
+				t.Fatalf("installed system/library skills = %d/%d, want %d/%d", systems, libraries, wantSystems, wantLibraries)
 			}
 		})
 	}
