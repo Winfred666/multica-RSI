@@ -30,5 +30,28 @@
     "description": "このワークスペースは存在しないか、アクセス権がありません。",
     "go_to_workspaces": "マイワークスペースへ移動",
     "sign_in_different": "別のユーザーでログイン"
+  },
+  "package": {
+    "import_action": "ワークスペースをインポート",
+    "export_action": "ワークスペースをエクスポート",
+    "projects_issues": "プロジェクトと課題",
+    "projects_hint": "エージェントに新しいワークスペースへコピーするプロジェクトと課題を選ばせることができます。",
+    "agents": "エージェント",
+    "agents_hint": "コピーしたエージェントは無効で、新しいランタイム端末での設定が必要です。",
+    "skills": "スキル",
+    "system_skills": "システムスキル",
+    "normal_skills": "通常のスキル",
+    "mcps": "MCP",
+    "plugins": "プラグイン",
+    "system_prompt": "システムプロンプト",
+    "replace_existing": "同名の既存スキル、MCP、プラグインを置き換える。",
+    "file": "ワークスペースパッケージ（.json）",
+    "loading": "読み込み中…",
+    "failed": "ワークスペースパッケージを読み込めませんでした。",
+    "invalid": "無効なワークスペースパッケージです。",
+    "imported": "ワークスペースパッケージをインポートしました。",
+    "importing": "インポート中…",
+    "startup_title": "スタートアップキットをインポート",
+    "continue": "続ける"
   }
 }

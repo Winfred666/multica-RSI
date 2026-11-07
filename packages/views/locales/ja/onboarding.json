@@ -10,6 +10,9 @@
     },
     "runtime": {
       "label": "Mika を知る"
+    },
+    "import": {
+      "label": "ワークスペースをインポート"
     }
   },
   "welcome": {
