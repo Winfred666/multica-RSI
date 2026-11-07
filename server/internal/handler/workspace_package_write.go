@@ -1,7 +1,10 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -245,7 +248,17 @@ func (h *Handler) importWorkspacePackage(ctx context.Context, tx pgx.Tx, ws, use
 			key := bundle.Manifest.Key + "/" + bundle.Manifest.Version
 			version := versions[key]
 			if version.ID != "" && version.Digest != service.BundleDigest(bundle) {
-				return result, &service.PluginError{Kind: service.PluginErrorConflict, Message: fmt.Sprintf("plugin %s version already exists with different contents", bundle.Manifest.Key)}
+				stored, err := plugins.VersionForWorkspace(ctx, ws, version.ID)
+				if err != nil {
+					return result, err
+				}
+				matches, err := packagePluginVersionMatches(ctx, q, stored, bundle)
+				if err != nil {
+					return result, err
+				}
+				if !matches {
+					return result, &service.PluginError{Kind: service.PluginErrorConflict, Message: fmt.Sprintf("plugin %s version already exists with different contents", bundle.Manifest.Key)}
+				}
 			}
 			if version.ID == "" {
 				published, err := plugins.PublishBundle(ctx, ws, user, plugin.Bundle)
@@ -280,4 +293,38 @@ func (h *Handler) importWorkspacePackage(ctx context.Context, tx pgx.Tx, ws, use
 		}
 	}
 	return result, nil
+}
+
+// JSONB changes manifest key order; compare only this selected published version.
+func packagePluginVersionMatches(ctx context.Context, q *db.Queries, stored db.PluginPackageVersion, bundle plugincontract.Bundle) (bool, error) {
+	var manifests [2]any
+	for i, raw := range [][]byte{stored.Manifest, bundle.Canonical} {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		if err := decoder.Decode(&manifests[i]); err != nil {
+			return false, err
+		}
+	}
+	if !jsonEqual(manifests[0], manifests[1]) {
+		return false, nil
+	}
+	files, err := q.ListPluginPackageFilePaths(ctx, stored.ID)
+	if err != nil {
+		return false, err
+	}
+	if len(files) != len(bundle.Files) {
+		return false, nil
+	}
+	digests := make(map[string]string, len(files))
+	for _, file := range files {
+		digests[file.Path] = file.Sha256
+	}
+	for _, file := range bundle.Files {
+		// Reuse published file hashes instead of rereading stored file bodies.
+		sum := sha256.Sum256(file.Content)
+		if digests[file.Path] != hex.EncodeToString(sum[:]) {
+			return false, nil
+		}
+	}
+	return true, nil
 }
