@@ -1,5 +1,6 @@
-"""Read-only Git checks around child-owned integration."""
-import re
+"""Verify and integrate a reviewed commit in the parent issue's turn."""
+from pathlib import Path
+import os
 
 
 def bindings(sop, repo, child, parent):
@@ -18,41 +19,34 @@ def bindings(sop, repo, child, parent):
     return branch, target
 
 
-def prepare(sop, repo, child, parent, head, verify):
-    repo, _ = sop.resolve_repository(repo, child, child['workspace_id'])
+def accept(sop, repo, child, parent, head, verify):
+    repo, common = sop.resolve_repository(repo, child, child['workspace_id'])
     branch, target = bindings(sop, repo, child, parent)
     if not head or not verify or not verify.strip():
         raise ValueError('Code acceptance requires the reviewed commit and integration verification command')
-    if sop.git(repo, 'rev-parse', 'refs/heads/' + branch).stdout.strip() != head:
-        raise ValueError('Child head changed after review; inspect its new delivery')
-    for name in {branch, target or branch}:
-        directory = sop.base.checkout(repo, name)
-        if not directory:
+    with sop.locked(common / 'multica-sop/branches.lock', wait=True):
+        if sop.git(repo, 'rev-parse', 'refs/heads/' + branch).stdout.strip() != head:
+            raise ValueError('Child head changed after review; inspect its new delivery')
+        child_dir = sop.base.checkout(repo, branch)
+        parent_dir = sop.base.checkout(repo, target) if target else child_dir
+        if not parent_dir or not child_dir:
             raise ValueError('The prepared issue worktrees must exist before acceptance')
-        if sop.git(directory, 'status', '--porcelain').stdout.strip():
-            raise ValueError('Commit or preserve dirty work before integration')
-    return target or branch
-
-
-def reported_head(reply, commit):
-    if not reply or not commit or 'Integrated commit: ' + commit not in reply['content'].splitlines():
-        return None
-    heads = re.findall(r'^Integrated head: ([0-9a-f]{40})$', reply['content'], re.M)
-    return heads[-1] if heads else None
-
-
-def confirm(sop, repo, child, parent, commit, reply, approval):
-    head = reported_head(reply, commit)
-    if not head or not approval or 'Reviewed commit: ' + commit not in approval['content'].splitlines():
-        raise ValueError('Settlement requires the approved commit and child integration result')
-    repo, _ = sop.resolve_repository(repo, child, child['workspace_id'])
-    branch, target = bindings(sop, repo, child, parent)
-    target = target or branch
-    if 'Integration target: ' + target not in approval['content'].splitlines():
-        raise ValueError('Integration target changed after approval')
-    if sop.git(repo, 'rev-parse', 'refs/heads/' + branch).stdout.strip() != commit:
-        raise ValueError('Child head changed after review; inspect its new delivery')
-    sop.git(repo, 'merge-base', '--is-ancestor', commit, head)
-    sop.git(repo, 'merge-base', '--is-ancestor', head, 'refs/heads/' + target)
-    remote = sop.git(repo, 'ls-remote', '--exit-code', 'origin', 'refs/heads/' + target).stdout.split()[0]
-    sop.git(repo, 'merge-base', '--is-ancestor', head, remote)
+        for directory in {parent_dir, child_dir}:
+            if sop.git(directory, 'status', '--porcelain').stdout.strip():
+                raise ValueError('Commit or preserve dirty work before integration')
+        if target:
+            result = sop.git(parent_dir, *sop.base.identity_args(parent_dir), 'merge', '--no-edit', head, check=False)
+            if result.returncode:
+                if sop.git(parent_dir, 'rev-parse', '--verify', 'MERGE_HEAD', check=False).returncode == 0:
+                    sop.git(parent_dir, 'merge', '--abort')
+                raise ValueError('Merge failed; child work retained: ' + result.stderr.strip())
+        profile, policy = sop.inherit_sandbox(parent, parent['workspace_id'])
+        profiles = Path(os.environ['MULTICA_WORKSPACES_ROOT']) / '.sandboxes' if os.environ.get('MULTICA_WORKSPACES_ROOT') else None
+        prefix = sop.sandbox_prefix(profile, policy, parent_dir, profiles)
+        sop.command([*prefix, '/bin/sh', '-c', verify], cwd=parent_dir, timeout=None)
+        if sop.git(parent_dir, 'status', '--porcelain').stdout.strip():
+            raise ValueError('Verification changed the worktree; preserve its result before accepting')
+        sop.git(parent_dir, 'merge-base', '--is-ancestor', head, 'HEAD')
+        if target and sop.git(repo, 'remote', 'get-url', 'origin', check=False).returncode == 0:
+            sop.git(parent_dir, 'push', 'origin', 'HEAD:refs/heads/' + target)
+    return head

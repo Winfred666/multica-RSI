@@ -26,7 +26,7 @@ def select(args, context):
     _, members = group_data(args, context)
     if args.winner != 'none' and args.winner not in {c['id'] for c in members if core.category(c) != 'cancelled'}:
         raise context['error']('invalid_winner', 'Choose a reviewed group member or none to retain the baseline.')
-    decisions, instructions = [], []
+    decisions = []
     ordered = sorted(members, key=lambda c: c['id'] != args.winner)
     for child in ordered:
         if core.category(child) in {'done', 'cancelled'}:
@@ -34,17 +34,9 @@ def select(args, context):
         choice = copy.copy(args)
         choice.child = child['id']
         choice.reason = 'Parent comparison selected ' + args.winner + '.'
-        action = 'cancel'
-        if child['id'] == args.winner:
-            comments = core.replies(context['cli'], child)
-            reply = core.delivery_reply(comments, child)
-            action = 'settle' if (core.approval_reply(comments, context['initial']) and
-                                  core.integration.reported_head(reply, args.commit)) else 'accept'
-        result = core.decide(choice, context, action)
+        result = core.decide(choice, context, 'accept' if child['id'] == args.winner else 'cancel')
         decisions.append(result['data'])
-        if result.get('instruction'):
-            instructions.append(result['instruction'])
-    return {'data': {'decisions': decisions}, **({'instruction': '\n'.join(instructions)} if instructions else {})}
+    return {'data': {'decisions': decisions}}
 
 
 def done(args, context):

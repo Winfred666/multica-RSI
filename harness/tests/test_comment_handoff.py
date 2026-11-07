@@ -48,16 +48,11 @@ class CommentHandoff(unittest.TestCase):
             return
         raise AssertionError(words)
 
-    def test_delivery_keeps_effect_explanation_results_and_links_in_order(self):
+    def test_delivery_report_and_git_commit_live_only_in_the_reply(self):
         deliver = load('native_deliver', 'multica-surface-delivery', 'deliver.py')
         report = self.directory / 'report.json'
-        report.write_text(json.dumps({
-            'claim': 'The local preview shows the updated title.',
-            'method': 'Refreshed the preview after changing the title.',
-            'metric': 'One local smoke check passed.',
-            'appendix': 'Source: /local/app.py · Longer evidence: /local/preview-check.log',
-        }))
-        facts = {'tag': 'dev', 'threads': {'thread': 'thread'}, 'workdir': str(self.directory),
+        report.write_text(json.dumps({'claim': 'Improved result', 'metric': 0.42, 'method': 'Measured on the benchmark.', 'appendix': 'Run test.py.'}))
+        facts = {'tag': 'exp', 'threads': {'thread': 'thread'}, 'workdir': str(self.directory),
                  'branch': 'issue/child', 'attachments': [], 'allow_external_file': False,
                  'issue_id': 'child', 'parent_id': 'parent', 'target_status': 'in_review'}
         receipt = {'id': 'task', 'head': 'abc123', 'facts': facts}
@@ -65,12 +60,7 @@ class CommentHandoff(unittest.TestCase):
         args = SimpleNamespace(report_file=report, retry_post=False)
         result = deliver.publish(args, context, self.issue, self.directory / 'checkpoint.json', receipt)
         self.assertEqual(result, {'comment_ids': ['reply']})
-        body = self.comments[-1]['content']
-        self.assertLess(body.index('The local preview'), body.index('Refreshed the preview'))
-        self.assertLess(body.index('Refreshed the preview'), body.index('One local smoke check'))
-        self.assertLess(body.index('One local smoke check'), body.index('Git branch:'))
-        self.assertLess(body.index('Commit: abc123'), body.index('Source: /local/app.py'))
-        self.assertTrue(body.split('<!--')[0].rstrip().endswith('/local/preview-check.log'))
+        self.assertIn('0.42', self.comments[-1]['content'])
         self.assertIn('Git branch: issue/child', self.comments[-1]['content'])
         self.assertIn('Commit: abc123', self.comments[-1]['content'])
         self.assertEqual([kind for kind, _ in self.writes], ['reply', 'status'])

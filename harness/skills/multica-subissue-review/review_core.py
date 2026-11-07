@@ -27,13 +27,8 @@ def children(cli, identity):
 
 
 def replies(cli, child):
-    roots = cli('comment', 'list', child['id'], '--roots-only', '--summary', '--compact')
-    comments = {}
-    for root in sorted(roots, key=lambda r: r.get('last_activity_at', r.get('created_at', '')))[-3:]:
-        for comment in cli('comment', 'list', child['id'], '--thread', root['id'], '--tail', '30', '--compact'):
-            if not comment.get('deleted_at') and comment.get('content'):
-                comments[comment['id']] = comment
-    return sorted(comments.values(), key=lambda c: c.get('created_at', ''))
+    return [c for c in cli('comment', 'list', child['id'], '--recent', '3')
+            if not c.get('deleted_at') and c.get('content')]
 
 
 def delivery_reply(comments, child):
@@ -46,19 +41,11 @@ def reported_commit(reply):
     return commits[-1] if commits else None
 
 
-def approval_reply(comments, parent):
-    return next((c for c in reversed(comments) if c.get('author_type') == 'agent' and
-                 c.get('author_id') == parent.get('assignee_id') and
-                 re.search(r'^Reviewed commit: [0-9a-f]{40}$', c['content'], re.M)), None)
-
-
-def post(cli, identity, content, *, parent=None, steer=False):
+def post(cli, identity, content):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.md', dir=Path.cwd()) as stream:
         stream.write(content)
         stream.flush()
-        return cli('comment', 'add', identity, '--content-file', stream.name,
-                   *(['--parent', parent] if parent else []),
-                   *(['--steer-active'] if steer else []), write=True)
+        return cli('comment', 'add', identity, '--content-file', stream.name, write=True)
 
 
 def group_members(child, siblings):
@@ -92,10 +79,8 @@ def decide(args, context, action):
     status = category(child)
     if status not in {'in_review', 'blocked'}:
         raise error('not_reviewable', 'Review a delivered or blocked child; yield for unfinished work.')
-    comments = replies(cli, child)
-    reply = delivery_reply(comments, child)
-    target = reply['id'] if reply else None
-    if action in {'accept', 'settle'}:
+    if action == 'accept':
+        reply = delivery_reply(replies(cli, child), child)
         if status != 'in_review' or not reply:
             raise error('undelivered_child', 'Acceptance requires in_review and a native delivery reply.')
         if any(category(c) not in {'done', 'cancelled'} for c in children(cli, child['id'])):
@@ -104,24 +89,8 @@ def decide(args, context, action):
         if sop.kind(child) != 'query':
             if reported_commit(reply) != args.commit:
                 raise error('changed_delivery', 'The reviewed commit must match the child delivery reply; request a fresh report.')
-            if action == 'accept':
-                branch = integration.prepare(sop, args.repo, child, parent, args.commit, args.verify)
-                if child.get('assignee_type') != 'agent' or not child.get('assignee_id'):
-                    raise error('unassigned_child', 'Assign the child before requesting integration.')
-                cli('status', child['id'], 'in_progress', '--no-start', write=True)
-                message = ('[@assignee](mention://agent/' + child['assignee_id'] + ') Parent review approved this commit.\n\n'
-                           'Reviewed commit: ' + args.commit + '\nIntegration target: ' + branch +
-                           '\n\nMerge this exact commit into the clean `' + branch + '` checkout, run the verification below there, '
-                           'and push `origin ' + branch + '`. Preserve shared services and data. If the branch changed, '
-                           'return for review before integration. Resolve mechanical merge conflicts; block on true feature conflicts.\n\n'
-                           'Verification command:\n```sh\n' + args.verify + '\n```\n\n'
-                           'Deliver the integration result through multica-surface-delivery, including verification results and these exact lines:\n'
-                           'Integrated commit: ' + args.commit + '\nIntegrated head: <full target commit>\n\n'
-                           'The parent will settle this child after checking the result and steer working siblings with the same feature-direction '
-                           'label to minimally rebase onto the new `' + branch + '`.')
-                comment = post(cli, child['id'], message, parent=target, steer=True)
-                return {'data': {'child_id': child['id'], 'status': 'in_progress', 'comment_id': comment['id']}}
-            integration.confirm(sop, args.repo, child, parent, args.commit, reply, approval_reply(comments, parent))
+            context['external_write_attempted'] = True
+            integration.accept(sop, args.repo, child, parent, args.commit, args.verify)
         terminal = 'done'
         commit = getattr(args, 'commit', None)
         message = 'Accepted after parent review.' + (' Commit: ' + commit if commit else '')
@@ -136,30 +105,17 @@ def decide(args, context, action):
         cli('status', child['id'], 'in_progress', '--no-start', write=True)
         message = ('[@assignee](mention://agent/' + child['assignee_id'] + ') ' + message +
                    '\n\nContinue in this issue. Deliver through multica-surface-delivery; use multica-surface-block for an external blocker.')
-        comment = post(cli, child['id'], message, parent=target, steer=True)
+        comment = post(cli, child['id'], message)
     else:
-        comment = post(cli, child['id'], '/note\n' + message, parent=target)
+        comment = post(cli, child['id'], '/note\n' + message)
         cli('status', child['id'], terminal, '--no-start', write=True)
-    result = {'data': {'child_id': child['id'], 'status': terminal, 'comment_id': comment['id']}}
-    if action == 'settle':
-        direction = next((label['name'] for label in child.get('labels', [])
-                          if label['name'] in {'Frontend', 'Backend', 'CLI', 'Harness'}), None)
-        siblings = [c['id'] for c in children(cli, parent['id']) if c['id'] != child['id'] and
-                    category(c) in {'in_progress', 'in_review', 'blocked'} and direction and
-                    any(label['name'] == direction for label in c.get('labels', []))]
-        result['data']['sibling_rebases'] = siblings
-        result['instruction'] = ('From this parent issue, send native steering requests to each listed sibling: minimally rebase onto new `main`, '
-                                 'resolve mechanical conflicts, and block on true feature conflicts before continuing. '
-                                 'Do not edit sibling worktrees from this SOP.')
-    return result
+    return {'data': {'child_id': child['id'], 'status': terminal, 'comment_id': comment['id']}}
 
 
 def decision_option(name, child, prompt, head=None):
     params = [Parameter('--child', value=child['id'])]
-    if name in {'accept', 'settle'} and head:
-        params += [Parameter('--commit', value=head)]
-        if name == 'accept':
-            params.append(Parameter('--verify', 'Integration verification command'))
+    if name == 'accept' and head:
+        params += [Parameter('--commit', value=head), Parameter('--verify', 'Integration verification command')]
     if name in {'resteer', 'cancel'}:
         params.append(Parameter('--reason', 'Concrete correction or cancellation reason'))
     return Option(name, 'handling' if name == 'handle' else 'review', prompt,
@@ -189,12 +145,7 @@ def overview(context):
                 if reported_commit(reply) != head:
                     row['instruction'] = 'The branch differs from its delivery reply. Request a fresh report before acceptance.'
             if not props.get('experiment_group') and (row['label'] == 'query' or reported_commit(reply) == head):
-                approval = approval_reply(row['comments'], parent)
-                integrated = integration.reported_head(reply, head) if head else None
-                if approval and integrated:
-                    options.append(decision_option('settle', child, 'Check the child integration result and settle acceptance.', head))
-                else:
-                    options.append(decision_option('accept', child, 'Approve the reviewed work and steer child integration.', head))
+                options.append(decision_option('accept', child, 'Accept the reviewed reply and verified work.', head))
         options += [decision_option('cancel', child, 'Cancel this path without merging.'),
                     decision_option('handle', child, 'Handle its blocker in parent scope.'),
                     decision_option('resteer', child, 'Send a concrete correction to the same child.')]

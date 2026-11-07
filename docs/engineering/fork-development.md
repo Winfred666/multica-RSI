@@ -10,10 +10,8 @@ behavior. The [README](../../README.md) presents the research platform.
   workspace Go templates and SOP skills. You can edit the workspace prompt;
   the server validates the template on save. The kit inlines basic issue workflow
   and CLI rules, removes `multica-issue-turn`, and ends with explicit Never-HERO
-  scope limits and Stop-slop writing rules: effect first, brief explanation and strong short
-  evidence in the native reply or artifact, with links or paths to longer evidence. Multica
-  evidence stays out of GitHub and tracked code. Delegated briefs stay minimal, with
-  feature-focused titles. Claims include the issue body alongside its current
+  scope limits and Stop-slop writing rules: effect first, plain explanation next, artifact
+  or path last. Claims include the issue body alongside its current
   title/status/assignee, so updated daemons supply the assignment in the per-turn
   prompt without requiring a startup CLI read. Existing daemons ignore the new
   optional field; an older server still requires the explicit read. Child prompts
@@ -36,10 +34,7 @@ contains the system prompt, system and library skills, and plugins for parent
 wakeups, in-progress continuation and issue-comment cleanup. Workspace creation
 installs the kit through its self-contained Python installer. Child dispatch uses
 `multica-subissue-distribute`; delivery and blockers travel through native replies
-and parent steering. Parent review approves the delivered commit and steers the
-child to merge, verify and push it. After checking the child's integration result,
-the parent settles acceptance and steers working siblings with the same feature
-direction to rebase onto new `main`; true feature conflicts block continuation.
+and parent steering. Parent review integrates verified work in its own turn.
 Quick-create keeps the upstream task routing: its execution rules render only
 for a quick-create turn, and the native task prompt supplies picker and field
 rules. The kit does not install a global quick-create skill.

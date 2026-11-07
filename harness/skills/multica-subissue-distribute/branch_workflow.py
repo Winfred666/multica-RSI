@@ -126,7 +126,7 @@ def resolve_repository(path, value, workspace):
     if path is None and project:
         result = command(["multica", "project", "resource", "list", project, "--output", "json"],
                          env={**os.environ, "MULTICA_WORKSPACE_ID": workspace})
-        resources = json.loads(result.stdout)
+        resources = json.loads(result.stdout)["resources"]
         daemon = os.environ.get("MULTICA_DAEMON_ID")
         local = [r["resource_ref"]["local_path"] for r in resources
                  if r["resource_type"] == "local_directory"
