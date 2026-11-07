@@ -878,7 +878,7 @@ func TestLoadConfig_ToolWatchdogDefaultsToIdleWatchdog(t *testing.T) {
 		t.Fatalf("AgentToolWatchdog = %s, want it to track AgentIdleWatchdog %s", cfg.AgentToolWatchdog, cfg.AgentIdleWatchdog)
 	}
 
-	// Raising only the idle budget must carry the tool budget with it.
+	// Changing only the idle budget must carry the tool budget with it.
 	t.Setenv("MULTICA_AGENT_IDLE_WATCHDOG", "6h")
 	cfg = load(t)
 	if cfg.AgentIdleWatchdog != 6*time.Hour || cfg.AgentToolWatchdog != 6*time.Hour {
@@ -913,11 +913,7 @@ func TestLoadConfig_ToolWatchdogDefaultsToIdleWatchdog(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_CodexSemanticInactivityDerivesFromWatchdog pins the fix for
-// the gap the 2h change left behind: Codex's own semantic-inactivity timer is
-// not tool-aware, so if it keeps a 10m ceiling it kills a quiet build long
-// before the daemon budget that was supposed to protect it, and the raised
-// budget is a lie for Codex users.
+// Codex's semantic-inactivity timer must cover silent tools as well as idle runs.
 func TestLoadConfig_CodexSemanticInactivityDerivesFromWatchdog(t *testing.T) {
 	stageFakeAgent(t)
 	for _, key := range []string{
@@ -945,7 +941,7 @@ func TestLoadConfig_CodexSemanticInactivityDerivesFromWatchdog(t *testing.T) {
 		t.Fatalf("CodexSemanticInactivityTimeout = %s, want the idle budget %s", cfg.CodexSemanticInactivityTimeout, DefaultAgentIdleWatchdog)
 	}
 
-	// Raising the idle budget carries Codex with it.
+	// Changing the idle budget carries Codex with it.
 	t.Setenv("MULTICA_AGENT_IDLE_WATCHDOG", "6h")
 	if got := load(t).CodexSemanticInactivityTimeout; got != 6*time.Hour {
 		t.Fatalf("CodexSemanticInactivityTimeout = %s, want 6h", got)

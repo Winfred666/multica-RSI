@@ -322,7 +322,7 @@ does not clear those blocks or establish that earlier background processes exite
 
 ### Configuration
 
-Daemon behavior is configured via flags or environment variables:
+Daemon behavior is configured via flags, environment variables, or saved profile settings:
 
 | Setting | Flag | Env Variable | Default |
 |---------|------|--------------|---------|
@@ -330,8 +330,8 @@ Daemon behavior is configured via flags or environment variables:
 | Healthy WebSocket claim poll upper bound | `--ws-claim-poll-interval` | `MULTICA_DAEMON_WS_CLAIM_POLL_INTERVAL` | `3m` (configured independently of `--poll-interval`; downward jitter makes the normal interval `2m30s`–`2m45s`, while old servers and uncertain claims retain the ordinary poll interval) |
 | Heartbeat interval | `--heartbeat-interval` | `MULTICA_DAEMON_HEARTBEAT_INTERVAL` | `15s` |
 | Agent timeout | `--agent-timeout` | `MULTICA_AGENT_TIMEOUT` | `0` (no cap; bounded by the watchdogs) |
-| Agent idle watchdog | — | `MULTICA_AGENT_IDLE_WATCHDOG` | `2h` (`0` disables the whole watchdog suite) |
-| Agent tool watchdog | — | `MULTICA_AGENT_TOOL_WATCHDOG` | same as the idle watchdog (`0` = never force-stop during a tool call) |
+| Agent idle watchdog | `--agent-idle-watchdog` | `MULTICA_AGENT_IDLE_WATCHDOG` | `24h` (`0` disables daemon idle/tool watchdogs; provider timers remain separate) |
+| Agent tool watchdog | `--agent-tool-watchdog` | `MULTICA_AGENT_TOOL_WATCHDOG` | same as the idle watchdog (`0` disables the daemon's in-flight-tool limit) |
 | Codex semantic inactivity timeout | `--codex-semantic-inactivity-timeout` | `MULTICA_CODEX_SEMANTIC_INACTIVITY_TIMEOUT` | same as the idle watchdog (Codex's timer is not tool-aware, so it tracks the larger of the idle / tool budgets) |
 | Codex first-turn no-progress timeout | — | `MULTICA_CODEX_FIRST_TURN_TIMEOUT` | `0` (keeps the built-in `60s` ceiling) |
 | Codex handshake timeout | `--codex-handshake-timeout` | `MULTICA_CODEX_HANDSHAKE_TIMEOUT` | `30s`; `thread/start` and `thread/resume`: `60s` (an explicit value overrides both budgets globally) |
@@ -354,6 +354,21 @@ Daemon behavior is configured via flags or environment variables:
 | GC Hermes memory TTL (per-agent `memories/`) | — | `MULTICA_GC_HERMES_MEMORY_TTL` | `2160h` (90d; set `0` to disable) |
 | GC Hermes session TTL (per-conversation `state.db`) | — | `MULTICA_GC_HERMES_SESSION_TTL` | `336h` (14d; set `0` to disable) |
 | GC task temp legacy TTL (pre-lock `multica-task-*`) | — | `MULTICA_GC_TASK_TEMP_LEGACY_TTL` | `0` (disabled; set a duration to opt in) |
+
+Save a watchdog budget for a daemon profile with
+`multica config set agent_idle_watchdog 24h --profile worker`.
+The tool budget and Codex semantic inactivity timeout inherit it unless explicitly
+overridden. Precedence is flag > environment > profile setting > default; changes
+take effect when that profile's daemon restarts.
+
+Silence means no runtime protocol messages, including while an SOP waits inside
+a tool. Messages reset the window; daemon heartbeats do not. This is not a total
+run deadline: `agent_timeout` controls that separately and defaults to disabled.
+A watchdog stop records a failed task with its reason and an issue system comment;
+terminal reports are saved locally for delivery after a backend outage. Codex
+semantic timeouts can auto-retry; the issue comment is posted on terminal failure.
+OpenCode's shorter idle window applies only outside tool calls. Codex's first-turn
+and handshake limits cover startup, and the first-turn timer stops on tool activity.
 
 #### Workspace garbage collection
 

@@ -46,23 +46,11 @@ const (
 	DefaultOpenCodeIdleWatchdog = 10 * time.Minute
 	// DefaultAgentIdleWatchdog is the per-task safety net that force-stops a
 	// run when the backend has emitted no message for this long AND its
-	// message queue is empty. Backends like Claude Code can hang indefinitely
-	// on a stuck child process (e.g. `docker ps` against a frozen dockerd),
-	// in which case `cmd.Wait()` never returns. With no wall-clock cap
-	// (DefaultAgentTimeout = 0) such a run would otherwise sit at "running"
-	// forever, so this watchdog is its sole liveness net.
-	//
-	// The budget answers one question: how long may the LONGEST legitimate
-	// silent step take? Not "how fast do we want to notice a hang". Those
-	// two costs are wildly asymmetric — force-stopping a healthy run throws
-	// away the work and flips the issue to blocked, while noticing a hang
-	// late only holds a concurrency slot. So the value tracks the legitimate
-	// end: a single RFC-length assistant message (MUL-2300, which moved this
-	// from 5 min to 30 min), a subagent, a full test suite. 30 min still cut
-	// real work short, so this is 2h.
-	//
-	// Set MULTICA_AGENT_IDLE_WATCHDOG=0 to disable the whole watchdog suite.
-	DefaultAgentIdleWatchdog              = 2 * time.Hour
+	// message queue is empty. Silent SOP tools may legitimately run for hours,
+	// so the default allows one day without protocol output.
+	// Set MULTICA_AGENT_IDLE_WATCHDOG=0 to disable the daemon idle/tool
+	// watchdogs; provider-specific timers remain separate.
+	DefaultAgentIdleWatchdog              = 24 * time.Hour
 	DefaultRuntimeName                    = "Local Agent"
 	DefaultWorkspaceBootstrapSyncInterval = 30 * time.Second
 	DefaultWorkspaceLegacySyncInterval    = 5 * time.Minute
@@ -391,8 +379,7 @@ func LoadConfig(overrides Overrides) (Config, error) {
 	// for BOTH daemon watchdogs on a Codex run, so it has to be sized like the
 	// larger of them — otherwise a quiet test suite or an output-buffering
 	// `docker build` dies at the Codex ceiling long before the daemon budget
-	// that was supposed to protect it, and "we raised the budget to 2h" is
-	// simply false for Codex users.
+	// that was supposed to protect it.
 	//
 	// A tool budget of 0 means "never force-stop while a tool is in flight",
 	// which this timer cannot express — it has no way to see the tool. It falls

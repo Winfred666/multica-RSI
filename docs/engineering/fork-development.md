@@ -65,6 +65,15 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   continue claiming work after a partial batch. New agents created through the
   CLI default to 50 concurrent tasks; use `--max-concurrent-tasks` to set a limit.
 
+- **Watchdog budgets.** Silence means no new runtime protocol messages, including
+  while an SOP waits inside a tool call. The default idle and tool budgets are
+  24 hours; Codex derives its semantic inactivity budget from the larger of them.
+  Saved CLI profile settings remain editable and take effect on daemon restart.
+  Explicit provider timers and `agent_timeout` can impose shorter limits.
+  A watchdog stop records a failed task and an issue system comment. See
+  [runtime configuration](../../CLI_AND_DAEMON.md#configuration) for overrides,
+  disable behavior and failure reporting.
+
 ## Distribution
 
 GitHub Releases provides the CLI and daemon binaries. The Bash and PowerShell

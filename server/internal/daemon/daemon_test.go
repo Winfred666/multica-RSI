@@ -4199,10 +4199,8 @@ func (b idleWatchdogBackend) Execute(_ context.Context, _ string, _ agent.ExecOp
 	return &agent.Session{Messages: msgCh, Result: resCh}, nil
 }
 
-// TestIdleWatchdogTickInterval pins the ceiling, which is the reason the helper
-// exists: at window/2 alone the default 2h budget would only be polled hourly,
-// so a stuck run would hold its slot for up to 3h, and the overshoot would grow
-// with every increase to the budget instead of staying bounded.
+// TestIdleWatchdogTickInterval keeps the polling delay bounded even for
+// day-long silence budgets.
 func TestIdleWatchdogTickInterval(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -4215,8 +4213,8 @@ func TestIdleWatchdogTickInterval(t *testing.T) {
 		{name: "half rate at one minute", window: time.Minute, want: 30 * time.Second},
 		{name: "half rate below the ceiling", window: 8 * time.Minute, want: 4 * time.Minute},
 		{name: "ceiling engages exactly at its double", window: 10 * time.Minute, want: idleWatchdogMaxTick},
-		{name: "ceiling caps the default budget", window: 2 * time.Hour, want: idleWatchdogMaxTick},
-		{name: "ceiling holds for very large budgets", window: 24 * time.Hour, want: idleWatchdogMaxTick},
+		{name: "ceiling caps a two-hour budget", window: 2 * time.Hour, want: idleWatchdogMaxTick},
+		{name: "ceiling caps the default budget", window: DefaultAgentIdleWatchdog, want: idleWatchdogMaxTick},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
