@@ -8,8 +8,14 @@ behavior. The [README](../../README.md) presents the research platform.
 
 - **Editable startup prompts.** We replaced embedded workflow instructions with
   workspace Go templates and SOP skills. You can edit the workspace prompt;
-  the server validates the template on save. Child prompts use their own issue
-  and explicit handoff context; the daemon does not add parent-reading guidance.
+  the server validates the template on save. The kit inlines basic issue workflow
+  and CLI rules, removes `multica-issue-turn`, and ends with explicit Never-HERO
+  scope limits and Stop-slop writing rules: effect first, plain explanation next, artifact
+  or path last. Claims include the issue body alongside its current
+  title/status/assignee, so updated daemons supply the assignment in the per-turn
+  prompt without requiring a startup CLI read. Existing daemons ignore the new
+  optional field; an older server still requires the explicit read. Child prompts
+  use their own issue and explicit handoff context; the daemon does not add parent-reading guidance.
 - **Configurable subscriptions and wakeups.** You can control inherited sub-issue
   following per user and workspace. We retired the built-in child-done wakeup
   and moved parent wakeup policy into plugins. You can create explicit waits
