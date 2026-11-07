@@ -151,6 +151,40 @@ func (q *Queries) GetWorkspaceMcpServer(ctx context.Context, arg GetWorkspaceMcp
 	return i, err
 }
 
+const listAgentMcpBindings = `-- name: ListAgentMcpBindings :many
+SELECT ams.server_id, ams.enabled
+FROM agent_mcp_server ams
+JOIN workspace_mcp_server s ON s.id = ams.server_id
+WHERE ams.agent_id = $1
+ORDER BY s.name, s.id
+`
+
+type ListAgentMcpBindingsRow struct {
+	ServerID pgtype.UUID `json:"server_id"`
+	Enabled  bool        `json:"enabled"`
+}
+
+// Transfer references without reading unselected server configurations.
+func (q *Queries) ListAgentMcpBindings(ctx context.Context, agentID pgtype.UUID) ([]ListAgentMcpBindingsRow, error) {
+	rows, err := q.db.Query(ctx, listAgentMcpBindings, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAgentMcpBindingsRow{}
+	for rows.Next() {
+		var i ListAgentMcpBindingsRow
+		if err := rows.Scan(&i.ServerID, &i.Enabled); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAgentMcpServers = `-- name: ListAgentMcpServers :many
 SELECT s.id, s.workspace_id, s.name, s.config, s.created_at, s.updated_at, ams.enabled
 FROM workspace_mcp_server s

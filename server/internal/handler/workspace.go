@@ -381,17 +381,18 @@ func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	// gate (web layout / desktop App.tsx overlay) redirects un-onboarded
 	// users back to /onboarding instead.
 
+	wsID := uuidToString(ws.ID)
+	if err := h.installWorkspaceHarness(r.Context(), tx, ws.ID, parseUUID(userID), req.Context != nil); err != nil {
+		slog.Error("workspace startup kit failed", "workspace_id", wsID, "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to install workspace startup kit")
+		return
+	}
+
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create workspace")
 		return
 	}
 
-	wsID := uuidToString(ws.ID)
-	if err := h.installWorkspaceHarness(r, wsID, req.Context != nil); err != nil {
-		slog.Error("workspace startup kit failed", "workspace_id", wsID, "error", err)
-		writeError(w, http.StatusInternalServerError, "workspace "+wsID+" was created but startup kit installation failed")
-		return
-	}
 	ws, err = h.Queries.GetWorkspace(r.Context(), ws.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to read installed workspace")

@@ -295,6 +295,44 @@ func (q *Queries) GetWorkspaceBySlug(ctx context.Context, slug string) (Workspac
 	return i, err
 }
 
+const getWorkspacePackageCounts = `-- name: GetWorkspacePackageCounts :one
+SELECT
+    (SELECT count(*) FROM project p WHERE p.workspace_id = w.id)::bigint AS projects,
+    (SELECT count(*) FROM issue i WHERE i.workspace_id = w.id)::bigint AS issues,
+    (SELECT count(*) FROM agent a WHERE a.workspace_id = w.id AND a.kind = 'user' AND a.archived_at IS NULL)::bigint AS agents,
+    (SELECT count(*) FROM skill s WHERE s.workspace_id = w.id)::bigint AS skills,
+    (SELECT count(*) FROM workspace_mcp_server m WHERE m.workspace_id = w.id)::bigint AS mcps,
+    (SELECT count(*) FROM plugin_installation pi WHERE pi.workspace_id = w.id)::bigint AS plugins,
+    (w.context IS NOT NULL)::boolean AS system_prompt
+FROM workspace w WHERE w.id = $1
+`
+
+type GetWorkspacePackageCountsRow struct {
+	Projects     int64 `json:"projects"`
+	Issues       int64 `json:"issues"`
+	Agents       int64 `json:"agents"`
+	Skills       int64 `json:"skills"`
+	Mcps         int64 `json:"mcps"`
+	Plugins      int64 `json:"plugins"`
+	SystemPrompt bool  `json:"system_prompt"`
+}
+
+// Counts for the transfer checklist. Never load content to render it.
+func (q *Queries) GetWorkspacePackageCounts(ctx context.Context, id pgtype.UUID) (GetWorkspacePackageCountsRow, error) {
+	row := q.db.QueryRow(ctx, getWorkspacePackageCounts, id)
+	var i GetWorkspacePackageCountsRow
+	err := row.Scan(
+		&i.Projects,
+		&i.Issues,
+		&i.Agents,
+		&i.Skills,
+		&i.Mcps,
+		&i.Plugins,
+		&i.SystemPrompt,
+	)
+	return i, err
+}
+
 const incrementIssueCounter = `-- name: IncrementIssueCounter :one
 UPDATE workspace SET issue_counter = issue_counter + 1
 WHERE id = $1
@@ -335,6 +373,63 @@ func (q *Queries) ListDaemonWorkspaces(ctx context.Context, userID pgtype.UUID) 
 	for rows.Next() {
 		var i ListDaemonWorkspacesRow
 		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkspacePackageSummaries = `-- name: ListWorkspacePackageSummaries :many
+SELECT resources.id, resources.name, resources.is_system_skill FROM (
+    SELECT s.id, s.name, s.is_system_skill FROM skill s
+    WHERE s.workspace_id = $1 AND $2::text = 'skills'
+    UNION ALL
+    SELECT a.id, a.name, false AS is_system_skill FROM agent a
+    WHERE a.workspace_id = $1 AND $2::text = 'agents' AND a.kind = 'user' AND a.archived_at IS NULL
+    UNION ALL
+    SELECT m.id, m.name, false AS is_system_skill FROM workspace_mcp_server m
+    WHERE m.workspace_id = $1 AND $2::text = 'mcps'
+    UNION ALL
+    SELECT pi.id, pi.manifest->>'name' AS name, false AS is_system_skill FROM plugin_installation pi
+    WHERE pi.workspace_id = $1 AND $2::text = 'plugins'
+) AS resources
+ORDER BY resources.name, resources.id
+LIMIT $4 OFFSET $3
+`
+
+type ListWorkspacePackageSummariesParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	Category    string      `json:"category"`
+	Offset      int32       `json:"offset"`
+	Limit       int32       `json:"limit"`
+}
+
+type ListWorkspacePackageSummariesRow struct {
+	ID            pgtype.UUID `json:"id"`
+	Name          string      `json:"name"`
+	IsSystemSkill bool        `json:"is_system_skill"`
+}
+
+// Only expandable categories. Projects/issues stay a single count selection.
+func (q *Queries) ListWorkspacePackageSummaries(ctx context.Context, arg ListWorkspacePackageSummariesParams) ([]ListWorkspacePackageSummariesRow, error) {
+	rows, err := q.db.Query(ctx, listWorkspacePackageSummaries,
+		arg.WorkspaceID,
+		arg.Category,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListWorkspacePackageSummariesRow{}
+	for rows.Next() {
+		var i ListWorkspacePackageSummariesRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.IsSystemSkill); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
