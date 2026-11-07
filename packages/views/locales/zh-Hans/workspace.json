@@ -30,5 +30,28 @@
     "description": "该工作区不存在，或你没有访问权限。",
     "go_to_workspaces": "前往我的工作区",
     "sign_in_different": "使用其他账号登录"
+  },
+  "package": {
+    "import_action": "导入工作区",
+    "export_action": "导出工作区",
+    "projects_issues": "项目与议题",
+    "projects_hint": "可让智能体为新工作区选择性复制项目与议题。",
+    "agents": "智能体",
+    "agents_hint": "复制的智能体处于未激活状态，需要在新的运行时机器上完成配置。",
+    "skills": "技能",
+    "system_skills": "系统技能",
+    "normal_skills": "普通技能",
+    "mcps": "MCP",
+    "plugins": "插件",
+    "system_prompt": "系统提示词",
+    "replace_existing": "替换同名的现有技能、MCP 和插件。",
+    "file": "工作区包（.json）",
+    "loading": "加载中…",
+    "failed": "无法加载工作区包。",
+    "invalid": "工作区包无效。",
+    "imported": "工作区包已导入。",
+    "importing": "导入中…",
+    "startup_title": "导入启动套件",
+    "continue": "继续"
   }
 }

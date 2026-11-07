@@ -799,7 +799,8 @@
     "prefix_new_label": "새 접두사",
     "prefix_rule": "영문자와 숫자만, 최대 10자까지 사용할 수 있습니다.",
     "prefix_confirm_action": "{{prefix}}(으)로 변경",
-    "prefix_external_warning": "PR 제목, 브랜치 이름, 문서, 채팅에 있는 이전 키({{oldExample}} 등)는 업데이트되지 않으므로 해당 링크가 작동하지 않습니다."
+    "prefix_external_warning": "PR 제목, 브랜치 이름, 문서, 채팅에 있는 이전 키({{oldExample}} 등)는 업데이트되지 않으므로 해당 링크가 작동하지 않습니다.",
+    "transfer": "가져오기 및 내보내기"
   },
   "delete_workspace_dialog": {
     "title": "워크스페이스 삭제",

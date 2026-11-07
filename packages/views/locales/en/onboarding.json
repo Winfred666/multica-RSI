@@ -10,6 +10,9 @@
     },
     "runtime": {
       "label": "Meet Mika"
+    },
+    "import": {
+      "label": "Import workspace"
     }
   },
   "welcome": {

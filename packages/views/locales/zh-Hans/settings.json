@@ -799,7 +799,8 @@
     "prefix_new_label": "新前缀",
     "prefix_rule": "只能使用字母和数字，最多 10 个字符。",
     "prefix_confirm_action": "修改为 {{prefix}}",
-    "prefix_external_warning": "PR 标题、分支名、文档和聊天里的旧编号（如 {{oldExample}}）不会自动更新，这些链接会失效。"
+    "prefix_external_warning": "PR 标题、分支名、文档和聊天里的旧编号（如 {{oldExample}}）不会自动更新，这些链接会失效。",
+    "transfer": "导入与导出"
   },
   "delete_workspace_dialog": {
     "title": "删除工作区",
