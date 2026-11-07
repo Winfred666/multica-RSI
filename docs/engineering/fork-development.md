@@ -72,6 +72,18 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   multica workspace plugin configure INSTALLATION_ID WORKSPACE --config-file prompts.json
   ```
 
+- **Remote SOPs.** `multica remote-sop ISSUE SOP [args...]` posts
+  `/note !sop <name> <JSON argv>`. Try `--help` as the first SOP argument.
+  The native `/note` prefix prevents agent activation. On each heartbeat the
+  daemon takes these notes for its runtime, moves them into execution logs,
+  and runs `python3 <skill>/wrapper.py` directly with task ID `0`.
+  Bound skill files and workspace `.agents/` folders supply SOPs containing
+  `wrapper.py`. Argument boundaries, combined stdout/stderr and
+  exit codes are preserved; missing names return the available SOP list.
+  Calls never use agent task admission, steering, provider startup or agent
+  environment preparation. Completed execution records hold only the request
+  and output. Registration and issue metadata writes are unnecessary.
+
 - **Startup prompts.** We render the workspace template into each provider's
   context file and expose the issue ID through `MULTICA_ISSUE_ID`.
 - **Context measurements.** We collect native context-token measurements in the
