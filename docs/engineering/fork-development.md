@@ -61,17 +61,6 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## CLI and daemon
 
-- **Plugin commands.** You can inspect execution credentials, enable or disable
-  hosted execution, and configure installed plugins:
-
-  ```sh
-  multica workspace plugin-execution status WORKSPACE
-  multica workspace plugin-execution enable WORKSPACE --token-stdin < /path/to/pat
-  multica workspace plugin-execution disable WORKSPACE
-  multica workspace plugin list WORKSPACE
-  multica workspace plugin configure INSTALLATION_ID WORKSPACE --config-file prompts.json
-  ```
-
 - **Remote SOPs.** `multica remote-sop ISSUE SOP [args...]` posts
   `/note !sop <name> <JSON argv>`. Try `--help` as the first SOP argument.
   The native `/note` prefix prevents agent activation. On each heartbeat the
@@ -83,6 +72,21 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   Calls never use agent task admission, steering, provider startup or agent
   environment preparation. Completed execution records hold only the request
   and output. Registration and issue metadata writes are unnecessary.
+
+- **Workspace packages.** `workspace package`, `workspace export` and
+  `workspace import` expose the native package API with paged summaries, JSON
+  selection files and inactive imported agents. See [usage and defaults](workspace-packages.md#cli).
+
+- **Plugin commands.** You can inspect execution credentials, enable or disable
+  hosted execution, and configure installed plugins:
+
+  ```sh
+  multica workspace plugin-execution status WORKSPACE
+  multica workspace plugin-execution enable WORKSPACE --token-stdin < /path/to/pat
+  multica workspace plugin-execution disable WORKSPACE
+  multica workspace plugin list WORKSPACE
+  multica workspace plugin configure INSTALLATION_ID WORKSPACE --config-file prompts.json
+  ```
 
 - **Startup prompts.** We render the workspace template into each provider's
   context file and expose the issue ID through `MULTICA_ISSUE_ID`.
