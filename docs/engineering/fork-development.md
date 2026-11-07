@@ -33,7 +33,8 @@ configuration and API details. The [workspace startup kit](../../harness/README.
 contains the system prompt, system and library skills, and plugins for parent
 wakeups, in-progress continuation and issue-comment cleanup. Workspace creation
 installs the embedded kit through the native Go package importer in the workspace
-creation transaction. The package API also supports selective export/import of
+creation transaction; `skip_startup_kit: true` leaves the kit empty for selective
+startup import. The package API also supports selective export/import of
 projects/issues, agents, skills, MCPs, plugins and the system prompt. Imported
 agents are offline and require runtime setup; plugin installation never creates
 an execution PAT. See [the API contract](workspace-packages.md). Child dispatch uses
