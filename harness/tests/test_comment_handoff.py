@@ -52,10 +52,10 @@ class CommentHandoff(unittest.TestCase):
         deliver = load('native_deliver', 'multica-surface-delivery', 'deliver.py')
         report = self.directory / 'report.json'
         report.write_text(json.dumps({
-            'claim': 'Tree cards keep measured sizes and reload restores a bounded camera.',
-            'method': 'Removed card resizing and constrained the restored camera.',
-            'metric': '56 focused tests passed; wide and narrow browser checks passed.',
-            'appendix': '[Tree view](https://example.com/tree-view.tsx) · [Wide screenshot](https://example.com/wide.png)',
+            'claim': 'The local preview shows the updated title.',
+            'method': 'Refreshed the preview after changing the title.',
+            'metric': 'One local smoke check passed.',
+            'appendix': 'Source: /local/app.py · Longer evidence: /local/preview-check.log',
         }))
         facts = {'tag': 'dev', 'threads': {'thread': 'thread'}, 'workdir': str(self.directory),
                  'branch': 'issue/child', 'attachments': [], 'allow_external_file': False,
@@ -66,11 +66,11 @@ class CommentHandoff(unittest.TestCase):
         result = deliver.publish(args, context, self.issue, self.directory / 'checkpoint.json', receipt)
         self.assertEqual(result, {'comment_ids': ['reply']})
         body = self.comments[-1]['content']
-        self.assertLess(body.index('Tree cards'), body.index('Removed card resizing'))
-        self.assertLess(body.index('Removed card resizing'), body.index('56 focused tests'))
-        self.assertLess(body.index('56 focused tests'), body.index('Git branch:'))
-        self.assertLess(body.index('Commit: abc123'), body.index('[Tree view]'))
-        self.assertTrue(body.split('<!--')[0].rstrip().endswith('[Wide screenshot](https://example.com/wide.png)'))
+        self.assertLess(body.index('The local preview'), body.index('Refreshed the preview'))
+        self.assertLess(body.index('Refreshed the preview'), body.index('One local smoke check'))
+        self.assertLess(body.index('One local smoke check'), body.index('Git branch:'))
+        self.assertLess(body.index('Commit: abc123'), body.index('Source: /local/app.py'))
+        self.assertTrue(body.split('<!--')[0].rstrip().endswith('/local/preview-check.log'))
         self.assertIn('Git branch: issue/child', self.comments[-1]['content'])
         self.assertIn('Commit: abc123', self.comments[-1]['content'])
         self.assertEqual([kind for kind, _ in self.writes], ['reply', 'status'])

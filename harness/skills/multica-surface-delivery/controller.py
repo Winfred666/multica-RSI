@@ -9,13 +9,13 @@ spec = importlib.util.spec_from_file_location('surface_deliver', Path(__file__).
 delivery = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(delivery)
 
-WRITING = ('Keep the effect, explanation, supporting results, relevant limits and attachments together in one '
-           'native reply that stands on its own. Finish with relevant code/artifact links. Do not split the '
-           'explanation or evidence into a separate GitHub report. Use concise, active prose; never invent measurements.')
+WRITING = ('Put strong, short primary evidence in the native reply or a native artifact; link longer secondary '
+           'evidence by URL or path. Never put Multica evidence on GitHub or in the tracked code repository. '
+           'Use concise, active prose; never invent measurements.')
 REPORT = ('Write a JSON file for the native reply containing exactly claim (one short effect/conclusion sentence), '
           'method (brief plain-English explanation of the change), metric (supporting measured result; nullable '
-          'for query/dev, a finite numeric score for exp), and appendix (relevant limits, concise reproduction '
-          'details if needed, ending with code/artifact links). Attach supporting files with --attachment. ' + WRITING)
+          'for query/dev, a finite numeric score for exp), and appendix (relevant limits and code/artifact links '
+          'or paths to secondary evidence). Attach native artifacts with --attachment when useful. ' + WRITING)
 
 
 def finished(context, status, instruction, data=None):
