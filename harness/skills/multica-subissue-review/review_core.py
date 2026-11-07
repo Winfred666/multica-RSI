@@ -52,11 +52,12 @@ def approval_reply(comments, parent):
                  re.search(r'^Reviewed commit: [0-9a-f]{40}$', c['content'], re.M)), None)
 
 
-def post(cli, identity, content, *, steer=False):
+def post(cli, identity, content, *, parent=None, steer=False):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.md', dir=Path.cwd()) as stream:
         stream.write(content)
         stream.flush()
         return cli('comment', 'add', identity, '--content-file', stream.name,
+                   *(['--parent', parent] if parent else []),
                    *(['--steer-active'] if steer else []), write=True)
 
 
@@ -91,9 +92,10 @@ def decide(args, context, action):
     status = category(child)
     if status not in {'in_review', 'blocked'}:
         raise error('not_reviewable', 'Review a delivered or blocked child; yield for unfinished work.')
+    comments = replies(cli, child)
+    reply = delivery_reply(comments, child)
+    target = reply['id'] if reply else None
     if action in {'accept', 'settle'}:
-        comments = replies(cli, child)
-        reply = delivery_reply(comments, child)
         if status != 'in_review' or not reply:
             raise error('undelivered_child', 'Acceptance requires in_review and a native delivery reply.')
         if any(category(c) not in {'done', 'cancelled'} for c in children(cli, child['id'])):
@@ -103,21 +105,21 @@ def decide(args, context, action):
             if reported_commit(reply) != args.commit:
                 raise error('changed_delivery', 'The reviewed commit must match the child delivery reply; request a fresh report.')
             if action == 'accept':
-                target = integration.prepare(sop, args.repo, child, parent, args.commit, args.verify)
+                branch = integration.prepare(sop, args.repo, child, parent, args.commit, args.verify)
                 if child.get('assignee_type') != 'agent' or not child.get('assignee_id'):
                     raise error('unassigned_child', 'Assign the child before requesting integration.')
                 cli('status', child['id'], 'in_progress', '--no-start', write=True)
                 message = ('[@assignee](mention://agent/' + child['assignee_id'] + ') Parent review approved this commit.\n\n'
-                           'Reviewed commit: ' + args.commit + '\nIntegration target: ' + target +
-                           '\n\nMerge this exact commit into the clean `' + target + '` checkout, run the verification below there, '
-                           'and push `origin ' + target + '`. Preserve shared services and data. If the branch changed, '
+                           'Reviewed commit: ' + args.commit + '\nIntegration target: ' + branch +
+                           '\n\nMerge this exact commit into the clean `' + branch + '` checkout, run the verification below there, '
+                           'and push `origin ' + branch + '`. Preserve shared services and data. If the branch changed, '
                            'return for review before integration. Resolve mechanical merge conflicts; block on true feature conflicts.\n\n'
                            'Verification command:\n```sh\n' + args.verify + '\n```\n\n'
                            'Deliver the integration result through multica-surface-delivery, including verification results and these exact lines:\n'
                            'Integrated commit: ' + args.commit + '\nIntegrated head: <full target commit>\n\n'
                            'The parent will settle this child after checking the result and steer working siblings with the same feature-direction '
-                           'label to minimally rebase onto the new `' + target + '`.')
-                comment = post(cli, child['id'], message, steer=True)
+                           'label to minimally rebase onto the new `' + branch + '`.')
+                comment = post(cli, child['id'], message, parent=target, steer=True)
                 return {'data': {'child_id': child['id'], 'status': 'in_progress', 'comment_id': comment['id']}}
             integration.confirm(sop, args.repo, child, parent, args.commit, reply, approval_reply(comments, parent))
         terminal = 'done'
@@ -134,9 +136,9 @@ def decide(args, context, action):
         cli('status', child['id'], 'in_progress', '--no-start', write=True)
         message = ('[@assignee](mention://agent/' + child['assignee_id'] + ') ' + message +
                    '\n\nContinue in this issue. Deliver through multica-surface-delivery; use multica-surface-block for an external blocker.')
-        comment = post(cli, child['id'], message)
+        comment = post(cli, child['id'], message, parent=target, steer=True)
     else:
-        comment = post(cli, child['id'], '/note\n' + message)
+        comment = post(cli, child['id'], '/note\n' + message, parent=target)
         cli('status', child['id'], terminal, '--no-start', write=True)
     result = {'data': {'child_id': child['id'], 'status': terminal, 'comment_id': comment['id']}}
     if action == 'settle':

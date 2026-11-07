@@ -107,7 +107,8 @@ class GitDelegation(unittest.TestCase):
         if words[:2] == ('comment', 'add'):
             self.last_comment = Path(words[words.index('--content-file') + 1]).read_text()
             row = {'id': 'review-reply', 'content': self.last_comment, 'author_type': 'agent',
-                   'author_id': 'agent', 'created_at': '1'}
+                   'author_id': 'agent', 'created_at': '1',
+                   'parent_id': words[words.index('--parent') + 1] if '--parent' in words else None}
             self.comments.setdefault(words[2], []).append(row)
             return row
         if words[0] == 'status':
@@ -130,9 +131,21 @@ class GitDelegation(unittest.TestCase):
 
     def integration_reply(self, child, commit, integrated):
         self.comments[child['id']].append({'id': 'integration', 'created_at': '2', 'author_type': 'agent',
-            'author_id': 'agent', 'content': 'Verification passed and pushed.\nCommit: ' + commit +
+            'author_id': 'agent', 'parent_id': 'review-reply', 'content': 'Verification passed and pushed.\nCommit: ' + commit +
             '\nIntegrated commit: ' + commit + '\nIntegrated head: ' + integrated})
         child['status'] = 'in_review'
+
+    def test_correction_steers_the_existing_delivery_thread(self):
+        parent = self.issue('parent')
+        child = self.issue('child', parent='parent')
+        child['status'] = 'blocked'
+        core = self.review()
+        args = SimpleNamespace(child=child['id'], reason='Correct the reported issue.')
+        context = {'cli': self.cli, 'initial': parent, 'error': lambda code, message: ValueError(message)}
+        core.decide(args, context, 'changes')
+        self.assertEqual(self.comments[child['id']][-1]['parent_id'], 'delivery')
+        self.assertTrue(any('--steer-active' in call for call in self.calls))
+        self.assertEqual(child['status'], 'in_progress')
 
     def test_review_steers_child_then_settles_and_requests_same_direction_siblings(self):
         parent = self.issue('parent', git_branch='main', git_parent_branch='main')
@@ -154,6 +167,7 @@ class GitDelegation(unittest.TestCase):
         self.assertIn('Reviewed commit: ' + head, self.last_comment)
         self.assertIn('push `origin main`', self.last_comment)
         self.assertTrue(any('--steer-active' in call for call in self.calls))
+        self.assertEqual(self.comments[child['id']][-1]['parent_id'], 'delivery')
         self.assertEqual(child['metadata'], before)
         with self.assertRaisesRegex(ValueError, 'delivered or blocked'):
             self.accept(parent, child, head, action='settle')
@@ -178,6 +192,7 @@ class GitDelegation(unittest.TestCase):
             sibling['status'] = status
         result = self.accept(parent, child, head, action='settle')
         self.assertEqual(child['status'], 'done')
+        self.assertEqual(self.comments[child['id']][-1]['parent_id'], 'integration')
         self.assertEqual(result['data']['sibling_rebases'], ['working', 'review', 'blocked'])
         self.assertIn('From this parent issue', result['instruction'])
         self.assertIn('true feature conflicts', result['instruction'])
