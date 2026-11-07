@@ -1,4 +1,5 @@
 import type { ZodType } from "zod";
+import { WorkspacePackageSchema, WorkspacePackageInventorySchema, WorkspacePackageCountsSchema, type WorkspacePackage, type WorkspacePackageCategory, type WorkspacePackageCounts, type WorkspacePackageInventory, type WorkspacePackageSelection } from "./schemas";
 import { AgentRuntimeSchema, EMPTY_RUNTIME } from "../runtimes/schema";
 import type { IssueWakeup, IssueWakeupInput, IssueWakeupSummaryRow, PausedWakeup, SystemWakeup, WakeupRun, WorkspaceSystemWakeup } from "../types/issue-wakeup";
 import type { WorkspaceWakeupPage, WorkspaceWakeupFilters } from "../types/issue-wakeup";
@@ -3159,6 +3160,38 @@ export class ApiClient {
   }
 
   // Workspaces
+  async getWorkspacePackageInventory(id: string, category?: WorkspacePackageCategory, offset = 0) {
+    const query = category ? `?category=${category}&limit=100&offset=${offset}` : "";
+    const raw = await this.fetch<unknown>(`/api/workspaces/${id}/package${query}`, { headers: workspaceHeader({ workspaceId: id }) });
+    return parseWithFallback(raw, WorkspacePackageInventorySchema, null as WorkspacePackageInventory | null, { endpoint: "GET /api/workspaces/{id}/package" });
+  }
+
+  async getDefaultWorkspacePackage(id: string) {
+    const raw = await this.fetch<unknown>(`/api/workspaces/${id}/package/default`, { headers: workspaceHeader({ workspaceId: id }) });
+    return parseWithFallback(raw, WorkspacePackageSchema, null as WorkspacePackage | null, { endpoint: "GET /api/workspaces/{id}/package/default" });
+  }
+
+  async inspectWorkspacePackage(id: string, pkg: unknown) {
+    const raw = await this.fetch<unknown>(`/api/workspaces/${id}/import/inspect`, {
+      method: "POST", body: JSON.stringify({ package: pkg }), headers: workspaceHeader({ workspaceId: id }),
+    });
+    return parseWithFallback(raw, WorkspacePackageInventorySchema, null as WorkspacePackageInventory | null, { endpoint: "POST /api/workspaces/{id}/import/inspect" });
+  }
+
+  async exportWorkspacePackage(id: string, selection: WorkspacePackageSelection) {
+    const raw = await this.fetch<unknown>(`/api/workspaces/${id}/export`, {
+      method: "POST", body: JSON.stringify(selection), headers: workspaceHeader({ workspaceId: id }),
+    });
+    return parseWithFallback(raw, WorkspacePackageSchema, null as WorkspacePackage | null, { endpoint: "POST /api/workspaces/{id}/export" });
+  }
+
+  async importWorkspacePackage(id: string, pkg: WorkspacePackage, selection: WorkspacePackageSelection, replaceExisting: boolean) {
+    const raw = await this.fetch<unknown>(`/api/workspaces/${id}/import`, {
+      method: "POST", body: JSON.stringify({ package: pkg, selection, replace_existing: replaceExisting }), headers: workspaceHeader({ workspaceId: id }),
+    });
+    return parseWithFallback(raw, WorkspacePackageCountsSchema, null as WorkspacePackageCounts | null, { endpoint: "POST /api/workspaces/{id}/import" });
+  }
+
   async listWorkspaces(): Promise<Workspace[]> {
     const raw = await this.fetch<unknown>("/api/workspaces");
     return parseWithFallback(raw, WorkspaceListItemSchema.array(), [] as Workspace[], {
@@ -3177,7 +3210,7 @@ export class ApiClient {
     return this.fetch(`/api/workspaces/${id}`);
   }
 
-  async createWorkspace(data: { name: string; slug: string; description?: string; context?: string; issue_prefix?: string }): Promise<Workspace> {
+  async createWorkspace(data: { name: string; slug: string; description?: string; context?: string; issue_prefix?: string; skip_startup_kit?: boolean }): Promise<Workspace> {
     return this.fetch("/api/workspaces", {
       method: "POST",
       body: JSON.stringify(data),

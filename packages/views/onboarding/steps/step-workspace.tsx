@@ -203,6 +203,7 @@ export function StepWorkspace({
       {
         name: name.trim(),
         slug: slug.trim(),
+        skip_startup_kit: true,
         // Send what the user was shown. The server derives the same value
         // from the slug when the field is omitted, so the preview and the
         // created workspace agree either way — but submitting it explicitly

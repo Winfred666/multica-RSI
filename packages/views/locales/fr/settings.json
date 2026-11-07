@@ -804,7 +804,8 @@
     "prefix_new_label": "Nouveau préfixe",
     "prefix_rule": "Lettres et chiffres uniquement, 10 caractères au maximum.",
     "prefix_confirm_action": "Remplacer par {{prefix}}",
-    "prefix_external_warning": "Les anciens identifiants comme {{oldExample}} dans les titres de PR, noms de branche, documents et discussions ne sont pas mis à jour : ces liens cesseront de fonctionner."
+    "prefix_external_warning": "Les anciens identifiants comme {{oldExample}} dans les titres de PR, noms de branche, documents et discussions ne sont pas mis à jour : ces liens cesseront de fonctionner.",
+    "transfer": "Importation et exportation"
   },
   "delete_workspace_dialog": {
     "title": "Supprimer l'espace de travail",

@@ -10,6 +10,9 @@
     },
     "runtime": {
       "label": "认识 Mika"
+    },
+    "import": {
+      "label": "导入工作区"
     }
   },
   "welcome": {
