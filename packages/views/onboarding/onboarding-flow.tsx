@@ -24,6 +24,7 @@ import { StepWelcome } from "./steps/step-welcome";
 import { StepShell } from "./components/step-shell";
 import { StepAboutYou } from "./steps/step-about-you";
 import { StepWorkspace } from "./steps/step-workspace";
+import { StepImport } from "./steps/step-import";
 import { StepRuntimeConnect } from "./steps/step-runtime-connect";
 import { StepPlatformFork } from "./steps/step-platform-fork";
 import { OnboardingLogoutButton } from "./components/onboarding-logout-button";
@@ -163,6 +164,7 @@ export function OnboardingFlow({
     isNewWorkspace ? "workspace" : "welcome",
   );
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [startupImported, setStartupImported] = useState(false);
   // Raised by whichever step has a request in flight; locks Back and the
   // rail. Only the workspace step sets it today.
   const [stepBusy, setStepBusy] = useState(false);
@@ -255,6 +257,7 @@ export function OnboardingFlow({
   const handleWorkspaceCreated = useCallback(
     (ws: Workspace) => {
       setWorkspace(ws);
+      if (ws.id !== workspace?.id) setStartupImported(false);
       // Deliberately NOT setCurrentWorkspace: that singleton is also written by
       // the desktop tab system, which reclaims it whenever the new workspace
       // has no tab group yet. Racing it sent the rest of this flow — Mika, the
@@ -263,7 +266,7 @@ export function OnboardingFlow({
       // once, on the navigation in onComplete.
       advanceFrom("workspace");
     },
-    [advanceFrom],
+    [advanceFrom, workspace?.id],
   );
 
   const handleRuntimeNext = useCallback(
@@ -422,6 +425,8 @@ export function OnboardingFlow({
       ? () => handleBack("about_you")
       : step === "workspace"
         ? () => handleBack("workspace")
+        : step === "import"
+          ? (isNewWorkspace ? undefined : () => handleBack("import"))
         : runtimeStepBack;
 
   return (
@@ -449,7 +454,10 @@ export function OnboardingFlow({
         />
       )}
 
-      {/* Step 3 has two paths:
+      {step === "import" && workspace && <StepImport wsId={workspace.id} completed={startupImported}
+        onBusyChange={setStepBusy} onNext={() => { setStartupImported(true); advanceFrom("import"); }} />}
+
+      {/* Runtime setup has two paths:
             - Desktop (no cliInstructions slot) drives the local daemon's
               runtime list directly.
             - Web offers Download / CLI / Cloud; under the CLI path it embeds

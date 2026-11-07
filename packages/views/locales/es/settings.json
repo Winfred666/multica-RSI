@@ -786,7 +786,8 @@
     "prefix_external_warning": "Las claves antiguas como {{oldExample}} en títulos de PR, nombres de rama, documentación y chat no se actualizan, así que esos enlaces dejan de funcionar.",
     "prefix_new_label": "Nuevo prefijo",
     "prefix_rule": "Solo letras y números, hasta 10 caracteres.",
-    "slug_hint": "Forma parte de cada URL del espacio de trabajo. No se puede cambiar."
+    "slug_hint": "Forma parte de cada URL del espacio de trabajo. No se puede cambiar.",
+    "transfer": "Importar y exportar"
   },
   "delete_workspace_dialog": {
     "title": "Eliminar espacio de trabajo",

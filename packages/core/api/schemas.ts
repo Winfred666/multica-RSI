@@ -1,4 +1,36 @@
 import { z } from "zod";
+
+const PackageItemSchema = z.object({ id: z.string(), name: z.string(), is_system_skill: z.boolean().optional() }).passthrough();
+const packageItems = z.array(PackageItemSchema).nullish().transform((items) => items ?? []);
+export const WorkspacePackageSchema = z.object({
+  schema_version: z.literal(1),
+  projects: z.array(z.object({ id: z.string(), title: z.string() }).passthrough()).nullish().transform((items) => items ?? []),
+  issues: z.array(z.object({ id: z.string(), title: z.string() }).passthrough()).nullish().transform((items) => items ?? []),
+  agents: packageItems, skills: packageItems, mcps: packageItems, plugins: packageItems,
+  system_prompt: z.string().nullable().optional(),
+}).passthrough();
+export const WorkspacePackageCountsSchema = z.object({
+  projects: z.number().int().nonnegative(), issues: z.number().int().nonnegative(),
+  agents: z.number().int().nonnegative(), skills: z.number().int().nonnegative(),
+  mcps: z.number().int().nonnegative(), plugins: z.number().int().nonnegative(), system_prompt: z.boolean(),
+});
+export const WorkspacePackageInventorySchema = z.object({
+  counts: WorkspacePackageCountsSchema,
+  items: packageItems,
+});
+export type WorkspacePackage = z.infer<typeof WorkspacePackageSchema>;
+export type WorkspacePackageCounts = z.infer<typeof WorkspacePackageCountsSchema>;
+export type WorkspacePackageInventory = z.infer<typeof WorkspacePackageInventorySchema>;
+export type WorkspacePackageItem = z.infer<typeof PackageItemSchema>;
+export type WorkspacePackageCategory = "agents" | "skills" | "mcps" | "plugins";
+export interface WorkspacePackageSelection {
+  projects_issues: boolean;
+  agents: string[];
+  skills: string[];
+  mcps: string[];
+  plugins: string[];
+  system_prompt: boolean;
+}
 import { normalizeIssueStatusCategory } from "../issues/config/status";
 import type {
   WorkflowHandoffPreview,
