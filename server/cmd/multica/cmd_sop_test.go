@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -43,9 +44,6 @@ func TestSOPCallThreadAndRestart(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	executable := filepath.Join(dir, "inspect")
-	if err := os.WriteFile(executable, []byte("#!/bin/sh\n[ -z \"$MULTICA_TASK_ID$MULTICA_AGENT_ID$MULTICA_TOKEN\" ] || exit 91\n[ \"$#\" -eq 0 ] || exit 92\n[ \"$TMPDIR\" = \"$PWD\" ] || exit 93\nprintf ran >> counter\ncat\n"), 0700); err != nil {
-		t.Fatal(err)
-	}
 	var roots []sopComment
 	var replies []map[string]string
 	failReply := true
@@ -83,6 +81,17 @@ func TestSOPCallThreadAndRestart(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
+	script := fmt.Sprintf(`#!/bin/sh
+[ -z "$MULTICA_TASK_ID$MULTICA_AGENT_ID$MULTICA_TASK_CONFIG_ROOT$MULTICA_DAEMON_PORT" ] || exit 91
+[ "$MULTICA_SERVER_URL" = %q ] && [ "$MULTICA_WORKSPACE_ID" = "ws-1" ] && [ "$MULTICA_TOKEN" = "test-token" ] || exit 94
+[ "$#" -eq 0 ] || exit 92
+[ "$TMPDIR" = "$PWD" ] || exit 93
+printf ran >> counter
+cat
+`, srv.URL)
+	if err := os.WriteFile(executable, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
 	setCLITestServerEnv(t, srv.URL)
 	cmd := &cobra.Command{Use: "call"}
 	cmd.SetContext(context.Background())
@@ -100,6 +109,9 @@ func TestSOPCallThreadAndRestart(t *testing.T) {
 	// Deliberately inherit an active identity: the standalone process must discard it.
 	t.Setenv("MULTICA_TASK_ID", "active-task")
 	t.Setenv("MULTICA_AGENT_ID", "active-agent")
+	t.Setenv("MULTICA_SERVER_URL", "http://unregistered.example.invalid")
+	t.Setenv("MULTICA_WORKSPACE_ID", "unregistered-workspace")
+	t.Setenv("MULTICA_TOKEN", "mat_active-task")
 	if err := pollSOPCalls(context.Background(), client, issueID, registered, stateDir, time.Second); err == nil {
 		t.Fatal("reply failure was hidden")
 	}

@@ -62,6 +62,7 @@ var sopServeCmd = &cobra.Command{
 	Use:   "serve <issue-id>",
 	Short: "Listen for SOP calls on one issue using this host's registrations",
 	Long: "Polls the existing comment API and executes registered SOPs sequentially with a dedicated member profile. " +
+		"Procedures receive the resolved host server, workspace and member token through the standard CLI environment variables. " +
 		"Agent task credentials are refused. Each request has a private directory under the profile's sop/runs. " +
 		"Completed requests are not executed again after restart. An interrupted execution requires manual reconciliation; " +
 		"submit a new call only after checking its directory. Result delivery retries on restart without rerunning the executable.",
@@ -370,7 +371,7 @@ func handleSOPCall(ctx context.Context, client *cli.APIClient, issueID string, c
 		if requestErr != nil {
 			content = "/note SOP rejected: " + requestErr.Error()
 		} else {
-			content = executeSOP(ctx, entry, request, issueID, comment.ID, runDir, timeout)
+			content = executeSOP(ctx, client, entry, request, issueID, comment.ID, runDir, timeout)
 		}
 		if err := writeSOPJSON(resultPath, content); err != nil {
 			return err
@@ -383,7 +384,7 @@ func handleSOPCall(ctx context.Context, client *cli.APIClient, issueID string, c
 	return writeSOPJSON(filepath.Join(runDir, "posted.json"), result)
 }
 
-func executeSOP(ctx context.Context, entry sopRegistration, request sopRequest, issueID, commentID, runDir string, timeout time.Duration) string {
+func executeSOP(ctx context.Context, client *cli.APIClient, entry sopRegistration, request sopRequest, issueID, commentID, runDir string, timeout time.Duration) string {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	data, err := json.Marshal(map[string]any{"issue_id": issueID, "comment_id": commentID, "inputs": request.Inputs})
@@ -392,13 +393,14 @@ func executeSOP(ctx context.Context, entry sopRegistration, request sopRequest, 
 	}
 	process := exec.CommandContext(ctx, entry.Executable)
 	process.Dir = runDir
-	// A standalone invocation must not inherit any active agent/task identity or credentials.
+	// Replace inherited task context with the resolved member context used by the host.
 	for _, env := range os.Environ() {
 		name, _, _ := strings.Cut(env, "=")
 		if !strings.HasPrefix(name, "MULTICA_") && name != "TMPDIR" && name != "TMP" && name != "TEMP" {
 			process.Env = append(process.Env, env)
 		}
 	}
+	process.Env = append(process.Env, "MULTICA_SERVER_URL="+client.BaseURL, "MULTICA_WORKSPACE_ID="+client.WorkspaceID, "MULTICA_TOKEN="+client.Token)
 	process.Env = append(process.Env, "TMPDIR="+runDir, "TMP="+runDir, "TEMP="+runDir)
 	process.Stdin = bytes.NewReader(data)
 	var output sopOutput
