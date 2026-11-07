@@ -143,6 +143,22 @@ export function clampTransform(
   };
 }
 
+/** Restore a saved camera inside the world bounds, centering smaller content. */
+export function restoreTransform(
+  transform: ZoomTransform,
+  content: Size,
+  viewport: Size,
+): ZoomTransform {
+  const scale = clampScale(transform.scale, computeMinScale(content, viewport));
+  const restoreAxis = (offset: number, size: number, available: number) =>
+    size <= available ? (available - size) / 2 : Math.min(0, Math.max(available - size, offset));
+  return {
+    scale,
+    x: restoreAxis(transform.x, content.width * scale, viewport.width),
+    y: restoreAxis(transform.y, content.height * scale, viewport.height),
+  };
+}
+
 /**
  * The transform after the viewport resizes under the content. Content still
  * sitting at the old viewport's fit follows the resize and re-fits — the

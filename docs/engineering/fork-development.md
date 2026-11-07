@@ -42,13 +42,15 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## Frontend
 
-- **Issue tree.** You can inspect parent/child issues, expand collapsed card
-  stacks, and preview collaborators' messages and runs. We added context-usage
-  rings and compression counts, plus saved pan and zoom positions. Issue-owned
-  sub-workspaces follow sibling issues as static nested snapshots, with collaborators
-  from their own workspace and links to open it. Each branch uses its own measured card heights; complete root
-  trees wrap into rows using the canvas aspect ratio. Uploaded HTML deliverables render inside tree cards and open in
-  the artifact viewer.
+- **Issue tree.** You can inspect parent/child issues, expand collapsed stacks,
+  and preview collaborators' messages and runs, with context-usage rings,
+  compression counts and saved pan/zoom. Issue-owned sub-workspaces appear as
+  static snapshots with their collaborators and links. Branches use measured
+  card heights; root trees wrap at a captured canvas width, refreshed on uncached
+  load and issue creation/deletion. Resizing preserves packing; restored cameras
+  stay within tree bounds. Cards and artifact thumbnails can be selected
+  separately; Delete removes all versions of selected artifacts. Uploaded HTML
+  deliverables render in tree cards and open in the artifact viewer.
 - **Settings.** You can manage hosted plugin execution credentials and personal
   sub-issue following from workspace settings.
 - **Onboarding.** We removed the acquisition-source survey and its follow-up popup.
