@@ -42,9 +42,9 @@ consultation alone changes no status. A [Project workflow] replaces built-in sta
 commands. Deliver through `multica-surface-delivery` in the native reply target(s),
 or top level for assignments; terminal output is not delivery. Unfinished work stays
 `in_progress`; submitted work enters `in_review`; `done` stays human.
-Use `multica-surface-block` for external blockers. Delegate through
-`multica-subissue-distribute`; accept children through `multica-subissue-review`.
-{{else if $quick}}Use `multica-quick-create` with this turn's picker values and output contract.
+Use `multica-surface-block` for external blockers. Create child work only through
+`multica-subissue-distribute` under this issue; review it through `multica-subissue-review`.
+{{else if $quick}}Use this turn's field rules and picker values. Write descriptions to `./description.md` before passing `--description-file`; stop if writing fails. Run exactly one `multica issue create --output json`; never retry. Parse stdout JSON only; keep stderr separate. There is no assigned issue: do not get, change status or comment on one. Success: output only `Created <identifier-or-id>: <title>`, using the response's `identifier` or fallback `id`. CLI/JSON failure: output only the error. Attach deliverable files on create; never present runtime-local paths as deliverables. The platform reports success/failure automatically. Exit without follow-up calls.
 {{else}}Follow this turn's audience, session, file-delivery and reply instructions.
 {{end}}
 ## Multica essentials

@@ -35,6 +35,9 @@ wakeups, in-progress continuation and issue-comment cleanup. Workspace creation
 installs the kit through its self-contained Python installer. Child dispatch uses
 `multica-subissue-distribute`; delivery and blockers travel through native replies
 and parent steering. Parent review integrates verified work in its own turn.
+Quick-create keeps the upstream task routing: its execution rules render only
+for a quick-create turn, and the native task prompt supplies picker and field
+rules. The kit does not install a global quick-create skill.
 See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## Frontend
