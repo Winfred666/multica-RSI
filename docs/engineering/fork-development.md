@@ -36,7 +36,10 @@ contains the system prompt, system and library skills, and plugins for parent
 wakeups, in-progress continuation and issue-comment cleanup. Workspace creation
 installs the kit through its self-contained Python installer. Child dispatch uses
 `multica-subissue-distribute`; delivery and blockers travel through native replies
-and parent steering. Parent review integrates verified work in its own turn.
+and parent steering. Parent review approves the delivered commit and steers the
+child to merge, verify and push it. After checking the child's integration result,
+the parent settles acceptance and steers working siblings with the same feature
+direction to rebase onto new `main`; true feature conflicts block continuation.
 Quick-create keeps the upstream task routing: its execution rules render only
 for a quick-create turn, and the native task prompt supplies picker and field
 rules. The kit does not install a global quick-create skill.

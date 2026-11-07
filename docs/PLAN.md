@@ -35,7 +35,10 @@ Labels select query, development or experiment behavior. Children deliver throug
 belong in native reply comments. The child-wakeup plugin carries the reply and
 Git bindings in parent steering: review deliveries through
 `multica-subissue-review`, or help resolve a blocker. The parent owns acceptance;
-verified code integration precedes marking the child done.
+it steers the approved child to merge, verify and push, then settles acceptance
+after checking the integration reply. The parent steers working siblings with the
+same feature-direction label to minimally rebase onto new `main`, resolving
+mechanical conflicts and blocking on true feature conflicts before continuing.
 
 Keep inter-SOP communication in replies and steering prompts. Issue metadata holds
 native resource bindings and configuration, without copied reports, thread IDs,

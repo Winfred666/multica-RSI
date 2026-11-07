@@ -86,7 +86,12 @@ class FakeAPI(runtime.API):
             query = parse_qs(parsed.query)
             if "tail" in query and "thread" not in query:
                 raise ValueError("tail requires thread")
-            return self.comments.get(issue_id, [])
+            rows = self.comments.get(issue_id, [])
+            if "roots_only" in query:
+                return [dict(row, content="Folded preview") for row in rows if not row.get("parent_id")]
+            if "thread" in query:
+                return rows
+            return [row for row in rows if not row.get("parent_id")]
         if parts[4] == "comments" and method == "POST":
             self.writes.append(dict(body, issue_id=issue_id))
             return self.writes[-1]
@@ -123,7 +128,9 @@ class ChildWakeupTests(unittest.TestCase):
 
     def test_parent_steering_contains_child_reply_and_git_binding(self):
         self.api.rows['child']['metadata'] = {'git_branch': 'issue/child', 'git_parent_branch': 'issue/parent'}
-        self.api.comments['child'] = [{'id': 'reply', 'author_type': 'agent', 'author_id': 'agent',
+        self.api.comments['child'] = [{'id': 'root', 'content': 'Resolved discussion', 'resolved_at': '2026-01-01',
+                                       'created_at': '0', 'author_type': 'member', 'author_id': 'human'},
+                                      {'id': 'reply', 'parent_id': 'root', 'created_at': '1', 'author_type': 'agent', 'author_id': 'agent',
                                       'content': 'Score: 0.42. Improved model. Commit: abc123.'}]
         self.api.status('child', 'in_review')
         self.check('in_review')

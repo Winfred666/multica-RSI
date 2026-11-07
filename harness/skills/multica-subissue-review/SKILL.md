@@ -7,7 +7,14 @@ Use in the parent issue after native child steering. Run
 `python3 <this-skill-directory>/wrapper.py` and follow its choices.
 Read the child's delivery reply and evidence. Accept only delivered work in
 `in_review`; code acceptance requires its reviewed commit and an integration
-verification command. The parent performs integration before marking the child done.
+verification command. Approval steers the child to merge that commit into clean
+`main`, verify and push remote `main`, then report the integration result through
+`multica-surface-delivery`. Settle only after checking that result. The parent then
+steers every working sibling with the same Frontend, Backend, CLI or Harness label
+to minimally rebase onto new `main`, resolve mechanical conflicts, and block on
+true feature conflicts before continuing. Never rewrite sibling worktrees here.
+Scan recent thread roots and expand their bounded tails so folded delivery replies
+remain visible.
 Committed feature branches remain available as evidence.
 
 Resolve blockers in parent scope, return a concrete correction to the same child,
