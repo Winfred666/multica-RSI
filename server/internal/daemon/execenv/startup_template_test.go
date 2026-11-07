@@ -1,12 +1,62 @@
 package execenv
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 )
+
+func TestPackagedStartupNeedsNoWorkflowSkill(t *testing.T) {
+	source, err := os.ReadFile("../../../../harness/startup.gotmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateStartupTemplate(string(source)); err != nil {
+		t.Fatal(err)
+	}
+	for _, ctx := range []TaskContextForEnv{
+		{IssueID: "issue-1"}, {IssueID: "issue-1", HasProjectWorkflow: true},
+		{ChatSessionID: "chat-1"}, {QuickCreatePrompt: "create an issue"}, {AutopilotRunID: "run-1"},
+	} {
+		ctx.WorkspaceContext = string(source)
+		out, err := renderStartupPrompt("codex", ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out, "Use `multica-issue-turn`") || !strings.Contains(out, "Never-HERO (Hashing, Edge cases, Rubrics, Overbuild)") || !strings.Contains(out, `"Stop-slop": Replies and deliverables`) {
+			t.Fatalf("startup still requires workflow retrieval or lacks scope guidance: %s", out)
+		}
+		if ctx.IssueID != "" {
+			for _, rule := range []string{"--roots-only --summary --compact", "[Project workflow]", "done` stays human", "--content-file", "Agent mentions start runs", "multica-subissue-review"} {
+				if !strings.Contains(out, rule) {
+					t.Errorf("startup lost essential contract %q", rule)
+				}
+			}
+		}
+		if !strings.HasSuffix(strings.TrimSpace(out), "State uncertainty, blocked and failed checks once only if impact goal-reaching directly.") {
+			t.Fatal("scope and writing guidance must be the final prompt block")
+		}
+	}
+	raw, err := os.ReadFile("../../../../harness/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		SystemSkills []string `json:"system_skills"`
+		Skills       []string `json:"skills"`
+	}
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range append(manifest.SystemSkills, manifest.Skills...) {
+		if name == "multica-issue-turn" {
+			t.Fatal("retired workflow skill still installs")
+		}
+	}
+}
 
 func TestInjectRuntimeConfigRendersWorkspaceTemplate(t *testing.T) {
 	t.Parallel()

@@ -94,6 +94,8 @@ func TestClaimTaskByRuntime_IssueChangedNamesFields(t *testing.T) {
 	runtimeID := createClaimReclaimRuntime(t, ctx, "Issue snapshot changed runtime")
 	const name = "Issue snapshot changed agent"
 	agentID, issueID := createClaimReclaimAgentAndIssue(t, ctx, runtimeID, name)
+	const description = "Current instructions\nwith a second line."
+	dbfx.Exec(t, "UPDATE issue SET description = $1 WHERE id = $2", description, issueID)
 
 	// The previous run saw a different description. Title is unchanged and must
 	// NOT be reported alongside it.
@@ -107,6 +109,9 @@ func TestClaimTaskByRuntime_IssueChangedNamesFields(t *testing.T) {
 	}
 	if got := strings.Join(resp.Task.IssueChangedFields, ","); got != "description" {
 		t.Errorf("issue_changed_fields = %q, want \"description\"", got)
+	}
+	if resp.Task.IssueDescription == nil || *resp.Task.IssueDescription != description {
+		t.Errorf("claim lost the current issue body, got %v", resp.Task.IssueDescription)
 	}
 }
 
@@ -151,6 +156,9 @@ func TestClaimTaskByRuntime_NoPriorSnapshotIsNotUnchanged(t *testing.T) {
 			}
 			if resp.Task.IssueStatus != "in_progress" {
 				t.Errorf("issue_status = %q, want in_progress even when the delta is unknown", resp.Task.IssueStatus)
+			}
+			if resp.Task.IssueDescription == nil || *resp.Task.IssueDescription != "" {
+				t.Errorf("cold claim must supply even an empty issue body, got %v", resp.Task.IssueDescription)
 			}
 		})
 	}

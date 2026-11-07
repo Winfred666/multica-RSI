@@ -4279,6 +4279,7 @@ type claimCommentTaskResp struct {
 		IssueStateDeltaKnown bool     `json:"issue_state_delta_known"`
 		IssueChangedFields   []string `json:"issue_changed_fields"`
 		IssueStatus          string   `json:"issue_status"`
+		IssueDescription     *string  `json:"issue_description"`
 		IssueAssigneeType    string   `json:"issue_assignee_type"`
 		IssueAssigneeID      string   `json:"issue_assignee_id"`
 	} `json:"task"`

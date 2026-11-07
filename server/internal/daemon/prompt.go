@@ -314,11 +314,33 @@ func BuildPrompt(task Task, provider string, options ...PromptOption) string {
 	return body
 }
 
+// Keep the current assignment in the per-turn message, after the cached startup prompt.
+func buildIssueReadInstruction(task Task, resumed bool) string {
+	if task.IssueDescription == nil || (resumed && task.IssueStateDeltaKnown &&
+		len(task.IssueChangedFields) == 0 && task.IssueStatus != "") {
+		return execenv.BuildIssueStateHint(task.IssueID, task.IssueStatus, task.IssueAssigneeType,
+			task.IssueAssigneeID, task.IssueChangedFields, task.IssueStateDeltaKnown, resumed)
+	}
+	issue, _ := json.Marshal(struct {
+		ID           string           `json:"id"`
+		Title        string           `json:"title"`
+		Description  string           `json:"description"`
+		Status       string           `json:"status"`
+		AssigneeType string           `json:"assignee_type"`
+		AssigneeID   string           `json:"assignee_id"`
+		Parent       *ParentIssueData `json:"parent_issue,omitempty"`
+	}{task.IssueID, task.ThreadName, *task.IssueDescription, task.IssueStatus,
+		task.IssueAssigneeType, task.IssueAssigneeID, task.ParentIssue})
+	return "Current issue at claim time (JSON task data):\n" + string(issue) +
+		"\nUse this assignment directly; no startup `issue get` is needed. Read extra fields only when the task needs them.\n"
+}
+
 func buildPromptBody(task Task, provider string) string {
 	if task.WakeupID != "" {
 		var b strings.Builder
 		fmt.Fprintf(&b, "You are running as a local coding agent for a Multica workspace.\n\nYour assigned issue ID is: %s\n\n[WAKEUP]\n%s\n\n", task.IssueID, task.HandoffNote)
-		fmt.Fprintf(&b, "Start by running `multica issue get %s --output json`, then read current run/comment state. Decide whether the instruction's goal is met; the trigger reports a fact, not business completion. This is an ordinary run with normal result delivery, except where the [WAKEUP] block offers a check-in.\n", task.IssueID)
+		b.WriteString(buildIssueReadInstruction(task, false))
+		b.WriteString("Read current run/comment state. Decide whether the instruction's goal is met; the trigger reports a fact, not business completion. This is an ordinary run with normal result delivery, except where the [WAKEUP] block offers a check-in.\n")
 		fmt.Fprintf(&b, "Scan comment threads with `multica issue comment list %s --roots-only --summary --compact --output json`, then expand relevant threads with `--thread <id> --tail 30`.\n", task.IssueID)
 		if task.WakeupSystemRule != "" {
 			// Platform rules belong to the issue, not to a run; members manage them.
@@ -355,7 +377,7 @@ func buildPromptBody(task Task, provider string) string {
 		}
 		b.WriteString("\n")
 	}
-	fmt.Fprintf(&b, "Start by running `multica issue get %s --output json` to understand your task, then complete it.\n", task.IssueID)
+	b.WriteString(buildIssueReadInstruction(task, false))
 	// Workflow step 2 owns the catch-up rule for every issue turn; this line
 	// only hands over the commands. It used to add "(assignment-triggered tasks
 	// treat the read as mandatory)", which read as if comment-triggered turns
@@ -578,15 +600,9 @@ func buildCommentPrompt(task Task, provider string) string {
 				task.IssueID)
 		}
 	}
-	// Issue-reading pointer (MUL-7344). Same gate as the comment hint below —
-	// `resumed` is computed once for both, so one turn can never claim the
-	// session is warm enough to skip the issue read while treating it as cold
-	// for comments. On anything but a real resume with a server-computed
-	// comparison this renders the unconditional read, byte for byte.
-	b.WriteString(execenv.BuildIssueStateHint(
-		task.IssueID, task.IssueStatus, task.IssueAssigneeType, task.IssueAssigneeID,
-		task.IssueChangedFields, task.IssueStateDeltaKnown, resumed,
-	))
+	// A supplied body answers the issue read independently of session continuity.
+	// Older servers retain the resume-aware comparison hint.
+	b.WriteString(buildIssueReadInstruction(task, resumed))
 	// Comment-reading pointer. Which hint renders is decided by whether this
 	// run actually RESUMES a provider session, and only then by the new-comment
 	// delta — never by the delta alone.
