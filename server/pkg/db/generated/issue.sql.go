@@ -1436,7 +1436,7 @@ WHERE i.workspace_id = $1
              AND a.owner_id     = $12::uuid
     ))
   )
-ORDER BY i.position ASC, i.created_at DESC
+ORDER BY i.position ASC, i.created_at DESC, i.id DESC
 LIMIT $2 OFFSET $3
 `
 

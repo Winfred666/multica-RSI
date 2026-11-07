@@ -2095,7 +2095,6 @@ func TestWorkspaceCRUD(t *testing.T) {
 }
 
 func TestCreateWorkspaceUsesRequestedSlug(t *testing.T) {
-	workspaceHarnessServer(t)
 	const slug = "handler-create-workspace-requested"
 	ctx := context.Background()
 

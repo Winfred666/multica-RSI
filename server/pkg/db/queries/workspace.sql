@@ -246,3 +246,33 @@ UPDATE member
 SET pinned_at = CASE WHEN @pinned::bool THEN COALESCE(pinned_at, now()) ELSE NULL END
 WHERE workspace_id = @workspace_id AND user_id = @user_id
 RETURNING pinned_at;
+
+-- name: GetWorkspacePackageCounts :one
+-- Counts for the transfer checklist. Never load content to render it.
+SELECT
+    (SELECT count(*) FROM project p WHERE p.workspace_id = w.id)::bigint AS projects,
+    (SELECT count(*) FROM issue i WHERE i.workspace_id = w.id)::bigint AS issues,
+    (SELECT count(*) FROM agent a WHERE a.workspace_id = w.id AND a.kind = 'user' AND a.archived_at IS NULL)::bigint AS agents,
+    (SELECT count(*) FROM skill s WHERE s.workspace_id = w.id)::bigint AS skills,
+    (SELECT count(*) FROM workspace_mcp_server m WHERE m.workspace_id = w.id)::bigint AS mcps,
+    (SELECT count(*) FROM plugin_installation pi WHERE pi.workspace_id = w.id)::bigint AS plugins,
+    (w.context IS NOT NULL)::boolean AS system_prompt
+FROM workspace w WHERE w.id = $1;
+
+-- name: ListWorkspacePackageSummaries :many
+-- Only expandable categories. Projects/issues stay a single count selection.
+SELECT resources.id, resources.name, resources.is_system_skill FROM (
+    SELECT s.id, s.name, s.is_system_skill FROM skill s
+    WHERE s.workspace_id = sqlc.arg('workspace_id') AND sqlc.arg('category')::text = 'skills'
+    UNION ALL
+    SELECT a.id, a.name, false AS is_system_skill FROM agent a
+    WHERE a.workspace_id = sqlc.arg('workspace_id') AND sqlc.arg('category')::text = 'agents' AND a.kind = 'user' AND a.archived_at IS NULL
+    UNION ALL
+    SELECT m.id, m.name, false AS is_system_skill FROM workspace_mcp_server m
+    WHERE m.workspace_id = sqlc.arg('workspace_id') AND sqlc.arg('category')::text = 'mcps'
+    UNION ALL
+    SELECT pi.id, pi.manifest->>'name' AS name, false AS is_system_skill FROM plugin_installation pi
+    WHERE pi.workspace_id = sqlc.arg('workspace_id') AND sqlc.arg('category')::text = 'plugins'
+) AS resources
+ORDER BY resources.name, resources.id
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
