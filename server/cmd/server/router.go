@@ -1807,6 +1807,11 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				// Admin-level access
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireWorkspaceRoleFromURL(queries, "id", "owner", "admin"))
+					r.Get("/package", h.WorkspacePackageContents)
+					r.Get("/package/default", h.DefaultWorkspacePackage)
+					r.Post("/export", h.ExportWorkspacePackage)
+					r.Post("/import/inspect", h.InspectWorkspacePackage)
+					r.Post("/import", h.ImportWorkspacePackage)
 					r.Put("/", h.UpdateWorkspace)
 					r.Patch("/", h.UpdateWorkspace)
 					r.Post("/members", h.CreateInvitation)
