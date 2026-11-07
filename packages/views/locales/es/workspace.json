@@ -30,5 +30,28 @@
     "description": "Este espacio de trabajo no existe o no tienes acceso.",
     "go_to_workspaces": "Ir a mis espacios de trabajo",
     "sign_in_different": "Iniciar sesión con otro usuario"
+  },
+  "package": {
+    "import_action": "Importar espacio de trabajo",
+    "export_action": "Exportar espacio de trabajo",
+    "projects_issues": "Proyectos e incidencias",
+    "projects_hint": "Un agente puede copiar proyectos e incidencias de forma selectiva al nuevo espacio de trabajo.",
+    "agents": "Agentes",
+    "agents_hint": "Los agentes copiados están inactivos y requieren configuración en una nueva máquina de ejecución.",
+    "skills": "Habilidades",
+    "system_skills": "Habilidades del sistema",
+    "normal_skills": "Habilidades normales",
+    "mcps": "MCP",
+    "plugins": "Complementos",
+    "system_prompt": "Instrucciones del sistema",
+    "replace_existing": "Reemplazar habilidades, MCP y complementos existentes con el mismo nombre.",
+    "file": "Paquete del espacio de trabajo (.json)",
+    "loading": "Cargando…",
+    "failed": "No se pudo cargar el paquete del espacio de trabajo.",
+    "invalid": "Paquete del espacio de trabajo no válido.",
+    "imported": "Paquete del espacio de trabajo importado.",
+    "importing": "Importando…",
+    "startup_title": "Importar el kit de inicio",
+    "continue": "Continuar"
   }
 }

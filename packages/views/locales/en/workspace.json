@@ -30,5 +30,28 @@
     "description": "This workspace doesn't exist or you don't have access.",
     "go_to_workspaces": "Go to my workspaces",
     "sign_in_different": "Sign in as a different user"
+  },
+  "package": {
+    "import_action": "Import workspace",
+    "export_action": "Export workspace",
+    "projects_issues": "Projects and issues",
+    "projects_hint": "An agent can selectively copy projects and issues into the new workspace.",
+    "agents": "Agents",
+    "agents_hint": "Copied agents are inactive and need setup on a new runtime machine.",
+    "skills": "Skills",
+    "system_skills": "System skills",
+    "normal_skills": "Normal skills",
+    "mcps": "MCPs",
+    "plugins": "Plugins",
+    "system_prompt": "System prompt",
+    "replace_existing": "Replace existing skills, MCPs and plugins with matching names.",
+    "file": "Workspace package (.json)",
+    "loading": "Loading…",
+    "failed": "Could not load the workspace package.",
+    "invalid": "Invalid workspace package.",
+    "imported": "Workspace package imported.",
+    "importing": "Importing…",
+    "startup_title": "Import the startup kit",
+    "continue": "Continue"
   }
 }

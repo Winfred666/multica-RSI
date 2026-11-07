@@ -804,7 +804,8 @@
     "prefix_new_label": "New prefix",
     "prefix_rule": "Letters and numbers only, up to 10 characters.",
     "prefix_confirm_action": "Change to {{prefix}}",
-    "prefix_external_warning": "Old keys such as {{oldExample}} in PR titles, branch names, docs, and chat are not updated, so those links stop working."
+    "prefix_external_warning": "Old keys such as {{oldExample}} in PR titles, branch names, docs, and chat are not updated, so those links stop working.",
+    "transfer": "Import and export"
   },
   "delete_workspace_dialog": {
     "title": "Delete workspace",
