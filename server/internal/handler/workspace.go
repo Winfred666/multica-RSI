@@ -240,11 +240,12 @@ func (h *Handler) GetWorkspace(w http.ResponseWriter, r *http.Request) {
 }
 
 type CreateWorkspaceRequest struct {
-	Name        string  `json:"name"`
-	Slug        string  `json:"slug"`
-	Description *string `json:"description"`
-	Context     *string `json:"context"`
-	IssuePrefix *string `json:"issue_prefix"`
+	Name           string  `json:"name"`
+	Slug           string  `json:"slug"`
+	Description    *string `json:"description"`
+	Context        *string `json:"context"`
+	IssuePrefix    *string `json:"issue_prefix"`
+	SkipStartupKit bool    `json:"skip_startup_kit"`
 }
 
 func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
@@ -382,10 +383,12 @@ func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	// users back to /onboarding instead.
 
 	wsID := uuidToString(ws.ID)
-	if err := h.installWorkspaceHarness(r.Context(), tx, ws.ID, parseUUID(userID), req.Context != nil); err != nil {
-		slog.Error("workspace startup kit failed", "workspace_id", wsID, "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to install workspace startup kit")
-		return
+	if !req.SkipStartupKit {
+		if err := h.installWorkspaceHarness(r.Context(), tx, ws.ID, parseUUID(userID), req.Context != nil); err != nil {
+			slog.Error("workspace startup kit failed", "workspace_id", wsID, "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to install workspace startup kit")
+			return
+		}
 	}
 
 	if err := tx.Commit(r.Context()); err != nil {
