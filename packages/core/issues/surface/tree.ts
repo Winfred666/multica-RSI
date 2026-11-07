@@ -71,7 +71,7 @@ export interface IssueTreeSize { width: number; height: number }
 
 export const TREE_NODE_WIDTH = 300;
 export const TREE_NODE_HEIGHT = 96;
-export function layoutIssueTree(roots: IssueTreeNode[], sizes: ReadonlyMap<string, IssueTreeSize> = new Map(), aspectRatio = 1.5) {
+export function layoutIssueTree(roots: IssueTreeNode[], sizes: ReadonlyMap<string, IssueTreeSize> = new Map(), canvasWidth = 1200) {
   const nodes: PositionedIssueTreeNode[] = [];
   const bounds = new Map<string, IssueTreeSize>();
   function measure(node: IssueTreeNode): IssueTreeSize {
@@ -85,7 +85,7 @@ export function layoutIssueTree(roots: IssueTreeNode[], sizes: ReadonlyMap<strin
     bounds.set(node.id, size);
     return size;
   }
-  const rootBounds = roots.map(measure);
+  roots.forEach(measure);
   function place(node: IssueTreeNode, y: number, parentId: string | null, left: number) {
     const height = sizes.get(node.id)?.height ?? TREE_NODE_HEIGHT;
     const width = sizes.get(node.id)?.width ?? TREE_NODE_WIDTH;
@@ -99,8 +99,7 @@ export function layoutIssueTree(roots: IssueTreeNode[], sizes: ReadonlyMap<strin
     }
   }
   // Pack whole trees in order; their bounding boxes keep descendants apart.
-  const area = rootBounds.reduce((sum, size) => sum + (size.width + 40) * (size.height + 40), 0);
-  const rowWidth = Math.max(TREE_NODE_WIDTH, ...rootBounds.map((size) => size.width), Math.sqrt(area * aspectRatio));
+  const rowWidth = Math.max(TREE_NODE_WIDTH * 2 + 40, canvasWidth - 96);
   let left = 48, top = 48, rowHeight = 0, right = 48, bottom = 48;
   for (const root of roots) {
     const size = bounds.get(root.id)!;

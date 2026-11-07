@@ -38,6 +38,7 @@ import {
   midpointOf,
   panBy,
   resizeTransform,
+  restoreTransform,
   wheelZoomFactor,
   zoomByAtCenter,
   zoomToAt,
@@ -143,7 +144,8 @@ export function useZoomCanvas({
 
   // Fit is deferred until both sizes are known; until then any transform we
   // computed would be against a 0x0 viewport and would have to be thrown away.
-  const hasFittedRef = useRef(initialTransform !== null);
+  const hasFittedRef = useRef(false);
+  const initialTransformRef = useRef(initialTransform);
   const activePointersRef = useRef(new Map<number, Point>());
   const panOriginRef = useRef<{ pointer: Point; transform: ZoomTransform } | null>(null);
   const pinchOriginRef = useRef<{ distance: number; scale: number } | null>(null);
@@ -195,7 +197,9 @@ export function useZoomCanvas({
   useLayoutEffect(() => {
     if (!ready || hasFittedRef.current) return;
     hasFittedRef.current = true;
-    setTransform(computeFitTransform(contentSize, viewport));
+    setTransform(initialTransformRef.current
+      ? restoreTransform(initialTransformRef.current, contentSize, viewport)
+      : computeFitTransform(contentSize, viewport));
   }, [ready, contentSize, viewport]);
 
   // Genuinely different content (new natural size) starts fresh. Also a

@@ -55,7 +55,7 @@ export function workspaceTreeOptions(wsId: string, roots: Issue[]) {
   });
 }
 
-export function layoutWorkspaceTree(roots: IssueTreeNode[], wsId: string, snapshots?: Record<string, WorkspaceTree>, sizes: ReadonlyMap<string, IssueTreeSize> = new Map(), aspectRatio = 1.5) {
+export function layoutWorkspaceTree(roots: IssueTreeNode[], wsId: string, snapshots?: Record<string, WorkspaceTree>, sizes: ReadonlyMap<string, IssueTreeSize> = new Map(), canvasWidth = 1200) {
   const seen = new Set([wsId]);
   const measured = new Map(sizes);
   const nested = new Map<string, ReturnType<typeof layoutIssueTree>>();
@@ -79,7 +79,7 @@ export function layoutWorkspaceTree(roots: IssueTreeNode[], wsId: string, snapsh
       }
       return { ...node, children };
     };
-    const layout = layoutIssueTree(nodes.map(visit), measured, aspectRatio);
+    const layout = layoutIssueTree(nodes.map(visit), measured, canvasWidth);
     layout.nodes = layout.nodes.flatMap((position) => [position, ...(nested.get(position.node.id)?.nodes ?? []).map((child) => ({
       ...child, x: child.x + position.x - position.width / 2, y: child.y + position.y + 40,
     }))]);

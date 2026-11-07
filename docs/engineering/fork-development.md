@@ -47,7 +47,7 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   rings and compression counts, plus saved pan and zoom positions. Issue-owned
   sub-workspaces follow sibling issues as static nested snapshots, with collaborators
   from their own workspace and links to open it. Each branch uses its own measured card heights; complete root
-  trees wrap into rows using the canvas aspect ratio. Uploaded HTML deliverables render inside tree cards and open in
+  trees fill the captured canvas width before wrapping. Packing refreshes on an uncached load and issue creation/deletion, while panel and window resizes preserve it. Reloaded cameras stay within the measured tree bounds. Uploaded HTML deliverables render inside tree cards and open in
   the artifact viewer.
 - **Settings.** You can manage hosted plugin execution credentials and personal
   sub-issue following from workspace settings.
