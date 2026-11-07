@@ -151,14 +151,13 @@ func TestClaimTasksForRuntimes_MaxTasksCap(t *testing.T) {
 	}
 }
 
-func TestClaimTasksForRuntimes_PreservesAgentCapacityAndIssueSerialization(t *testing.T) {
+func TestClaimTasksForRuntimes_PreservesAgentCapacity(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
 		limit int
 		want  int
 	}{
 		{"agent at capacity", 1, 1},
-		{"same issue waits while independent issue starts", 5, 2},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()

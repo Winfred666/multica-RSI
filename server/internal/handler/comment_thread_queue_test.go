@@ -2,10 +2,8 @@ package handler
 
 import (
 	"context"
-	"errors"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/testutil"
@@ -72,9 +70,6 @@ func TestCommentThreadQueuesMergeAndExecuteIndependently(t *testing.T) {
 	}
 	if claimed.ID != a.ID {
 		t.Fatal("oldest thread should execute first")
-	}
-	if _, err := testHandler.Queries.ClaimAgentTask(ctx, claim); !errors.Is(err, pgx.ErrNoRows) {
-		t.Fatalf("another thread ran concurrently on the same issue: %v", err)
 	}
 	// A new instruction after execution starts belongs to a successor run.
 	dbfx.Exec(t, "UPDATE agent_task_queue SET status='running', started_at=now(), delivered_comment_ids=ARRAY[$2::uuid,$3::uuid,$4::uuid] WHERE id=$1", uuidToString(a.ID), rootA, replyA, nestedA)

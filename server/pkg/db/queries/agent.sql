@@ -758,12 +758,8 @@ JOIN agent a ON a.id = atq.agent_id
 WHERE atq.id = $1 AND a.workspace_id = $2;
 
 -- name: ClaimAgentTask :one
--- Claims the next queued task for an agent on one healthy runtime, enforcing
--- per-(issue, agent) serialization:
--- a task is only claimable when no other task for the same issue AND same agent is
--- already dispatched or running. This allows different agents to work on the same
--- issue in parallel while preventing a single agent from running duplicate tasks.
--- Chat tasks (issue_id IS NULL) use chat_session_id for serialization instead.
+-- Claims the next queued task for an agent on one healthy runtime.
+-- Chat tasks (issue_id IS NULL) use chat_session_id for serialization.
 -- Quick-create tasks have no issue / chat / autopilot link, so they serialize on
 -- "any other quick-create-shaped task" (all four FKs NULL) for the same agent —
 -- otherwise a user mashing the create button could fire concurrent quick-creates
@@ -802,8 +798,7 @@ WHERE id = (
           WHERE active.agent_id = atq.agent_id
             AND active.status IN ('dispatched', 'running', 'waiting_local_directory')
             AND (
-              (atq.issue_id IS NOT NULL AND active.issue_id = atq.issue_id)
-              OR (atq.chat_session_id IS NOT NULL AND active.chat_session_id = atq.chat_session_id)
+              (atq.chat_session_id IS NOT NULL AND active.chat_session_id = atq.chat_session_id)
               OR (
                 atq.issue_id IS NULL
                 AND atq.chat_session_id IS NULL
