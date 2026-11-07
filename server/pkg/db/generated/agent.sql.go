@@ -4465,6 +4465,7 @@ func (q *Queries) GetLatestChatTaskRolloutMissing(ctx context.Context, arg GetLa
 const getLatestTaskRoleForIssueAndAgent = `-- name: GetLatestTaskRoleForIssueAndAgent :one
 SELECT is_leader_task, squad_id FROM agent_task_queue
 WHERE issue_id = $1 AND agent_id = $2
+  AND COALESCE(context->>'type', '') <> 'remote_sop'
 ORDER BY created_at DESC
 LIMIT 1
 `
