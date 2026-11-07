@@ -4,7 +4,12 @@ def child_reply(api, child):
         value = (child.get('metadata') or {}).get(key)
         if value:
             lines.append(key + ': ' + value)
-    comments = api.request('GET', f"/api/issues/{child['id']}/comments?recent=3&fold=true")
+    roots = api.request('GET', f"/api/issues/{child['id']}/comments?roots_only=true&summary=true")
+    comments = {}
+    for root in sorted(roots, key=lambda r: r.get('last_activity_at', r.get('created_at', '')))[-3:]:
+        for comment in api.request('GET', f"/api/issues/{child['id']}/comments?thread={root['id']}&tail=30"):
+            comments[comment['id']] = comment
+    comments = sorted(comments.values(), key=lambda c: c.get('created_at', ''))
     replies = [c for c in comments if c.get('author_type') == 'agent' and
                c.get('author_id') == child.get('assignee_id') and not c.get('deleted_at') and c.get('content')]
     if replies:
