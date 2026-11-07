@@ -1,10 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { toast } from "sonner";
+import { useDeleteAttachments } from "@multica/core/issues/mutations";
 import { useQuery } from "@tanstack/react-query";
 import { issueWorkspaceId, layoutWorkspaceTree, workspaceTreeOptions } from "@multica/core/workspace/tree";
-import { EyeOff, Layers, Plus, RotateCcw } from "@multica/ui/icons";
+import { EyeOff, Layers, Plus, RotateCcw, Trash2 } from "@multica/ui/icons";
 import type { AgentTask, Issue, Project } from "@multica/core/types";
+import { useWSEvent } from "@multica/core/realtime";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { paths, useWorkspacePaths } from "@multica/core/paths";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
@@ -74,7 +77,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   const setTreeViewport = useViewStore((s) => s.setTreeViewport);
   const { data: tasks = EMPTY_TASKS } = useQuery(agentTaskSnapshotOptions(wsId));
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [aspectRatio, setAspectRatio] = useState(1.5);
+  const [layoutWidth, setLayoutWidth] = useState(treeViewport?.layoutWidth ?? 0);
   const [sizes, setSizes] = useState<ReadonlyMap<string, IssueTreeSize>>(new Map());
   const onSizeChange = useCallback((id: string, size: IssueTreeSize) => {
     if (size.height <= 0 || size.width <= 0) return;
@@ -89,22 +92,25 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   const layout = useMemo(() => layoutWorkspaceTree(buildIssueTree(
       sortIssues(issues, sortBy, sortDirection, statusColumnKeys(catalog)),
       new Set(hiddenStatuses.filter((status) => !statusFilters.includes(status))), expanded,
-    ), wsId, snapshots.data, sizes, aspectRatio), [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, sizes, wsId, snapshots.data, aspectRatio]);
+    ), wsId, snapshots.data, sizes, layoutWidth), [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, sizes, wsId, snapshots.data, layoutWidth]);
   const isSnapshot = (node: IssueTreeNode) => !!snapshots.data?.[node.issues[0]!.workspace_id];
-  const canvas = useZoomCanvas({ content: layout, initialTransform: treeViewport, preserveTransform: true, panWithSpace: true });
+  const measured = layout.nodes.every(({ node }) => isWorkspaceNode(node) || sizes.has(node.id));
+  const canvas = useZoomCanvas({
+    content: layoutWidth > 0 && !pending && !snapshots.isFetching && measured ? layout : null,
+    initialTransform: treeViewport, preserveTransform: true, panWithSpace: true,
+  });
   const selection = useIssueSurfaceSelection();
+  const deleteAttachments = useDeleteAttachments();
   const canvasRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const element = canvasRef.current;
-    if (!element) return;
-    const measure = () => {
-      if (element.offsetWidth > 0 && element.offsetHeight > 0) setAspectRatio(element.offsetWidth / element.offsetHeight);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
+  const repack = useCallback(() => {
+    const width = canvasRef.current?.offsetWidth;
+    if (width) setLayoutWidth(width);
   }, []);
+  useLayoutEffect(() => {
+    if (!layoutWidth) repack();
+  }, [layoutWidth, repack]);
+  useWSEvent("issue:created", repack);
+  useWSEvent("issue:deleted", repack);
   const drag = useRef<{ pointerId: number; x: number; y: number; selected: Set<string> } | null>(null);
   const suppressClick = useRef(false);
   const [rectangle, setRectangle] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -123,7 +129,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
       canvas.handlePointerDown(event);
       return;
     }
-    if (event.button !== 0 || (event.target as Element).closest("[data-tree-card], [data-workspace-frame], button, a, input, textarea, select")) return;
+    if (event.button !== 0 || (event.target as Element).closest("[data-tree-issue], [data-tree-artifact], [data-workspace-frame], button, a, input, textarea, select")) return;
     event.preventDefault();
     event.currentTarget.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -143,8 +149,12 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
     suppressClick.current = true;
     setRectangle(rect);
     const selected = new Set(start.selected);
-    for (const { node, x, y, height, width } of layout.nodes) {
-      if (!node.collapsed && !isWorkspaceNode(node) && !isSnapshot(node) && x + width / 2 >= rect.x && x - width / 2 <= rect.x + rect.width && y + height >= rect.y && y <= rect.y + rect.height) selected.add(node.issues[0]!.id);
+    const viewport = canvasRef.current!.getBoundingClientRect();
+    for (const element of canvasRef.current!.querySelectorAll<HTMLElement>("[data-tree-issue], [data-tree-artifact]")) {
+      const bounds = element.getBoundingClientRect();
+      const left = (bounds.left - viewport.left - canvas.transform.x) / canvas.transform.scale;
+      const top = (bounds.top - viewport.top - canvas.transform.y) / canvas.transform.scale;
+      if (left + bounds.width / canvas.transform.scale >= rect.x && left <= rect.x + rect.width && top + bounds.height / canvas.transform.scale >= rect.y && top <= rect.y + rect.height) selected.add(element.dataset.treeArtifact ?? element.dataset.treeIssue!);
     }
     selection.deselect([...selection.selectedIds].filter((id) => !selected.has(id)));
     selection.select([...selected]);
@@ -158,8 +168,8 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
     canvas.handlePointerUp(event);
   }
   useEffect(() => {
-    setTreeViewport(canvas.transform);
-  }, [canvas.transform, setTreeViewport]);
+    if (layoutWidth > 0) setTreeViewport({ ...canvas.transform, layoutWidth });
+  }, [canvas.transform, layoutWidth, setTreeViewport]);
   const byId = useMemo(() => new Map(layout.nodes.map((node) => [node.node.id, node])), [layout]);
   useEffect(() => {
     // A canvas needs all matching branches to place parents and children correctly.
@@ -167,6 +177,20 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
       if (page.hasMore && !page.isFetching && !page.isError) page.loadMore();
     }
   }, [statusPagination]);
+
+  const selectedArtifacts = [...(canvasRef.current?.querySelectorAll<HTMLElement>("[data-tree-artifact]") ?? [])]
+    .filter((element) => selection.selectedIds.has(element.dataset.treeArtifact!));
+  function removeArtifacts() {
+    if (deleteAttachments.isPending || !selectedArtifacts.length) return;
+    const ids = selectedArtifacts.map((element) => element.dataset.treeArtifact!);
+    deleteAttachments.mutate(selectedArtifacts.map((element) => ({
+      issueId: element.closest<HTMLElement>("[data-tree-card]")!.dataset.treeCard!,
+      ids: element.dataset.attachmentIds!.split(","),
+    })), {
+      onSuccess: () => selection.deselect(ids),
+      onError: (error) => toast.error(error.message),
+    });
+  }
 
   function color(issue: Issue) {
     if (isBuiltInIssueStatus(issue.status)) return { className: BUILT_IN_ICON_COLOR[issue.status], color: undefined };
@@ -185,11 +209,12 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
           return;
         }
         if ((event.target as Element).closest("[data-workspace-frame]")) return;
+        const artifact = (event.target as Element).closest<HTMLElement>("[data-tree-artifact]");
         const card = (event.target as Element).closest<HTMLElement>("[data-tree-card]");
-        if (card && selection.selectedIds.size > 0 && (event.target as Element).closest("a")) {
+        if (selection.selectedIds.size > 0 && (artifact || card && (event.target as Element).closest("a"))) {
           event.preventDefault();
           event.stopPropagation();
-          selection.toggle(card.dataset.treeCard!);
+          selection.toggle(artifact?.dataset.treeArtifact ?? card!.dataset.treeCard!);
         } else if (!card && canvasRef.current?.contains(event.target as Node)) {
           selection.clear();
         }
@@ -200,6 +225,9 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
           {failed ? t(($) => $.tree.load_failed) : pending ? t(($) => $.tree.loading) : t(($) => $.tree.pan_hint)}
         </span>
         <div className="flex items-center gap-1">
+          {selectedArtifacts.length > 0 && <Button variant="ghost" size="sm" disabled={deleteAttachments.isPending} onClick={removeArtifacts} className="text-destructive hover:text-destructive">
+            <Trash2 />{t(($) => $.batch.delete)} ({selectedArtifacts.length})
+          </Button>}
           {failed && <Button variant="ghost" size="sm" onClick={() => pages.filter((page) => page.isError).forEach((page) => page.retry())}>{t(($) => $.status_catalog_error.retry)}</Button>}
           {expanded.size > 0 && <Button variant="ghost" size="icon-sm" aria-label={t(($) => $.tree.collapse)} onClick={() => setExpanded(new Set())}><RotateCcw /></Button>}
           <Popover>
@@ -218,6 +246,11 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
       <ZoomCanvas canvas={{ ...canvas, handlePointerDown, handlePointerMove, handlePointerUp,
         handleKeyDown: (event) => {
           if (!isEditableShortcutTarget(event.target)) {
+            if ((event.key === "Delete" || event.key === "Backspace") && selectedArtifacts.length > 0) {
+              event.preventDefault();
+              removeArtifacts();
+              return;
+            }
             if (event.key === "Escape") selection.clear();
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
               event.preventDefault();
@@ -383,12 +416,13 @@ function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, on
   );
 
   return (
-    <div ref={ref} className="min-h-24 min-w-60 max-w-240 resize overflow-auto" style={{ width: TREE_NODE_WIDTH }} data-tree-card={issue.id}>
+    <div ref={ref} className="min-h-24" style={{ width: TREE_NODE_WIDTH }} data-tree-card={issue.id}>
       <IssueActionsContextMenu issue={issue}>
-        <div className={cn("group/card rounded-lg", selected && "outline outline-1 outline-brand")} data-selected={selected ? "" : undefined}>
+        <div className="group/card relative rounded-lg" data-tree-issue={issue.id} data-selected={selected ? "" : undefined}>
           <AppLink href={paths.issueDetail(issue.id)} newTabTitle={issue.identifier} className="block">
             {card}
           </AppLink>
+          {selected && <span aria-hidden="true" className="pointer-events-none absolute -inset-px z-10 rounded-lg border border-brand" />}
         </div>
       </IssueActionsContextMenu>
       {files.length > 0 && <TreeDeliverables files={files} />}

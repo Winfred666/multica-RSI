@@ -36,6 +36,7 @@ export {
 export type ViewMode = "board" | "list" | "table" | "gantt" | "swimlane" | "tree";
 export type GanttZoom = "day" | "week" | "month";
 export interface TreeViewport {
+  layoutWidth?: number;
   scale: number;
   x: number;
   y: number;
