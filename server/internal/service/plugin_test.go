@@ -380,3 +380,26 @@ func TestEnforceStorageQuotaCountsBytesNotCharacters(t *testing.T) {
 		t.Fatal("fixture does not distinguish characters from bytes")
 	}
 }
+
+func TestBundleDigestIgnoresJSONObjectOrder(t *testing.T) {
+	manifest, _, err := plugincontract.ParseManifest([]byte(testManifestJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.Config.Fields = []plugincontract.ConfigField{{Key: "z-last", Type: "string", Label: "Last"}, {Key: "a-first", Type: "string", Label: "First"}}
+	manifest.Contributes.Hooks = []plugincontract.Hook{{InputSchema: json.RawMessage(`{"z":1,"a":2}`)}}
+	bundle := plugincontract.Bundle{Manifest: manifest, Files: []plugincontract.BundleFile{{Path: "hook.py", Content: []byte("run")}}}
+	digest := BundleDigest(bundle)
+	manifest.Config.Fields[0], manifest.Config.Fields[1] = manifest.Config.Fields[1], manifest.Config.Fields[0]
+	manifest.Contributes.Hooks[0].InputSchema = json.RawMessage(`{"a":2,"z":1}`)
+	if BundleDigest(bundle) != digest {
+		t.Fatal("digest depends on JSONB config field order")
+	}
+	if bundle.Manifest.Config.Fields[0].Key != "a-first" {
+		t.Fatal("digest changed the settings form order")
+	}
+	bundle.Files[0].Content = []byte("changed")
+	if BundleDigest(bundle) == digest {
+		t.Fatal("digest ignored changed package content")
+	}
+}
