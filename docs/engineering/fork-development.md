@@ -8,7 +8,8 @@ behavior. The [README](../../README.md) presents the research platform.
 
 - **Editable startup prompts.** We replaced embedded workflow instructions with
   workspace Go templates and SOP skills. You can edit the workspace prompt;
-  the server validates the template on save.
+  the server validates the template on save. Child prompts use their own issue
+  and explicit handoff context; the daemon does not add parent-reading guidance.
 - **Configurable subscriptions and wakeups.** You can control inherited sub-issue
   following per user and workspace. We retired the built-in child-done wakeup
   and moved parent wakeup policy into plugins. You can create explicit waits
