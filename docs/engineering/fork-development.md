@@ -61,6 +61,10 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## CLI and daemon
 
+- **Workspace packages.** `workspace package`, `workspace export` and
+  `workspace import` expose the native package API with paged summaries, JSON
+  selection files and inactive imported agents. See [usage and defaults](workspace-packages.md#cli).
+
 - **Plugin commands.** You can inspect execution credentials, enable or disable
   hosted execution, and configure installed plugins:
 
