@@ -95,3 +95,11 @@ WHERE agent_id = $1 AND server_id = $2;
 -- name: RemoveAgentMcpServer :execrows
 DELETE FROM agent_mcp_server
 WHERE agent_id = $1 AND server_id = $2;
+
+-- name: ListAgentMcpBindings :many
+-- Transfer references without reading unselected server configurations.
+SELECT ams.server_id, ams.enabled
+FROM agent_mcp_server ams
+JOIN workspace_mcp_server s ON s.id = ams.server_id
+WHERE ams.agent_id = $1
+ORDER BY s.name, s.id;

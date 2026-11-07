@@ -1,9 +1,11 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -179,8 +181,16 @@ func (s *PluginService) publish(ctx context.Context, workspaceID, userID pgtype.
 // differ in timestamps and compression, and the question the digest answers is
 // "are we looking at the same plugin", not "was this the same upload".
 func BundleDigest(bundle plugincontract.Bundle) string {
+	// JSONB reorders object keys, including config and raw hook schemas.
+	// Normalize JSON for identity without changing the settings form's order.
+	canonical, _ := json.Marshal(bundle.Manifest) // Bundle manifests are validated.
+	decoder := json.NewDecoder(bytes.NewReader(canonical))
+	decoder.UseNumber()
+	var value any
+	_ = decoder.Decode(&value)
+	canonical, _ = json.Marshal(value)
 	hash := sha256.New()
-	hash.Write(bundle.Canonical)
+	hash.Write(canonical)
 	for _, file := range bundle.Files {
 		fmt.Fprintf(hash, "\n%s\n%d\n", file.Path, len(file.Content))
 		hash.Write(file.Content)

@@ -54,7 +54,6 @@ func TestCreateWorkspace_DoesNotMarkOnboarded(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("database not available")
 	}
-	workspaceHarnessServer(t)
 
 	ctx := context.Background()
 	const slug = "handler-tests-onboarded-null"
@@ -161,9 +160,6 @@ func TestCreateWorkspace_AllowedEmails(t *testing.T) {
 			cfg.AllowSignup = prev.AllowSignup
 			testHandler.cfg = cfg
 			t.Cleanup(func() { testHandler.cfg = prev })
-			if tc.wantCode == http.StatusCreated {
-				workspaceHarnessServer(t)
-			}
 
 			req := workspaceHarnessRequest(map[string]any{
 				"name": "Allowlist Create",
@@ -1477,7 +1473,6 @@ func TestCreateWorkspace_ChineseNameDerivesPrefixFromSlug(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("database not available")
 	}
-	workspaceHarnessServer(t)
 
 	ctx := context.Background()
 	const slug = "handler-tests-frontend-team"
@@ -1507,7 +1502,6 @@ func TestCreateWorkspace_HonorsExplicitIssuePrefix(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("database not available")
 	}
-	workspaceHarnessServer(t)
 
 	ctx := context.Background()
 	const slug = "handler-tests-explicit-prefix"
