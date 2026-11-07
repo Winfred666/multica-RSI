@@ -71,9 +71,14 @@ private instructions and MCP configuration. Plugin secrets and execution PATs
 are excluded.
 
 Every import commits or rolls back as one transaction and enqueues no agent work.
-Workspace creation uses this same native importer with the embedded startup kit
-inside its creation transaction, preserving an explicitly supplied prompt. It
-runs no Python installer, HTTP self-call or PAT provisioning.
+`POST /api/workspaces` accepts an optional `skip_startup_kit` boolean. Omitted or
+false uses this same native importer with the embedded startup kit inside the
+creation transaction, preserving an explicitly supplied prompt. True skips only
+the embedded kit; owner membership, built-in issue statuses and explicit context
+are still created transactionally. Without explicit context, the prompt stays
+unset. Startup can then fetch `/package/default` and import its checklist selection
+before runtime setup. Creation runs no Python installer, HTTP self-call or PAT
+provisioning.
 
 ## CLI
 
