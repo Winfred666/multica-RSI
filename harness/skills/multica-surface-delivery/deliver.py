@@ -89,7 +89,7 @@ def committed(facts, *, publish=False):
     if sop.git(cwd, 'branch', '--show-current').stdout.strip() != facts['branch']:
         raise ValueError('Return to the prepared feature branch before reporting.')
     if sop.git(cwd, 'status', '--porcelain', '--untracked-files=no').stdout.strip():
-        raise ValueError('Commit the issue source and evidence before reporting; tracked changes remain.')
+        raise ValueError('Commit the issue source and required artifacts before reporting; tracked changes remain.')
     head = sop.git(cwd, 'rev-parse', 'HEAD').stdout.strip()
     if publish and sop.git(cwd, 'remote', 'get-url', 'origin', check=False).returncode == 0:
         sop.git(cwd, 'push', 'origin', head + ':refs/heads/' + facts['branch'])
@@ -122,10 +122,11 @@ def publish(args, context, issue, path, receipt):
         raise error('changed_report', 'A delivery submission already uses a different report.', 'Reconcile the saved report before changing it.')
     receipt['report'] = value
     marker = '<!-- multica-delivery:' + receipt['id'] + ' -->'
-    body = '\n\n'.join([value['claim'].strip(), *([] if value['metric'] is None else [str(value['metric'])]),
-                        value['method'].strip(), value['appendix'].strip()])
+    body = '\n\n'.join([value['claim'].strip(), value['method'].strip(),
+                        *([] if value['metric'] is None else [str(value['metric'])])])
     if facts['branch']:
         body += '\n\nGit branch: ' + facts['branch'] + '\nCommit: ' + receipt['head']
+    body += '\n\n' + value['appendix'].strip()
     content = '/note\n' + body + '\n\n' + marker
     body_path = Path(facts['workdir']) / ('.multica-delivery-' + receipt['id'][:16] + '.md')
     body_path.write_text(content, encoding='utf-8')
