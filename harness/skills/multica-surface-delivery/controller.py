@@ -9,11 +9,13 @@ spec = importlib.util.spec_from_file_location('surface_deliver', Path(__file__).
 delivery = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(delivery)
 
-WRITING = ('State confirmed results directly in concise, active prose. Avoid filler and em dashes. '
-           'Keep technical pointers in the appendix; never invent measurements.')
-REPORT = ('Write a JSON file containing exactly claim (confirmed achievement and outcome), metric (measured result; '
-          'nullable for query/dev, a finite numeric score for exp), method (plain-English cause and effect, at most '
-          '60 words / 3 sentences), and appendix (reproduction commands, commits, artifacts and logs). ' + WRITING)
+WRITING = ('Keep the effect, explanation, supporting results, relevant limits and attachments together in one '
+           'native reply that stands on its own. Finish with relevant code/artifact links. Do not split the '
+           'explanation or evidence into a separate GitHub report. Use concise, active prose; never invent measurements.')
+REPORT = ('Write a JSON file for the native reply containing exactly claim (one short effect/conclusion sentence), '
+          'method (brief plain-English explanation of the change), metric (supporting measured result; nullable '
+          'for query/dev, a finite numeric score for exp), and appendix (relevant limits, concise reproduction '
+          'details if needed, ending with code/artifact links). Attach supporting files with --attachment. ' + WRITING)
 
 
 def finished(context, status, instruction, data=None):
@@ -141,7 +143,7 @@ def precheck(context):
 workflow = Workflow(
     State('check', 'Check requirements, reply targets, attachments, branch, artifacts and evidence under unchanged grading criteria.',
           initial=True, precheck=precheck, view=check_view, options=verified_options),
-    State('commit', 'Commit source and evidence to the owned feature branch, preserving failed experiments.', precheck=precheck,
+    State('commit', 'Commit source and required artifacts to the owned feature branch; report supporting results in the native reply.', precheck=precheck,
           view=commit_view, options=(Option('committed', 'report', 'Confirm the issue commit is ready.', committed),
                                     Option('recheck', 'check', 'Recheck changed requirements or evidence.', recheck))),
     State('report', REPORT, precheck=precheck, options=(

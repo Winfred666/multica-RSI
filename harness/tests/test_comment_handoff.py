@@ -48,11 +48,16 @@ class CommentHandoff(unittest.TestCase):
             return
         raise AssertionError(words)
 
-    def test_delivery_report_and_git_commit_live_only_in_the_reply(self):
+    def test_delivery_keeps_effect_explanation_results_and_links_in_order(self):
         deliver = load('native_deliver', 'multica-surface-delivery', 'deliver.py')
         report = self.directory / 'report.json'
-        report.write_text(json.dumps({'claim': 'Improved result', 'metric': 0.42, 'method': 'Measured on the benchmark.', 'appendix': 'Run test.py.'}))
-        facts = {'tag': 'exp', 'threads': {'thread': 'thread'}, 'workdir': str(self.directory),
+        report.write_text(json.dumps({
+            'claim': 'Tree cards keep measured sizes and reload restores a bounded camera.',
+            'method': 'Removed card resizing and constrained the restored camera.',
+            'metric': '56 focused tests passed; wide and narrow browser checks passed.',
+            'appendix': '[Tree view](https://example.com/tree-view.tsx) · [Wide screenshot](https://example.com/wide.png)',
+        }))
+        facts = {'tag': 'dev', 'threads': {'thread': 'thread'}, 'workdir': str(self.directory),
                  'branch': 'issue/child', 'attachments': [], 'allow_external_file': False,
                  'issue_id': 'child', 'parent_id': 'parent', 'target_status': 'in_review'}
         receipt = {'id': 'task', 'head': 'abc123', 'facts': facts}
@@ -60,7 +65,12 @@ class CommentHandoff(unittest.TestCase):
         args = SimpleNamespace(report_file=report, retry_post=False)
         result = deliver.publish(args, context, self.issue, self.directory / 'checkpoint.json', receipt)
         self.assertEqual(result, {'comment_ids': ['reply']})
-        self.assertIn('0.42', self.comments[-1]['content'])
+        body = self.comments[-1]['content']
+        self.assertLess(body.index('Tree cards'), body.index('Removed card resizing'))
+        self.assertLess(body.index('Removed card resizing'), body.index('56 focused tests'))
+        self.assertLess(body.index('56 focused tests'), body.index('Git branch:'))
+        self.assertLess(body.index('Commit: abc123'), body.index('[Tree view]'))
+        self.assertTrue(body.split('<!--')[0].rstrip().endswith('[Wide screenshot](https://example.com/wide.png)'))
         self.assertIn('Git branch: issue/child', self.comments[-1]['content'])
         self.assertIn('Commit: abc123', self.comments[-1]['content'])
         self.assertEqual([kind for kind, _ in self.writes], ['reply', 'status'])
