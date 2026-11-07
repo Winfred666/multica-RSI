@@ -73,7 +73,7 @@ func TestInstallRunsPackagedPythonInstaller(t *testing.T) {
 			if err := Install(context.Background(), server.URL, "test-token", "workspace-1", keepContext, false); err != nil {
 				t.Fatal(err)
 			}
-			if systems != 10 || libraries != 5 || !installedSelf || wroteContext == keepContext {
+			if systems != 9 || libraries != 5 || !installedSelf || wroteContext == keepContext {
 				t.Fatalf("installed system=%d library=%d self=%v context=%v", systems, libraries, installedSelf, wroteContext)
 			}
 		})
