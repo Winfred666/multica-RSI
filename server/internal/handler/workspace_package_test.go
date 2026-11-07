@@ -5,14 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
-	"strings"
-
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"net/http"
+	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/testutil"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/plugincontract"
 )
 
 func TestWorkspacePackageSelectiveRoundTrip(t *testing.T) {
@@ -107,8 +109,44 @@ func TestWorkspacePackageSelectiveRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	pluginService := *testHandler.PluginService
+	pluginService.Queries = writer.Queries
+	before, err := pluginService.ListPackages(ctx, parseUUID(ws))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := testHandler.importWorkspacePackage(ctx, tx, parseUUID(ws), parseUUID(testUserID), exportedPlugins, true); err != nil {
 		t.Fatal(err)
+	}
+	after, err := pluginService.ListPackages(ctx, parseUUID(ws))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("reimport changed published version IDs, digests or counts")
+	}
+	// Same-version file changes still conflict after the JSONB comparison.
+	changed := exportedPlugins
+	changed.Plugins = append([]PackagePlugin(nil), exportedPlugins.Plugins[:1]...)
+	bundle, err := plugincontract.ParseBundle(changed.Plugins[0].Bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{"multica.plugin.json": bundle.Canonical}
+	for i, file := range bundle.Files {
+		files[file.Path] = file.Content
+		if i == 0 {
+			files[file.Path] = append(append([]byte{}, file.Content...), '\n')
+		}
+	}
+	changed.Plugins[0].Bundle, err = packageZip(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = testHandler.importWorkspacePackage(ctx, tx, parseUUID(ws), parseUUID(testUserID), changed, true)
+	var conflict *service.PluginError
+	if !errors.As(err, &conflict) || conflict.Kind != service.PluginErrorConflict {
+		t.Fatalf("expected immutable-version conflict, got %v", err)
 	}
 	selected, err := selectedPackage(got, &PackageSelection{Skills: []string{got.Skills[0].ID}})
 	if err != nil {

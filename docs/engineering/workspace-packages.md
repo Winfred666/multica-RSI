@@ -47,10 +47,11 @@ Skills, MCPs and installed plugins that already exist by name/key return 409
 unless the owner/admin supplies `replace_existing: true`. Replacement keeps skill
 identity, bindings and system classification; a classification mismatch always
 returns 409. Agent name collisions return 409. Plugin versions remain immutable:
-the importer reuses an identical stored digest or publishes a new version through
-the plugin service. A digest/content mismatch requires a different version;
-replacement consent cannot overwrite published code. Older order-sensitive stored
-digests can also conflict; republish those bundles under a new version. Plugin selection requires
+the importer reuses matching published content or publishes a new version through
+the plugin service. Existing version IDs and digests remain unchanged. When JSONB
+has reordered manifest keys, the importer compares only the selected version's
+manifest and stored file hashes. Changed content requires a different version;
+replacement consent cannot overwrite published code. Plugin selection requires
 the server feature flag. Package plugin selection grants the bundle's declared
 scopes; execution credentials still require separate setup.
 
