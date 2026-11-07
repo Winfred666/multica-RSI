@@ -18,11 +18,14 @@ Before shipping, verify dragging at non-default zoom, nested workspace containme
 
 ## SOP calls and cross-issue handoffs
 
-One symbolic SOP invocation belongs to one agent task in one issue. Call another
-SOP locally by following its entry command. To request work in another issue or
-from another agent, use native steering or a mention with a concrete goal and
-ask the receiving model to call the named SOP. Do not execute a shared SOP state
-across agents or change issue identity to call it remotely.
+Local symbolic SOP invocations belong to their agent task. A remote caller uses
+`multica remote-sop ISSUE SOP [args...]`, which posts `!sop <name> <JSON argv>`
+to the issue assignee. The daemon consumes the comment into the execution log,
+runs the named skill's `wrapper.py` with task ID `0`, and records the output there.
+Remote requests and their results bypass model startup and active steering.
+Skills are discovered from agent bindings and workspace `.agents/` folders;
+there is no registration or issue metadata write. Ordinary cross-issue work
+continues to use native steering or concrete mentions.
 
 `multica-subissue-distribute` is the parent's child creation and dispatch SOP.
 Labels select query, development or experiment behavior. Children deliver through
