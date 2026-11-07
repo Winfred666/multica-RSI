@@ -305,6 +305,7 @@ describe("StepWorkspace — issue prefix", () => {
     expect(mockCreateMutate.mock.calls[0]![0]).toEqual({
       name: "前端团队",
       slug: "frontend",
+      skip_startup_kit: true,
       issue_prefix: "FE",
     });
   });

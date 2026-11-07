@@ -86,6 +86,12 @@ vi.mock("./steps/step-runtime-connect", () => ({
   ),
 }));
 
+vi.mock("./steps/step-import", () => ({
+  StepImport: ({ wsId, onNext }: { wsId: string; onNext: () => void }) => (
+    <button type="button" onClick={onNext}>import kit into {wsId}</button>
+  ),
+}));
+
 import { OnboardingFlow } from "./onboarding-flow";
 
 function renderAtRuntimeStep() {
@@ -100,6 +106,8 @@ function renderAtRuntimeStep() {
     </I18nProvider>,
   );
   fireEvent.click(screen.getByRole("button", { name: "create workspace" }));
+  expect(screen.queryByRole("button", { name: "skip runtime" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "import kit into ws-new" }));
   return { onComplete, skip: screen.getByRole("button", { name: "skip runtime" }) };
 }
 

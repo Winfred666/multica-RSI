@@ -47,6 +47,7 @@ import type { Workspace } from "@multica/core/types";
 import { AvatarUploadControl } from "../../common/avatar-upload-control";
 import { useNavigation } from "../../navigation";
 import { DeleteWorkspaceDialog } from "./delete-workspace-dialog";
+import { WorkspaceTransfer } from "../../workspace/workspace-transfer";
 import { useT } from "../../i18n";
 import {
   SettingsCard,
@@ -308,6 +309,7 @@ export function WorkspaceTab() {
   return (
     <SettingsTab title={t(($) => $.page.tabs.general)} scope="workspace">
       {readOnly ? <SettingsReadOnlyNotice wsId={workspace.id} /> : null}
+      {canManageWorkspace && <SettingsSection title={t(($) => $.workspace.transfer)}><WorkspaceTransfer wsId={workspace.id} /></SettingsSection>}
       <SettingsSection
         title={t(($) => $.workspace.section_general)}
         action={

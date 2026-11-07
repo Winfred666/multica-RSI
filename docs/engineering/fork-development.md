@@ -55,8 +55,11 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   trees fill the captured canvas width before wrapping. Packing refreshes on an uncached load and issue creation/deletion, while panel and window resizes preserve it. Reloaded cameras stay within the measured tree bounds. Uploaded HTML deliverables render inside tree cards and open in
   the artifact viewer.
 - **Settings.** You can manage hosted plugin execution credentials and personal
-  sub-issue following from workspace settings.
+  sub-issue following from workspace settings. Owners/admins can import and export
+  workspace packages with selective checklists; resource names load in bounded pages.
 - **Onboarding.** We removed the acquisition-source survey and its follow-up popup.
+  New workspaces defer the startup kit to the shared import checklist before runtime
+  setup. Import selects all resources; export selects none.
 
 ## CLI and daemon
 
