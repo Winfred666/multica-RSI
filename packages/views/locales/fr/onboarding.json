@@ -10,6 +10,9 @@
     },
     "runtime": {
       "label": "Rencontrez Mika"
+    },
+    "import": {
+      "label": "Importer un espace de travail"
     }
   },
   "welcome": {
