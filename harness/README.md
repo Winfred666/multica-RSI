@@ -10,7 +10,8 @@ stable. Older server/daemon pairs still supply the explicit issue-read command.
 The three [recent-run fixtures](testdata/startup-cases.json) and the
 [startup investigation](../docs/engineering/startup-harness-investigation.md) record
 the observed startup overhead and delegation/delivery examples. Workspace creation
-installs this kit directly with Python; no agent run performs setup.
+installs this kit directly in Go, using the native workspace package importer;
+no agent run, Python process, HTTP self-call or installation PAT performs setup.
 
 The kit keeps one owner per deliverable, reuses current-task context and worktrees,
 establishes working artifacts early and preserves measured improvements. Delegation
@@ -20,21 +21,19 @@ children use `multica-surface-delivery` or `multica-surface-block`. Replies carr
 results and native steering asks the parent to review or help. Each SOP runs
 within one agent task and issue.
 
-Run the installer with the target workspace's native credentials:
+The optional `harness-backup-restore` client fetches the server's embedded default
+package through the native API. It exports and imports the same package format
+as the workspace UI and CLI; the server owns installation and validation. Backup
+reads count/summary pages before downloading selected content once. Restore
+rejects existing names unless `--replace-existing` authorizes replacement; install
+updates the named startup kit. See the [package contract](../docs/engineering/workspace-packages.md).
+System skills inherit into newly created agents; optional skills remain in the
+workspace library for attachment.
 
-```sh
-python3 harness/skills/harness-backup-restore/scripts/harness.py install --kit harness
-```
-
-The installed `harness-backup-restore` skill carries this kit and can reinstall it
-without a repository checkout. System skills inherit into newly created agents;
-optional skills remain in the workspace library for attachment.
-
-Plugin packages and checks live in [plugins/](plugins/README.md). Startup enables
-hosted execution with the creator's request PAT. Browser sessions create a
-creator-owned plugin PAT through the native token API. Mika's `multica workspace
-create` uses its runtime's PAT through a local handoff; the PAT stays outside the
-agent environment. [Grilling](skills/grilling/SKILL.md) is from
+Plugin packages and checks live in [plugins/](plugins/README.md). Startup publishes
+and installs their bundles without provisioning execution credentials. Configure
+hosted execution separately with an owner/admin PAT before running hooks.
+[Grilling](skills/grilling/SKILL.md) is from
 Matt Pocock's MIT-licensed skills collection; its license is included alongside it.
 
 ```sh
