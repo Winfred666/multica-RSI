@@ -82,6 +82,19 @@ export type UpdateIssueMutationInput = {
   move_intent?: Pick<MoveIssueRequest, "before_id" | "after_id">;
 } & UpdateIssueRequest;
 
+export function useDeleteAttachments() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (files: { issueId: string; ids: string[] }[]) => {
+      for (const file of files) for (const id of file.ids) await api.deleteAttachment(id);
+    },
+    onSettled: (_data, _error, files) => Promise.all([...new Set(files.map((file) => file.issueId))].flatMap((id) => [
+      qc.invalidateQueries({ queryKey: issueKeys.attachments(id) }),
+      qc.invalidateQueries({ queryKey: issueKeys.timeline(id) }),
+    ])),
+  });
+}
+
 // Per-status pagination
 
 // Issue CRUD
