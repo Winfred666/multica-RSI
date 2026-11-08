@@ -664,6 +664,7 @@ type Daemon struct {
 	// It deliberately includes preparation and local-directory waiters because
 	// restart/update barriers must not kill any claimed task.
 	activeTasks atomic.Int64
+	sopMu       sync.Mutex
 	// Sticky for this process: a finished task can leave independent processes
 	// behind even after activeTasks reaches zero.
 	cleanupUnconfirmed atomic.Bool
@@ -7834,6 +7835,7 @@ func qualifyTaskModel(
 }
 
 func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot int, taskLog *slog.Logger) (taskResult TaskResult, returnErr error) {
+	ctx = context.WithValue(ctx, sopTaskKey{}, task)
 	phaseRecorder := taskPhaseRecorderFromContext(ctx)
 	phaseRecorder.Mark(taskPhasePrepareStarted)
 	// A claim carries the task-row agent id both at the top level and inside
@@ -8633,6 +8635,9 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	stopPrepareLease()
 	prepareComplete = true
 	cancelPrepare()
+	if d.interceptTaskSOPs(ctx, &task) {
+		return TaskResult{Status: "completed", SessionID: task.PriorSessionID, WorkDir: task.PriorWorkDir, EnvRoot: env.RootDir}, nil
+	}
 	_ = d.client.ReportProgress(ctx, task.ID, fmt.Sprintf("Launching %s", provider), 1, 2)
 
 	taskCtx = execenv.ApplyPreparedSkillNames(taskCtx, env.PreparedSkillNames)

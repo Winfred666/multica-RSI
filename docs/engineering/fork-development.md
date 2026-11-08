@@ -73,6 +73,18 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   authors supply input data. Registration takes effect without a daemon restart.
   Invocation belongs to the daemon comment protocol; there is no `sop call` or
   `sop serve` process.
+- **Short circuit steering.** A normal routed comment beginning with
+  `/sop {"name":"inspect","inputs":{"topic":"release"}}` reaches the daemon.
+  Agent callers append the usual target agent mention after the JSON. The daemon
+  runs only its local registered command and passes JSON values unchanged on stdin.
+  It posts stdout as a `/note` reply under the request, then completes the task
+  without starting a provider. A steered request is acknowledged without injecting
+  it into the active model. Failed calls, invalid requests and failed result
+  delivery continue to the model with a diagnostic and saved output path.
+  Comment IDs isolate local execution state and prevent repeated execution after
+  result-delivery retries. An interrupted execution needs reconciliation before a
+  new request. Each script has a one-minute execution limit and a 32 KiB reply
+  output limit. Execution uses the claimed task credential, never the host token.
 
 - **Workspace packages.** `workspace package`, `workspace export` and
   `workspace import` expose the native package API with paged summaries, JSON

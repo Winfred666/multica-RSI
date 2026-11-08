@@ -18,11 +18,13 @@ Before shipping, verify dragging at non-default zoom, nested workspace containme
 
 ## SOP calls and cross-issue handoffs
 
-One symbolic SOP invocation belongs to one agent task in one issue. Call another
-SOP locally by following its entry command. To request work in another issue or
-from another agent, use native steering or a mention with a concrete goal and
-ask the receiving model to call the named SOP. Do not execute a shared SOP state
-across agents or change issue identity to call it remotely.
+One symbolic SOP invocation belongs to one agent task in one issue. Host
+procedures can be registered with `multica sop register` and advertised through
+issue metadata. A routed `/sop` JSON comment calls the registered procedure through
+the daemon's short circuit steering protocol. The daemon posts a native reply and
+bypasses model startup or active steering when the call succeeds. A failed call
+continues to the agent. Ordinary cross-issue work still uses native steering or a
+concrete mention. Local SOP state is not shared between agents.
 
 `multica-subissue-distribute` is the parent's child creation and dispatch SOP.
 Labels select query, development or experiment behavior. Children deliver through

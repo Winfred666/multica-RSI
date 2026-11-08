@@ -178,7 +178,18 @@ func (d *Daemon) runTaskSupplementLoop(ctx context.Context, session *agent.Sessi
 		// The adapter owns transport deadlines. Hook-based providers wait for a
 		// safe boundary, which can follow a long-running tool; run cancellation
 		// still aborts that wait and prevents late delivery.
-		injectErr := session.Supplement(ctx, formatTaskSupplementInstruction(supplement.AuthorType, supplement.AuthorName, supplement.Content))
+		var handled bool
+		if task, ok := ctx.Value(sopTaskKey{}).(Task); ok {
+			var err error
+			handled, err = d.interceptSOPComment(ctx, task, supplement.CommentID, supplement.Content)
+			if err != nil {
+				supplement.Content = sopFallbackContent(supplement.Content, err)
+			}
+		}
+		var injectErr error
+		if !handled {
+			injectErr = session.Supplement(ctx, formatTaskSupplementInstruction(supplement.AuthorType, supplement.AuthorName, supplement.Content))
+		}
 		reason := taskSupplementFailureReason(ctx, injectErr)
 		if injectErr != nil {
 			// Raw provider/Go diagnostics remain local. Workspace-visible state is
