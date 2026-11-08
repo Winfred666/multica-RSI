@@ -18,16 +18,11 @@ func (d *Daemon) workspaceCreateHandler() http.HandlerFunc {
 			http.Error(w, "active task credential required", http.StatusUnauthorized)
 			return
 		}
-		var agent struct {
-			SystemKey string `json:"system_key"`
-		}
+		// Validate the active task credential before spending the runtime PAT.
+		var agent struct{}
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if err := d.client.getJSONWithToken(r.Context(), "/api/agents/"+task.AgentID, token, &agent); err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
-			return
-		}
-		if agent.SystemKey != "mika" {
-			http.Error(w, "workspace creation through the runtime requires Mika", http.StatusForbidden)
 			return
 		}
 		if !strings.HasPrefix(d.client.Token(), "mul_") {
