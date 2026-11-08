@@ -8,3 +8,8 @@ Run `python3 <installed-skill-directory>/wrapper.py` in the current issue's work
 Confirm only verified requirements; otherwise continue work or use `multica-surface-block` for an external blocker. Follow the commit/report callbacks. Children enter review and notify their parent; the parent owns acceptance. The report is posted as a reply; native steering brings it to the parent. End without another reply.
 
 Follow returned error guidance, reconcile writes before retrying, and use `repaired` once for assertion failures; report repeated failure through `multica-surface-block`.
+
+See [DEBUG.md](DEBUG.md) for this procedure’s states. In every state, follow
+returned error guidance and finish unmet prerequisites before retrying. Reconcile
+writes first. For assertion failures, use the returned `repaired` callback once;
+report a repeated failure through native Multica block.
