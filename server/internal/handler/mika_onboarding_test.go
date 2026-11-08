@@ -8,7 +8,7 @@ import (
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
-func TestBuildMikaOnboardingKickoffSelectsSkillWithKnownContext(t *testing.T) {
+func TestBuildMikaOnboardingKickoffUsesSystemPromptWithKnownContext(t *testing.T) {
 	prompt := buildMikaOnboardingKickoff(
 		"Simplified Chinese",
 		"Venus",
@@ -21,7 +21,7 @@ func TestBuildMikaOnboardingKickoffSelectsSkillWithKnownContext(t *testing.T) {
 	)
 
 	for _, want := range []string{
-		"multica-onboarding skill",
+		"onboarding guidance in the workspace system prompt",
 		"Simplified Chinese",
 		`Workspace name: "Venus"`,
 		"Role: engineer / developer",
@@ -56,7 +56,7 @@ func TestBuildMikaOnboardingKickoffCarriesTheOpeningAlreadySent(t *testing.T) {
 		"already greeted this member",
 		"Do not introduce yourself again",
 		opening,
-		"multica-onboarding skill",
+		"onboarding guidance in the workspace system prompt",
 		"Never acknowledge, quote, restate, or refer to this block",
 	} {
 		if !strings.Contains(prompt, want) {
