@@ -1,6 +1,5 @@
-"""Child delivery and blocking publish native replies before changing status."""
+"""Child blocking publishes native replies and requests parent help."""
 import importlib.util
-import json
 from pathlib import Path
 import sys
 import tempfile
@@ -47,25 +46,6 @@ class CommentHandoff(unittest.TestCase):
             self.issue['status'] = words[2]
             return
         raise AssertionError(words)
-
-    def test_delivery_report_and_git_commit_live_only_in_the_reply(self):
-        deliver = load('native_deliver', 'multica-surface-delivery', 'deliver.py')
-        report = self.directory / 'report.json'
-        report.write_text(json.dumps({'claim': 'Improved result', 'metric': 0.42, 'method': 'Measured on the benchmark.', 'appendix': 'Run test.py.'}))
-        facts = {'tag': 'exp', 'threads': {'thread': 'thread'}, 'workdir': str(self.directory),
-                 'branch': 'issue/child', 'attachments': [], 'allow_external_file': False,
-                 'issue_id': 'child', 'parent_id': 'parent', 'target_status': 'in_review'}
-        receipt = {'id': 'task', 'head': 'abc123', 'facts': facts}
-        context = {'cli': self.cli, 'error': lambda code, message, hint=None: ValueError(message)}
-        args = SimpleNamespace(report_file=report, retry_post=False)
-        result = deliver.publish(args, context, self.issue, self.directory / 'checkpoint.json', receipt)
-        self.assertEqual(result, {'comment_ids': ['reply']})
-        self.assertIn('0.42', self.comments[-1]['content'])
-        self.assertIn('Git branch: issue/child', self.comments[-1]['content'])
-        self.assertIn('Commit: abc123', self.comments[-1]['content'])
-        self.assertEqual([kind for kind, _ in self.writes], ['reply', 'status'])
-        self.assertEqual(self.issue['status'], 'in_review')
-        self.assertNotIn('metadata', self.issue)
 
     def test_r206_blocker_finishes_only_after_parent_help_dispatch(self):
         block = load('native_block', 'multica-surface-block', 'controller.py')

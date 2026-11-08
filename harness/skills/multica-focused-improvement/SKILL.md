@@ -15,4 +15,4 @@ Delegate a bounded, independently useful part when it helps; an advisor or child
 issue is not required. Keep one owner for each deliverable and settle existing
 children through the selected lifecycle procedure before parent delivery.
 
-Report the actual result, including target misses, through multica-surface-delivery.
+Report the actual result, including target misses, in a native issue comment.

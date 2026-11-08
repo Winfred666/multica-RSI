@@ -54,15 +54,15 @@ The [client SOP](https://github.com/Winfred666/multica-AIDE/blob/main/multica_ai
 
 ### 3. Bounded read-only refutation
 
-Compose a refutation step with the native child-issue and review SOPs when the campaign needs an independent audit. Give the reviewer a fixed candidate commit, the public contract, a named dataflow or correctness question, a bounded scope, and a read-only assignment. Keep its report attached to that candidate; a changed candidate needs new evidence.
+Compose a refutation step with the native child issues when the campaign needs an independent audit. Give the reviewer a fixed candidate commit, the public contract, a named dataflow or correctness question, a bounded scope, and a read-only assignment. Keep its report attached to that candidate; a changed candidate needs new evidence.
 
-Use [multica-subissue-distribute](../harness/skills/multica-subissue-distribute/SKILL.md) for parent dispatch and [multica-subissue-review](../harness/skills/multica-subissue-review/SKILL.md) for parent acceptance. The parent reads the delivered evidence, requests a concrete correction or cancellation when necessary, and accepts only reviewed delivery replies in review. Code acceptance requires the delivered commit and an integration verification command. Explicit experiment groups compare the completed group and can retain the baseline when it wins.
+Use [multica-subissue-distribute](../harness/skills/multica-subissue-distribute/SKILL.md) for parent dispatch. Review the delivered evidence in native issue comments.
 
 AIDE's built-in review paragraph and an independent refutation child are separate steps. The campaign SOP must request the child audit; the standalone AIDE package does not create an independent refutation for every candidate.
 
 ### 4. Surface delivery
 
-When the requested goal holds, use [multica-surface-delivery](../harness/skills/multica-surface-delivery/SKILL.md). Follow its verification and report callbacks, attach the selected result and supporting canvas, and complete the returned handoff. Children submit to parent review; the parent owns acceptance and the final human-facing delivery. Use `multica-surface-block` when an external blocker requires a decision.
+When the requested goal holds, post final results as a native issue comment with the selected result and supporting canvas attached. Set `in_review` while awaiting acceptance; `done` stays human. Use `multica-surface-block` when an external blocker requires a decision.
 
 For an outcome-focused Inbox, configure inherited sub-issue following and follow the campaign's final handoff. Routine child discussion remains available in its issue. Plugin-driven parent wakeups let agents process review and blockers without requiring a human to follow each child.
 
