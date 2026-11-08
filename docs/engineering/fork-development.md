@@ -12,8 +12,8 @@ behavior. The [README](../../README.md) presents the research platform.
   and CLI rules, removes `multica-issue-turn`, and ends with explicit Never-HERO
   scope limits and Stop-slop writing rules: confirmed verdict/achievement first, cause or method and decisive
   evidence next, with useful references beside each claim. Visuals show cause and effect
-  when clearer than prose; HTML leads with the key point, shows it vividly and stays brief.
-  Artifacts default to HTML or images. Claims include the issue
+  when clearer than prose. Artifacts are only for clarification and default to visual or
+  re-updatable HTML or images. Claims include the issue
   body alongside its current
   title/status/assignee, so updated daemons supply the assignment in the per-turn
   prompt without requiring a startup CLI read. Existing daemons ignore the new
