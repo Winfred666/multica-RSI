@@ -234,7 +234,8 @@ function runSortTime(run: CommentRun, entryById: ReadonlyMap<string, TimelineEnt
 
 /**
  * Merge runs into a list of comments in reading order: standalone runs into
- * the top-level timeline, or a thread's runs into its replies.
+ * the top-level timeline, or a thread's runs into its replies. Top-level
+ * threads can supply their latest activity; replies keep send-time order.
  *
  * A run that published a reply REPLACES that comment's own slot — the block
  * renders the comment, so leaving both would double it.
@@ -243,10 +244,13 @@ export function orderTimelineWithRuns(
   entries: readonly TimelineEntry[],
   runs: readonly CommentRun[],
   entryById: ReadonlyMap<string, TimelineEntry>,
+  threadTimes: ReadonlyMap<string, number> = new Map(),
 ): (TimelineEntry | CommentRun)[] {
   const slotted = new Set(runs.filter((run) => run.hasReply).map((run) => run.commentId));
   const sortTime = (item: TimelineEntry | CommentRun): number =>
-    "task" in item ? runSortTime(item, entryById) : Date.parse(item.created_at);
+    "task" in item
+      ? (item.commentId ? threadTimes.get(item.commentId) : undefined) ?? runSortTime(item, entryById)
+      : threadTimes.get(item.id) ?? Date.parse(item.created_at);
   // Ties are ordinary, not exotic: the API serializes timestamps to whole
   // seconds (util.TimestampToString), so a reply and the comment next to it
   // routinely share one. Break them on the row that OWNS the slot — the reply

@@ -1296,6 +1296,28 @@ describe("IssueDetail (shared)", () => {
     expect(container.querySelector(".sticky.bottom-0")).toBeNull();
   });
 
+  it("moves an older thread below newer threads after a reply or edit without scrolling", async () => {
+    const first: TimelineEntry = { type: "comment", id: "first", actor_type: "member", actor_id: "user-1", content: "Older thread", created_at: "2026-01-01T00:00:00Z" };
+    const second = { ...first, id: "second", content: "Newer thread", created_at: "2026-01-02T00:00:00Z" };
+    mockApiObj.listTimeline.mockResolvedValue([first, second]);
+    const queryClient = createTestQueryClient();
+    const { container } = render(
+      <I18nProvider locale="en" resources={TEST_RESOURCES}>
+        <QueryClientProvider client={queryClient}><IssueDetail issueId="issue-1" /></QueryClientProvider>
+      </I18nProvider>,
+    );
+    await screen.findByText("Older thread");
+    const roots = () => [...container.querySelectorAll("[data-testid=virtuoso-mock] > div > [id^=comment-]")].map((row) => row.id);
+    expect(roots()).toEqual(["comment-first", "comment-second"]);
+    const reply = { ...first, id: "reply", actor_type: "agent", parent_id: first.id, content: "Agent reply", created_at: "2026-01-03T00:00:00Z" };
+    act(() => queryClient.setQueryData(issueKeys.timeline("issue-1"), [first, second, reply]));
+    await waitFor(() => expect(roots()).toEqual(["comment-second", "comment-first"]));
+    act(() => queryClient.setQueryData(issueKeys.timeline("issue-1"), [first, { ...second, updated_at: "2026-01-04T00:00:00Z" }, reply]));
+    await waitFor(() => expect(roots()).toEqual(["comment-first", "comment-second"]));
+    expect(scrollToIndexSpy).not.toHaveBeenCalled();
+    expect(scrollIntoViewSpy).not.toHaveBeenCalled();
+  });
+
   it("realigns after Virtuoso measures the newly posted row", async () => {
     mockApiObj.createComment.mockResolvedValue({
       id: "comment-new",

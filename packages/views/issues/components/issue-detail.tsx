@@ -190,6 +190,7 @@ import { MetadataSection } from "./metadata-section";
 import { IssueSidebarSectionHeader, IssueSidebarStack, IssueSidebarPropertyGrid } from "./issue-sidebar-section";
 import { useT } from "../../i18n";
 import { useIssueDetailScrollRestore } from "../hooks/use-issue-detail-scroll-restore";
+import { useTimelineScrollAnchor } from "../hooks/use-timeline-scroll-anchor";
 import { useJumpToLatest } from "../hooks/use-jump-to-latest";
 import { useInPageFind } from "../hooks/use-in-page-find";
 import { useStickyComposer } from "../hooks/use-sticky-composer";
@@ -1760,9 +1761,13 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
     // the thread is unchanged so unrelated CommentCards keep their memo.
     const prevThreadReplies = prevThreadRepliesRef.current;
     const threadReplies = new Map<string, TimelineEntry[]>();
+    const threadTimes = new Map<string, number>();
     for (const root of topLevel) {
       if (root.type !== "comment") continue;
       const fresh = collectThreadReplies(root.id, repliesByParent);
+      threadTimes.set(root.id, [root, ...fresh].reduce(
+        (latest, entry) => Math.max(latest, Date.parse(entry.updated_at ?? entry.created_at)), 0,
+      ));
       const previous = prevThreadReplies.get(root.id);
       threadReplies.set(
         root.id,
@@ -1792,7 +1797,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
     // Unanchored runs keep their enqueue-time slot while working, then use
     // the published reply's time or the run's end time.
     const entryById = new Map(displayTimeline.map((entry) => [entry.id, entry]));
-    const chronological = orderTimelineWithRuns(topLevel, standaloneRuns, entryById);
+    const chronological = orderTimelineWithRuns(topLevel, standaloneRuns, entryById, threadTimes);
     const coalesced: (TimelineEntry | CommentRun)[] = [];
     for (const entry of chronological) {
       if ("task" in entry) {
@@ -2791,6 +2796,13 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
     // over this hook's module-level map — see the parameter doc.
     overrideTop: restoredScrollTop,
   });
+  useTimelineScrollAnchor(
+    scrollContainerEl, items, `${id}:${highlightCommentId ?? ""}:${highlightRequestToken ?? ""}`,
+    !!pendingPostedCommentId || !!pendingReplyJump || !!pendingRunJump,
+    (index, offset) => {
+      if (!isFlatTimeline) virtuosoRef.current?.scrollToIndex({ index, align: "start", offset });
+    },
+  );
 
   // Keep the identity value stable across unrelated issue-detail updates so
   // context consumers only re-render when the owning issue changes identity.
