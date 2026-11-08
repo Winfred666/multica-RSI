@@ -17,3 +17,8 @@ Each child follows its own `multica-surface-delivery` or `multica-surface-block`
 Native steering brings its reply back; use `multica-subissue-review` for acceptance.
 Follow returned error guidance, reconcile writes before retrying, and use `repaired`
 once for assertion failures; report a repeated failure through `multica-surface-block`.
+
+See [DEBUG.md](DEBUG.md) for this procedure’s states. In every state, follow
+returned error guidance and finish unmet prerequisites before retrying. Reconcile
+writes first. For assertion failures, use the returned `repaired` callback once;
+report a repeated failure through native Multica block.
