@@ -90,14 +90,10 @@ class Workflow:
         options = state.choices(context)
         self.validate_options(options)
         text = result.pop('instruction', None) or view.get('instruction') or state.description
-        lines = [f'You are in SOP state {state.name}: {text}']
-        for index, option in enumerate(options, 1):
-            target = self.states[option.target]
-            lines.append(f'{index}. `{ " ".join(option.callback()) }`: {option.prompt} '
-                         f'This moves to {target.name}: {target.description}')
         result.setdefault('data', view.get('data'))
-        return {**result, 'phase': state.name, 'instruction': '\n'.join(lines),
+        return {**result, 'phase': state.name, 'instruction': text,
                 'callback': options[0].callback() if options else None,
+                'callback_instruction': options[0].prompt if options else None,
                 'alternatives': [{'instruction': option.prompt, 'callback': option.callback()}
                                  for option in options[1:]]}
 
@@ -138,5 +134,5 @@ class Workflow:
         vars(args).update(vars(values))
         result = option.action(args, context) if option.action else {}
         result = result or {}
-        target = self.states[option.target] if result.get('accepted', True) else state
+        target = self.states[result.get('phase', option.target)] if result.get('accepted', True) else state
         return self.guidance(target, context, result)
