@@ -74,7 +74,7 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   daemon takes these notes for its runtime, moves them into execution logs,
   and runs `python3 <skill>/wrapper.py` directly with task ID `0`.
   Bound skill files and workspace `.agents/` folders supply SOPs containing
-  `DEBUG.md` and `wrapper.py`. Argument boundaries, combined stdout/stderr and
+  `wrapper.py`. Argument boundaries, combined stdout/stderr and
   exit codes are preserved; missing names return the available SOP list.
   Calls never use agent task admission, steering, provider startup or agent
   environment preparation. Completed execution records hold only the request
