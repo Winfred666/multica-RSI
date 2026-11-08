@@ -227,19 +227,6 @@ func (h *Handler) resolveMikaAgent(w http.ResponseWriter, r *http.Request, works
 		writeError(w, http.StatusInternalServerError, "failed to attach system skills")
 		return db.Agent{}, false, false
 	}
-	onboarding, err := qtx.GetSkillByWorkspaceAndName(r.Context(), db.GetSkillByWorkspaceAndNameParams{
-		WorkspaceID: wsUUID, Name: "multica-onboarding",
-	})
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusInternalServerError, "failed to load onboarding skill")
-		return db.Agent{}, false, false
-	}
-	if err == nil {
-		if err := qtx.AddAgentSkill(r.Context(), db.AddAgentSkillParams{AgentID: created.ID, SkillID: onboarding.ID}); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to attach onboarding skill")
-			return db.Agent{}, false, false
-		}
-	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to commit agent create")
 		return db.Agent{}, false, false

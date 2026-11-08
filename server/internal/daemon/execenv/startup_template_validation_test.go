@@ -15,6 +15,17 @@ func TestHarnessStartupTemplate(t *testing.T) {
 	if err := ValidateStartupTemplate(string(prompt)); err != nil {
 		t.Fatal(err)
 	}
+	for _, chat := range []string{"", "onboarding-chat"} {
+		rendered, err := renderStartupPrompt("codex", TaskContextForEnv{
+			WorkspaceContext: string(prompt), ChatSessionID: chat,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(rendered, "Mika onboarding") != (chat != "") {
+			t.Fatalf("onboarding guidance rendered for chat %q: %s", chat, rendered)
+		}
+	}
 }
 
 const startupContextReferences = `{{.AgentSkills}}

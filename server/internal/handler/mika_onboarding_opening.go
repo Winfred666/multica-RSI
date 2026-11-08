@@ -12,8 +12,8 @@ import (
 //
 // It reads as an agent's words, but it is the least agent-dependent output in
 // the product: it consults no workspace state, calls no tool, and makes no
-// decision. The multica-onboarding skill already pinned it to four beats under
-// a length budget, so an agent run was paying a runtime cold start and two
+// decision. Its fixed copy follows four beats under a length budget, so an
+// agent run was paying a runtime cold start and two
 // model round trips to render something already decided — while the member
 // watched a spinner, and a failed run greeted them with an error bubble.
 //
