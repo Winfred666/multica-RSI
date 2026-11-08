@@ -3,7 +3,7 @@
   "key": "org.multica.issue-reframe-compress",
   "name": "Comment and thread pruning",
   "description": "Review stale comments and resolved threads for deletion in batches of five, after every two context compressions.",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "author": {
     "name": "Multica"
   },

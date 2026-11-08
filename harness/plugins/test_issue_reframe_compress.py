@@ -63,6 +63,10 @@ class PruningTests(unittest.TestCase):
             self.api.tasks['parent'][0]['input_trend']['context_compression_count'] = count
             self.assertEqual(PRUNE(self.api, self.event)['scheduled'], expected)
         self.assertEqual(len(self.api.rules), 3)
+        instruction = next(iter(self.api.rules.values()))['instruction']
+        self.assertTrue(instruction.startswith('Continue.'))
+        self.assertIn('multica workspace get --output json', instruction)
+        self.assertIn('multica issue get parent --output json', instruction)
         self.assertEqual(self.api.storage['issue:parent:agent']['threshold'], 6)
 
     def test_five_comments_then_five_closed_threads_showing_only_final_comment(self):
@@ -86,6 +90,7 @@ class PruningTests(unittest.TestCase):
         self.assertEqual(len(self.api.deleted), 15)
         self.assertTrue(self.decide(result, 'keep')['complete'])
         self.assertEqual(self.api.storage['issue:parent:agent'], {'threshold': 2})
+        self.assertIn('multica issue get parent --output json', PRUNE(self.api, self.review)['instruction'])
 
     def test_protects_active_inputs_and_refuses_changed_items_or_rewrites(self):
         first = self.row('old')

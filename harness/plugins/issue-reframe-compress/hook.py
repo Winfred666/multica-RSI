@@ -8,6 +8,16 @@ INSTRUCTION = (
 )
 
 
+def continuation(issue_id):
+    return (
+        "Continue. If you forget the reply style requirements, run "
+        "`multica workspace get --output json | python3 -c 'import json,sys; "
+        'print("\\n\\n".join(json.load(sys.stdin)["context"].strip().split("\\n\\n")[-2:]))'
+        "'`. If you drift from the issue goal, run "
+        f"`multica issue get {issue_id} --output json`."
+    )
+
+
 def candidates(api, issue_id, state):
     headers = {}
     rows = api.request("GET", f"/api/issues/{issue_id}/comments?fold=false", response_headers=headers)
@@ -66,7 +76,7 @@ def completed(api, payload):
     api.request("POST", f"/api/issues/{issue_id}/wakeups", {
         "agent_id": agent, "kind": "at", "after_seconds": 1,
         "idempotency_key": fingerprint([api.installation, issue_id, agent, threshold]),
-        "instruction": f"Review old issue discussion with the Issue comments plugin hook for issue_id {issue_id}. "
+        "instruction": continuation(issue_id) + f" Review old issue discussion with the Issue comments plugin hook for issue_id {issue_id}. "
                        + INSTRUCTION + " Do not change issue status or post a cleanup comment.",
     })
     api.state(key, {"threshold": threshold, "cutoff": datetime.now(timezone.utc).isoformat(), "kept": []})
@@ -84,7 +94,7 @@ def main(api, payload):
     key = f"issue:{issue['id']}:{actor['id']}"
     state = api.state(key)
     if not state.get("cutoff"):
-        return {"items": [], "complete": True, "instruction": "Return to your prior task."}
+        return {"items": [], "complete": True, "instruction": continuation(issue["id"])}
     decisions = data.get("decisions", [])
     if not isinstance(decisions, list) or len(decisions) > 5:
         raise ValueError("submit at most five decisions")
@@ -108,7 +118,7 @@ def main(api, payload):
     state["batch"] = items[:5]
     if not items:
         api.state(key, {"threshold": state["threshold"]})
-        return {"items": [], "complete": True, "instruction": "Return to your prior task."}
+        return {"items": [], "complete": True, "instruction": continuation(issue["id"])}
     api.state(key, state)
     return {"mode": mode, "items": [{k: v for k, v in row.items() if k != "members"} for row in items[:5]],
             "complete": False, "instruction": INSTRUCTION}

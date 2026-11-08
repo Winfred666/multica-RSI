@@ -12,6 +12,11 @@ APIs. Python 3 is the only runtime dependency.
 These apply across the workspace, including issues without a project. Resolved
 threads show only their final comment. Pruning offers delete or keep, protects
 active task inputs and changed comments, and leaves issue status unchanged.
+The compression wakeup and the end of cleanup include a short continuation:
+read the workspace prompt's final two paragraphs with the workspace CLI if reply
+rules are forgotten, or reload the assigned issue if its goal is unclear. The agent
+runs these commands locally; the hosted plugin does not read runtime files.
+Wakeups follow completed tasks at the existing thresholds, not mid-turn compaction.
 
 ## Build and install
 
