@@ -65,6 +65,15 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## CLI and daemon
 
+- **SOP registration.** `multica --profile HOST sop register ISSUE NAME
+  --executable /usr/bin/python3 --arg /opt/sops/procedure.py --input topic`
+  stores the executable and fixed arguments in that daemon profile's local
+  registry. Issue metadata `sop.NAME` advertises the input declaration as a JSON
+  string. Only local member credentials can register host commands; comment
+  authors supply input data. Registration takes effect without a daemon restart.
+  Invocation belongs to the daemon comment protocol; there is no `sop call` or
+  `sop serve` process.
+
 - **Workspace packages.** `workspace package`, `workspace export` and
   `workspace import` expose the native package API with paged summaries, JSON
   selection files and inactive imported agents. See [usage and defaults](workspace-packages.md#cli).
