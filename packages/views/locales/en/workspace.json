@@ -51,6 +51,8 @@
     "invalid": "Invalid workspace package.",
     "imported": "Workspace package imported.",
     "importing": "Importing…",
+    "unselect_all": "Unselect all",
+    "startup_warning": "Skipping the system prompt, skills, or plugins can prevent agents from understanding and using Multica correctly.",
     "startup_title": "Import the startup kit",
     "continue": "Continue"
   }

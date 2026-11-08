@@ -51,6 +51,8 @@
     "invalid": "잘못된 워크스페이스 패키지입니다.",
     "imported": "워크스페이스 패키지를 가져왔습니다.",
     "importing": "가져오는 중…",
+    "unselect_all": "모두 선택 해제",
+    "startup_warning": "시스템 프롬프트, 스킬 또는 플러그인을 제외하면 에이전트가 Multica를 올바르게 이해하고 사용하지 못할 수 있습니다.",
     "startup_title": "시작 키트 가져오기",
     "continue": "계속"
   }
