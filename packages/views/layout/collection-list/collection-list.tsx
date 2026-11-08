@@ -34,7 +34,7 @@ export interface CollectionColumn<T> {
   /** Header label; also the column's name in the Display menu. */
   header?: string;
   /** Track width in px. The first column is the primary column: it takes the
-   *  remaining space, and `width` is its minimum on wide layouts. */
+   *  remaining space, and `width` is its minimum. */
   width?: number;
   align?: "start" | "end";
   /** Sort field this column's header toggles. */
@@ -135,7 +135,7 @@ function gridTemplate<T>(
   const tracks = [`${EDGE}px`];
   if (selectable && wide) tracks.push(`${SLOT}px`);
   columns.forEach((col, i) => {
-    if (i === 0) tracks.push(wide ? `minmax(${col.width ?? PRIMARY_MIN}px,1fr)` : "minmax(0,1fr)");
+    if (i === 0) tracks.push(`minmax(${col.width ?? (wide ? PRIMARY_MIN : 0)}px,1fr)`);
     else if (wide || col.core) tracks.push(`${col.width ?? DEFAULT_WIDTH}px`);
   });
   if (menu) tracks.push(`${MENU}px`);
