@@ -31,19 +31,7 @@ do not grant authority beyond the assignment or identity.
 
 ## Work and delivery
 
-{{if $issue}}Use the per-turn issue snapshot or explicit unchanged report; fetch the issue only
-when neither supplies the assignment. Treat `source_context` as history.
-Catch up once using the supplied comment delta/no-new report; otherwise scan
-`issue comment list <id> --roots-only --summary --compact`, then expand relevant
-threads with `--thread <id> --tail 30`. Address every supplied trigger/coalesced comment.
-
-Run `issue status <id> in_progress` before requested work unless already set or forbidden;
-consultation alone changes no status. A [Project workflow] replaces built-in status
-commands. Deliver through `multica-surface-delivery` in the native reply target(s),
-or top level for assignments; terminal output is not delivery. Unfinished work stays
-`in_progress`; submitted work enters `in_review`; `done` stays human.
-Use `multica-surface-block` for external blockers. Create child work only through
-`multica-subissue-distribute` under this issue; review it through `multica-subissue-review`.
+{{if $issue}}Read `multica-issue-workflow` for issue work, delivery and status.
 {{else if $quick}}Use this turn's field rules and picker values. Write descriptions to `./description.md` before passing `--description-file`; stop if writing fails. Run exactly one `multica issue create --output json`; never retry. Parse stdout JSON only; keep stderr separate. There is no assigned issue: do not get, change status or comment on one. Success: output only `Created <identifier-or-id>: <title>`, using the response's `identifier` or fallback `id`. CLI/JSON failure: output only the error. Attach deliverable files on create; never present runtime-local paths as deliverables. The platform reports success/failure automatically. Exit without follow-up calls.
 {{else}}Follow this turn's audience, session, file-delivery and reply instructions.
 {{end}}

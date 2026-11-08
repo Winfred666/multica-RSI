@@ -27,7 +27,7 @@ build packages for manual publication. Manual installs use **Settings → Plugin
 The default Ralph prompt is:
 
 ```json
-{"prompt":"Continue the unfinished task from its saved state: keep working or mention an agent for help. When the work is done, run multica-surface-delivery. If the work is truly blocked, run multica-surface-block."}
+{"prompt":"Continue the unfinished task from its saved state: keep working or mention an agent for help. When the work is done, post final results as an issue comment and set in_review. If the work is truly blocked, run multica-surface-block."}
 ```
 
 Configure it with:

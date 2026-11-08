@@ -13,8 +13,8 @@ The first `exp` requires `--baseline-score SCORE --direction min|max`.
 Competitive siblings share `--experiment-group GROUP --experiment-group-size N`;
 create all members before waiting. Ordinary children report independently.
 
-Each child follows its own `multica-surface-delivery` or `multica-surface-block`.
-Native steering brings its reply back; use `multica-subissue-review` for acceptance.
+Each child posts final results as a native issue comment and enters `in_review`
+while awaiting acceptance. Use `multica-surface-block` for an external blocker.
 Follow returned error guidance, reconcile writes before retrying, and use `repaired`
 once for assertion failures; report a repeated failure through `multica-surface-block`.
 

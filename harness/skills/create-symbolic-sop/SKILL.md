@@ -162,5 +162,5 @@ output. Follow the recall in the same turn. See the template's [state chart](ass
 Default to passive native delivery/block steering for Multica sub-issues;
 proactive escalation there is reserved for unstable DEV SOPs. A `done` option must
 check that every sub-issue, including descendants, is `done`. Otherwise raise a
-workflow exception asking the agent to finish the native sub-issue review SOP
+workflow exception asking the agent to finish reviewing the sub-issues
 before recalling `done`; delivery receipts and `in_review` do not pass this gate.

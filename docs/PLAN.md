@@ -28,13 +28,11 @@ or issue metadata write is needed. Ordinary cross-issue work continues to use
 native steering or concrete mentions.
 
 `multica-subissue-distribute` is the parent's child creation and dispatch SOP.
-Labels select query, development or experiment behavior. Children deliver through
-`multica-surface-delivery` or explain an external blocker through
-`multica-surface-block`. Results, measured scores, commits, reasons and evidence
-belong in native reply comments. The child-wakeup plugin carries the reply and
-Git bindings in parent steering: review deliveries through
-`multica-subissue-review`, or help resolve a blocker. The parent owns acceptance;
-verified code integration precedes marking the child done.
+Labels select query, development or experiment behavior. Children post results,
+measured scores, commits, reasons and evidence in native reply comments and enter
+`in_review` while awaiting acceptance. Use `multica-surface-block` for an external
+blocker. Delivery follows the [textual issue workflow](../harness/skills/multica-issue-workflow/SKILL.md);
+`done` stays human.
 
 Keep inter-SOP communication in replies and steering prompts. Issue metadata holds
 native resource bindings and configuration, without copied reports, thread IDs,

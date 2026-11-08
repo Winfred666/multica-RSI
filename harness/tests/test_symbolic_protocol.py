@@ -13,8 +13,7 @@ from unittest.mock import patch
 SKILLS = Path(__file__).resolve().parents[1] / 'skills'
 TEMPLATE = SKILLS / 'create-symbolic-sop/assets/template'
 PACKAGES = [TEMPLATE, *(SKILLS / name for name in (
-    'multica-subissue-distribute', 'multica-subissue-review',
-    'multica-surface-block', 'multica-surface-delivery'))]
+    'multica-subissue-distribute', 'multica-surface-block'))]
 
 
 class SymbolicProtocol(unittest.TestCase):
