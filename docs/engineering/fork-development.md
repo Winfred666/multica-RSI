@@ -70,19 +70,22 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## CLI and daemon
 
-- **Remote SOPs.** `multica remote-sop ISSUE SOP [args...]` sends a routed
-  `!sop <name> <JSON argv>` comment to the issue's agent assignee. Try `--help`
-  as the first SOP argument. JSON preserves spaces, empty arguments and literal
-  shell characters. No registration or issue metadata is involved.
-  Before model startup or active steering, the daemon transfers the request to
-  that task's execution log and deletes the comment without cancelling the task.
-  Execution-log writes do not trigger agents. The daemon finds a named skill in
-  the prepared agent skills or workspace `.agents/` folders, requiring both
-  `DEBUG.md` and `wrapper.py`, then runs `python3 <skill>/wrapper.py` with the
-  supplied arguments and `MULTICA_TASK_ID=0`. It records combined stdout/stderr
-  and the exit code in the same log. Missing skills return the available SOP
-  names; errors also stay in the log. The CLI prints the matching result with
-  an issue label. Ordinary comments retain their existing routing.
+- **Agent workspace creation.** Any active agent can run `multica workspace create`
+  through its local daemon. The daemon validates the task credential and uses its
+  private member PAT; the created workspace belongs to that PAT's owner. The
+  originating task stays bound to its original workspace.
+
+- **Remote SOPs.** `multica remote-sop ISSUE SOP [args...]` posts
+  `/note !sop <name> <JSON argv>`. Try `--help` as the first SOP argument.
+  The native `/note` prefix prevents agent activation. On each heartbeat the
+  daemon takes these notes for its runtime, moves them into execution logs,
+  and runs `python3 <skill>/wrapper.py` directly with task ID `0`.
+  Bound skill files and workspace `.agents/` folders supply SOPs containing
+  `wrapper.py`. Argument boundaries, combined stdout/stderr and
+  exit codes are preserved; missing names return the available SOP list.
+  Calls never use agent task admission, steering, provider startup or agent
+  environment preparation. Completed execution records hold only the request
+  and output. Registration and issue metadata writes are unnecessary.
 
 - **Workspace packages.** `workspace package`, `workspace export` and
   `workspace import` expose the native package API with paged summaries, JSON

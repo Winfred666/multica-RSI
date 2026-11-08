@@ -2162,6 +2162,7 @@ WHERE issue_id = $1 AND agent_id = $2
 -- thread-parent replies.
 SELECT is_leader_task, squad_id FROM agent_task_queue
 WHERE issue_id = $1 AND agent_id = $2
+  AND COALESCE(context->>'type', '') <> 'remote_sop'
 ORDER BY created_at DESC
 LIMIT 1;
 

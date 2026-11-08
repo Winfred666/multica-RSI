@@ -178,15 +178,6 @@ func (d *Daemon) runTaskSupplementLoop(ctx context.Context, session *agent.Sessi
 		// The adapter owns transport deadlines. Hook-based providers wait for a
 		// safe boundary, which can follow a long-running tool; run cancellation
 		// still aborts that wait and prevents late delivery.
-		if state, ok := ctx.Value(remoteSOPContextKey{}).(remoteSOPContext); ok {
-			handled, err := d.interceptRemoteSOP(ctx, state, supplement.CommentID, supplement.Content)
-			if err != nil {
-				taskLog.Error("remote SOP failed", "comment_id", supplement.CommentID, "error", err)
-			}
-			if handled {
-				continue
-			}
-		}
 		injectErr := session.Supplement(ctx, formatTaskSupplementInstruction(supplement.AuthorType, supplement.AuthorName, supplement.Content))
 		reason := taskSupplementFailureReason(ctx, injectErr)
 		if injectErr != nil {

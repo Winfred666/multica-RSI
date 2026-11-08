@@ -706,7 +706,7 @@ type Daemon struct {
 	activeStores     map[string]int  // persistent store path (per-conversation Codex sessions, per-agent Hermes memories) -> live-task refcount; guards the store from GC mid-task (MUL-4424)
 	deletingStores   map[string]bool // store paths a GC delete has reserved; markActive waits these out so a task never mounts a store mid-removal
 
-	// repoCheckoutTasks binds localhost checkout and Mika workspace creation to the
+	// repoCheckoutTasks binds localhost checkout and workspace creation to the
 	// task-scoped bearer token of a currently running agent. The request body is
 	// never an identity source: workspace, task, agent, and allowed workdir all
 	// come from this registry.
@@ -4538,6 +4538,8 @@ func (d *Daemon) handleHeartbeatActions(ctx context.Context, runtimeID string, r
 	if resp == nil {
 		return
 	}
+	go d.executeRemoteSOPs(ctx, runtimeID)
+
 	if resp.PendingUpdate != nil || resp.PendingModelList != nil || resp.PendingLocalSkills != nil || resp.PendingLocalSkillImport != nil {
 		d.logger.Debug("heartbeat: pending actions",
 			"runtime_id", runtimeID,
@@ -8633,14 +8635,6 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	stopPrepareLease()
 	prepareComplete = true
 	cancelPrepare()
-	var msgSeq atomic.Int32
-	remoteSOP := remoteSOPContext{task: task, env: env, provider: provider, seq: &msgSeq}
-	ctx = context.WithValue(ctx, remoteSOPContextKey{}, remoteSOP)
-	if handled, err := d.interceptTaskRemoteSOPs(ctx, &task, remoteSOP); err != nil {
-		return TaskResult{}, err
-	} else if handled {
-		return TaskResult{Status: "completed", SessionID: task.PriorSessionID, WorkDir: task.PriorWorkDir, EnvRoot: env.RootDir}, nil
-	}
 	_ = d.client.ReportProgress(ctx, task.ID, fmt.Sprintf("Launching %s", provider), 1, 2)
 
 	taskCtx = execenv.ApplyPreparedSkillNames(taskCtx, env.PreparedSkillNames)
@@ -9021,7 +9015,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 		return TaskResult{Status: "completed", Comment: "", WorkDir: env.WorkDir, EnvRoot: env.RootDir}, nil
 	}
 
-	// Authenticate localhost checkout and Mika workspace creation with the same
+	// Authenticate localhost checkout and workspace creation with the same
 	// task-scoped token the child receives. The endpoint derives identity and
 	// branch ownership from this in-memory record instead of trusting request
 	// fields or ambient process environment. Register only for the provider
@@ -9050,6 +9044,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 
 	// Shared across the resume-retry below so the retry's transcript rows
 	// keep ascending seq values for the same task.
+	var msgSeq atomic.Int32
 	d.reportThinkingLevelWarning(ctx, task.ID, selection.ThinkingLevelWarning, &msgSeq, taskLog)
 	outputObserver := &taskOutputObserver{}
 	ctx = withTaskOutputObserver(ctx, outputObserver)

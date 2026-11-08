@@ -342,7 +342,7 @@ func runWorkspaceCreate(cmd *cobra.Command, _ []string) error {
 	if inDaemonManagedExecutionContext() {
 		port := os.Getenv("MULTICA_DAEMON_PORT")
 		if port == "" {
-			return fmt.Errorf("workspace creation by Mika requires its runtime's MULTICA_DAEMON_PORT")
+			return fmt.Errorf("workspace creation by an agent requires its runtime's MULTICA_DAEMON_PORT")
 		}
 		client.BaseURL = "http://127.0.0.1:" + port
 		path = "/workspace/create"

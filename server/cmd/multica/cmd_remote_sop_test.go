@@ -14,7 +14,6 @@ import (
 
 func TestRemoteSOPCommandPassesArgumentsAndReadsLog(t *testing.T) {
 	t.Chdir(t.TempDir())
-	posted := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method + " " + r.URL.Path {
 		case "GET /api/issues/R-42":
@@ -22,23 +21,17 @@ func TestRemoteSOPCommandPassesArgumentsAndReadsLog(t *testing.T) {
 		case "POST /api/issues/issue/comments":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			want := "!sop inspect [\"--help\",\"two words\",\"\",\"$(literal)\"]\n\n[@assignee](mention://agent/agent)"
+			want := "/note !sop inspect [\"--help\",\"two words\",\"\",\"$(literal)\"]"
 			if body["content"] != want {
 				t.Errorf("comment=%q want=%q", body["content"], want)
 			}
-			steer, _ := body["steer_task_ids"].([]any)
-			if len(steer) != 1 || steer[0] != "run" {
-				t.Fatalf("active assignee was not steered: %v", steer)
+			if len(body) != 1 {
+				t.Errorf("unexpected agent routing fields: %v", body)
 			}
-			posted = true
 			_, _ = w.Write([]byte(`{"id":"request"}`))
 		case "GET /api/issues/issue/task-runs":
-			if posted {
-				_, _ = w.Write([]byte(`[{"id":"run","agent_id":"agent","status":"completed"}]`))
-			} else {
-				_, _ = w.Write([]byte(`[{"id":"run","agent_id":"agent","status":"running","can_supplement":true}]`))
-			}
-		case "GET /api/tasks/run/messages":
+			_, _ = w.Write([]byte(`[{"id":"request","status":"completed"}]`))
+		case "GET /api/tasks/request/messages":
 			_ = json.NewEncoder(w).Encode([]protocol.TaskMessagePayload{
 				{Seq: 1, Type: "tool_result", Tool: "remote-sop", CallID: "different-request", Output: "wrong result"},
 				{Seq: 2, Type: "tool_result", Tool: "remote-sop", CallID: "request", Output: "faithful output\n", Input: map[string]any{"exit_code": 0}},
