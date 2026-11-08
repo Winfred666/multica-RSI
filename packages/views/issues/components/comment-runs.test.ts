@@ -382,6 +382,15 @@ describe("orderTimelineWithRuns", () => {
     orderTimelineWithRuns(topLevel, runs, new Map(topLevel.map((entry) => [entry.id, entry])))
       .map((item) => ("task" in item ? item.task.id : item.id));
 
+  it("moves a standalone run's root thread by its latest activity", () => {
+    const root = comment("root");
+    const newer = comment("newer", { created_at: "2026-09-08T00:00:00Z" });
+    const run: CommentRun = { task: task("run", { status: "completed" }), commentId: root.id, hasReply: true };
+    const result = orderTimelineWithRuns([root, newer], [run], new Map([[root.id, root], [newer.id, newer]]),
+      new Map([[root.id, Date.parse("2026-09-09T00:00:00Z")]]));
+    expect(result).toEqual([newer, run]);
+  });
+
   // MUL-7211: the reply, not the enqueue, owns the slot. A run enqueued at
   // 10:00 that replies at 10:40 must not sit above a comment written at 10:20.
   it("places a published reply at its own time, not the run's", () => {
