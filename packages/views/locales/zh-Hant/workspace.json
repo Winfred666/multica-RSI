@@ -51,6 +51,8 @@
     "invalid": "工作區套件無效。",
     "imported": "工作區套件已匯入。",
     "importing": "匯入中…",
+    "unselect_all": "取消全選",
+    "startup_warning": "缺少系統提示詞、技能或外掛程式，可能導致AI 代理無法正確理解和使用 Multica。",
     "startup_title": "匯入啟動套件",
     "continue": "繼續"
   }
