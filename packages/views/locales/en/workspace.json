@@ -51,6 +51,8 @@
     "invalid": "Invalid workspace package.",
     "imported": "Workspace package imported.",
     "importing": "Importing…",
+    "unselect_all": "Unselect all",
+    "empty_startup_warning": "No startup kit resources or system prompt will be installed.",
     "startup_title": "Import the startup kit",
     "continue": "Continue"
   }

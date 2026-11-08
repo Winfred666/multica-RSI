@@ -51,6 +51,8 @@
     "invalid": "工作區套件無效。",
     "imported": "工作區套件已匯入。",
     "importing": "匯入中…",
+    "unselect_all": "取消全選",
+    "empty_startup_warning": "將不安裝啟動套件資源或系統提示詞。",
     "startup_title": "匯入啟動套件",
     "continue": "繼續"
   }

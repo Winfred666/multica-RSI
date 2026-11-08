@@ -51,6 +51,8 @@
     "invalid": "잘못된 워크스페이스 패키지입니다.",
     "imported": "워크스페이스 패키지를 가져왔습니다.",
     "importing": "가져오는 중…",
+    "unselect_all": "모두 선택 해제",
+    "empty_startup_warning": "시작 키트 리소스와 시스템 프롬프트가 설치되지 않습니다.",
     "startup_title": "시작 키트 가져오기",
     "continue": "계속"
   }

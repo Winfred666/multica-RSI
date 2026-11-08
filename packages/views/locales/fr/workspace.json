@@ -51,6 +51,8 @@
     "invalid": "Paquet d’espace de travail invalide.",
     "imported": "Paquet d’espace de travail importé.",
     "importing": "Importation…",
+    "unselect_all": "Tout désélectionner",
+    "empty_startup_warning": "Aucune ressource du kit de démarrage ni invite système ne sera installée.",
     "startup_title": "Importer le kit de démarrage",
     "continue": "Continuer"
   }

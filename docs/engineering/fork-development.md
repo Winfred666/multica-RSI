@@ -61,7 +61,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   workspace packages with selective checklists; resource names load in bounded pages.
 - **Onboarding.** We removed the acquisition-source survey and its follow-up popup.
   New workspaces defer the startup kit to the shared import checklist before runtime
-  setup. Import selects all resources; export selects none.
+  setup. Import selects all resources; export selects none. Startup import can unselect
+  all resources and shows a red warning when the selection is empty.
 
 ## CLI and daemon
 

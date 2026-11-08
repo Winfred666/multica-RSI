@@ -51,6 +51,8 @@
     "invalid": "Paquete del espacio de trabajo no válido.",
     "imported": "Paquete del espacio de trabajo importado.",
     "importing": "Importando…",
+    "unselect_all": "Deseleccionar todo",
+    "empty_startup_warning": "No se instalarán recursos del kit de inicio ni el prompt del sistema.",
     "startup_title": "Importar el kit de inicio",
     "continue": "Continuar"
   }

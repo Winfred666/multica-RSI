@@ -11,19 +11,24 @@ import { Input } from "@multica/ui/components/ui/input";
 import { PackageChecklist } from "./package-checklist";
 import { useT } from "../i18n";
 
-function ImportSelection({ wsId, pkg, counts, onComplete, onBusyChange }: {
-  wsId: string; pkg: WorkspacePackage; counts: WorkspacePackageCounts; onComplete?: () => void; onBusyChange?: (busy: boolean) => void;
+function ImportSelection({ wsId, pkg, counts, defaultKit, onComplete, onBusyChange }: {
+  wsId: string; pkg: WorkspacePackage; counts: WorkspacePackageCounts; defaultKit: boolean; onComplete?: () => void; onBusyChange?: (busy: boolean) => void;
 }) {
   const { t } = useT("workspace");
   const [selection, setSelection] = useState(() => packageSelection(pkg));
   const [replaceExisting, setReplaceExisting] = useState(false);
   const mutation = useImportWorkspacePackage(wsId);
+  const emptySelection = Object.values(selection).every((value) => Array.isArray(value) ? value.length === 0 : !value);
   useEffect(() => {
     onBusyChange?.(mutation.isPending);
     return () => onBusyChange?.(false);
   }, [mutation.isPending, onBusyChange]);
   return <div className="space-y-4">
+    {defaultKit && <Button variant="ghost" size="sm" disabled={mutation.isPending || mutation.isSuccess || emptySelection} onClick={() => setSelection(packageSelection())}>
+      {t(($) => $.package.unselect_all)}
+    </Button>}
     <PackageChecklist wsId={wsId} counts={counts} pkg={pkg} selection={selection} onChange={setSelection} disabled={mutation.isPending || mutation.isSuccess} />
+    {defaultKit && emptySelection && <p role="alert" className="text-caption text-destructive">{t(($) => $.package.empty_startup_warning)}</p>}
     <label className="flex items-start gap-2 text-caption text-muted-foreground">
       <Checkbox checked={replaceExisting} onCheckedChange={setReplaceExisting} disabled={mutation.isPending || mutation.isSuccess} />
       {t(($) => $.package.replace_existing)}
@@ -74,6 +79,6 @@ export function WorkspaceImport({ wsId, defaultKit = false, onComplete, onBusyCh
     </label>}
     {(inspect.isPending || (defaultKit && defaults.isPending)) && <p role="status">{t(($) => $.package.loading)}</p>}
     {(inspect.isError || (defaultKit && (defaults.isError || defaults.data === null))) && <p role="alert" className="text-caption text-destructive">{inspect.error?.message ?? t(($) => $.package.failed)}</p>}
-    {pkg && counts && !inspect.isPending && <ImportSelection key={revision} wsId={wsId} pkg={pkg} counts={counts} onComplete={() => { inspect.reset(); onComplete?.(); }} onBusyChange={handleBusyChange} />}
+    {pkg && counts && !inspect.isPending && <ImportSelection key={revision} wsId={wsId} pkg={pkg} counts={counts} defaultKit={defaultKit} onComplete={() => { inspect.reset(); onComplete?.(); }} onBusyChange={handleBusyChange} />}
   </div>;
 }
