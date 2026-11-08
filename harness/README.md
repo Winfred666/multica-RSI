@@ -4,6 +4,9 @@
 `startup.gotmpl` is the workspace's editable startup prompt. It includes the issue
 workflow, common CLI contracts and a final Never-HERO/Stop-slop block. Routine issue turns
 need no `multica-issue-turn` read; the kit no longer includes that skill.
+Startup carries common checkout rules. Read `multica-project-resource-contract`
+only for supplied benchmarks or fixed resource/submission contracts; its evaluator
+and canonical submission rules remain available to every agent as a system skill.
 Current issue bodies travel in the per-turn claim prompt, keeping the startup prefix
 stable. Older server/daemon pairs still supply the explicit issue-read command.
 
