@@ -71,7 +71,7 @@ class CommentHandoff(unittest.TestCase):
         block = load('native_block', 'multica-surface-block', 'controller.py')
         parent = {'id': 'parent', 'workspace_id': 'workspace', 'status': 'in_progress',
                   'assignee_type': 'agent', 'assignee_id': 'parent-agent'}
-        args = SimpleNamespace(reason='Frontend must hide /note while preserving routing.', parent_thread='parent-thread')
+        args = SimpleNamespace(reason='Frontend must hide /note while preserving routing.', parent_thread='parent-reply')
         for dispatch in ('queued', 'steered', 'coalesced', 'deferred', 'blocked', None):
             with self.subTest(dispatch=dispatch), tempfile.TemporaryDirectory() as directory:
                 self.issue['status'] = 'in_progress'
@@ -81,7 +81,7 @@ class CommentHandoff(unittest.TestCase):
                     if words == ('get', 'parent'):
                         return parent
                     if words[:3] == ('comment', 'list', 'parent'):
-                        return [{'id': 'parent-thread', 'issue_id': 'parent'}]
+                        return [{'id': 'parent-root', 'issue_id': 'parent', 'parent_id': None}]
                     if words[:2] == ('comment', 'add'):
                         content = Path(words[words.index('--content-file') + 1]).read_text()
                         writes.append((words[2], content, words))
@@ -115,7 +115,7 @@ class CommentHandoff(unittest.TestCase):
                 self.assertIn('mention://issue/child', request[1])
                 self.assertIn('child-reply', request[1])
                 self.assertIn('--steer-active', request[2])
-                self.assertEqual(request[2][-3:-1], ('--parent', 'parent-thread'))
+                self.assertEqual(request[2][-3:-1], ('--parent', 'parent-reply'))
 
 
 if __name__ == '__main__':
