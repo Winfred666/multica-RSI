@@ -25,9 +25,6 @@ def block(args, context):
         require(parent['workspace_id'] == issue['workspace_id'], 'Parent is outside the issue workspace')
         if not args.parent_thread:
             raise error('missing_parent_thread', 'Supply --parent-thread with the relevant parent request comment.')
-        rows = cli('comment', 'list', parent['id'], '--thread', args.parent_thread, '--tail', '0')
-        require(any(row['id'] == args.parent_thread and row['issue_id'] == parent['id'] for row in rows),
-                'Parent request thread was not found')
         if parent.get('assignee_type') not in {'agent', 'squad'} or not parent.get('assignee_id'):
             raise error('missing_parent_owner', 'Assign a responsible agent or squad to the parent before handing off.')
     path = Path.cwd() / ('.multica-blocker-' + context['task_id'] + '.json')
