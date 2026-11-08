@@ -43,3 +43,18 @@ Matt Pocock's MIT-licensed skills collection; its license is included alongside 
 cd harness
 go test ./...
 ```
+
+Symbolic SOP authoring and runtime follow AIDE²'s pinned protocol
+[`05ccf153`](https://github.com/WinfredClaw/multica-AIDE/tree/05ccf1530a46339af62daa7cf434d777037ff9db/.agents/skills/create-symbolic-sop).
+The complete template includes the background experiment monitor, persistent task
+facts, scripted routes and separate callback options. Each executable system SOP
+ships its own controller diagram, monitor and configuration; `--validate` rejects
+missing `DEBUG.md` or a non-boolean `config.json` DEBUG value. RSI keeps its native
+single-task lifecycle procedures and documents their actual states. The authoring
+reference points to RSI's bundled platform guidance.
+
+Static `DEBUG.md` diagrams are required even when previews are disabled. Set
+`config.json` to `{"DEBUG": true}` to publish the controller's state HTML on native
+state shifts. Read-only controller `artifacts(context)` can also publish live HTML;
+upload failures leave the procedure result intact. Existing `.state` records and
+procedure-specific policies must be preserved when updating installed bundles.
