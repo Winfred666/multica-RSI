@@ -39,21 +39,28 @@ export function buildIssueTree(
   for (const issue of byId.values()) roots.push(...visit(issue));
 
   function collapse(nodes: IssueTreeNode[], parent: string): IssueTreeNode[] {
-    const groupId = `collapsed:${parent}`;
-    const hidden = nodes.filter((node) => hiddenStatuses.has(node.issues[0]!.status));
-    if (hidden.length < 2 || expandedGroups.has(groupId)) {
-      return nodes.map((node) => ({ ...node, children: collapse(node.children, node.id) }));
+    const byStatus = new Map<string, IssueTreeNode[]>();
+    for (const node of nodes) {
+      const status = node.issues[0]!.status;
+      if (!hiddenStatuses.has(status)) continue;
+      const group = byStatus.get(status) ?? [];
+      group.push(node);
+      byStatus.set(status, group);
     }
-    const hiddenIds = new Set(hidden.map((node) => node.id));
-    const group: IssueTreeNode = {
-      id: groupId,
-      issues: hidden.flatMap((node) => node.issues),
-      collapsed: true,
-      children: [],
-    };
-    return nodes.flatMap((node) => hiddenIds.has(node.id)
-      ? node === hidden[0] ? [group] : []
-      : [{ ...node, children: collapse(node.children, node.id) }]);
+    return nodes.flatMap((node) => {
+      const status = node.issues[0]!.status;
+      const groupId = `collapsed:${parent}:${status}`;
+      const hidden = byStatus.get(status);
+      if (!hidden || hidden.length < 2 || expandedGroups.has(groupId)) {
+        return [{ ...node, children: collapse(node.children, node.id) }];
+      }
+      return node === hidden[0] ? [{
+        id: groupId,
+        issues: hidden.flatMap((entry) => entry.issues),
+        collapsed: true,
+        children: [],
+      }] : [];
+    });
   }
   return collapse(roots, "root");
 }
