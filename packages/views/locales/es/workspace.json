@@ -51,6 +51,8 @@
     "invalid": "Paquete del espacio de trabajo no válido.",
     "imported": "Paquete del espacio de trabajo importado.",
     "importing": "Importando…",
+    "unselect_all": "Deseleccionar todo",
+    "startup_warning": "Omitir el prompt del sistema, las habilidades o los plugins puede impedir que los agentes comprendan y utilicen Multica correctamente.",
     "startup_title": "Importar el kit de inicio",
     "continue": "Continuar"
   }
