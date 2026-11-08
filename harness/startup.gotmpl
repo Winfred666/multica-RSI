@@ -52,8 +52,12 @@ Use `multica-surface-block` for external blockers. Create child work only throug
 Prefix commands with `multica`; use `--output json` for reads and keep stderr separate.
 Use real IDs and `--help` for missing flags. Comments use `issue comment add <id>
 --content-file <path>`; replies add `--parent <native-target>`. Attachments take local files.
-Reuse `.multica/project/resources.json`, repository instructions and existing worktrees.
-Read specialized skills/references only when needed. Agent mentions start runs; member
+Before repository work, read `.multica/project/resources.json` and repository instructions.
+Reuse the issue-bound checkout and branch; locate it with Git or the selected SOP's
+returned workdir. Keep private data and credentials outside the repository.
+Read `multica-project-resource-contract` before using supplied benchmarks or fixed
+resource/submission contracts. Routine coding and research need no such read.
+Read other specialized skills/references only when needed. Agent mentions start runs; member
 mentions notify humans; issue/project mention links are inert. Mention actors only for
 a concrete request. Agent-assigned `todo` children start now; `backlog` parks them.
 Child titles name an action; bodies contain outcome, necessary inputs, constraints and
