@@ -14,7 +14,7 @@ var remoteSOPCmd = &cobra.Command{
 	Use:     "remote-sop <remote-issue-id> <SOP-name> [args...]",
 	Short:   "Run a remote issue's SOP and print its execution-log output",
 	Long:    "Run python3 <skill>/wrapper.py on the issue assignee's host. Try --help as the SOP argument first. Arguments pass through unchanged; results come from the execution log.",
-	Example: "  multica remote-sop R-42 multica-surface-delivery --help",
+	Example: "  multica remote-sop R-42 multica-subissue-distribute --help",
 	RunE:    runRemoteSOP,
 }
 

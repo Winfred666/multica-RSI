@@ -1,9 +1,9 @@
 # Workspace startup kit
 
 `manifest.json` selects the system skills, optional library skills and plugins.
-`startup.gotmpl` is the workspace's editable startup prompt. It includes the issue
-workflow, common CLI contracts and a final Never-HERO/Stop-slop block. Routine issue turns
-need no `multica-issue-turn` read; the kit no longer includes that skill.
+`startup.gotmpl` is the workspace's editable startup prompt. It routes issue turns
+to the brief textual `multica-issue-workflow` system skill and keeps common CLI
+contracts and a final Never-HERO/Stop-slop block.
 Startup carries common checkout rules. Read `multica-project-resource-contract`
 only for supplied benchmarks or fixed resource/submission contracts; its evaluator
 and canonical submission rules remain available to every agent as a system skill.
@@ -16,11 +16,13 @@ nothing.
 
 The kit keeps one owner per deliverable, reuses current-task context and worktrees,
 establishes working artifacts early and preserves measured improvements. Delegation
-remains available for independently useful work. Lifecycle SOPs handle child review,
-delivery and blockers. `multica-subissue-distribute` creates children from the parent;
-children use `multica-surface-delivery` or `multica-surface-block`. Replies carry
-results and native steering asks the parent to review or help. Each SOP runs
-within one agent task and issue.
+remains available for independently useful work. `multica-subissue-distribute`
+creates children from the parent;
+`multica-surface-block` handles external blockers. Children post results as native
+issue comments and enter `in_review` while awaiting acceptance; `done` stays human.
+The textual system skill follows the issue workflow in official Multica upstream
+[`73975653`](https://github.com/multica-ai/multica/blob/73975653323750d04c27047ea9c986ef06bdf6a1/server/internal/daemon/execenv/runtime_config_sections.go#L614-L653).
+That revision defines no separate delivery or sub-issue review skill.
 
 The optional `harness-backup-restore` client fetches the server's embedded default
 package through the native API. It exports and imports the same package format
