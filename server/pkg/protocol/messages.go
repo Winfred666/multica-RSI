@@ -425,6 +425,17 @@ type DaemonHeartbeatRequestPayload struct {
 	SupportsBatchImport bool   `json:"supports_batch_import,omitempty"`
 }
 
+type RemoteSOPRequest struct {
+	ID          string          `json:"id"`
+	AgentID     string          `json:"agent_id"`
+	IssueID     string          `json:"issue_id"`
+	WorkspaceID string          `json:"workspace_id"`
+	Content     string          `json:"content"`
+	WorkDir     string          `json:"work_dir"`
+	Skills      json.RawMessage `json:"skills"`
+	AuthToken   string          `json:"auth_token"`
+}
+
 // DaemonHeartbeatAckPayload is the server's reply to DaemonHeartbeatRequestPayload.
 // JSON shape mirrors the HTTP heartbeat response so daemon code can decode either.
 // ServerCapabilities is explicit server-to-daemon protocol negotiation. A

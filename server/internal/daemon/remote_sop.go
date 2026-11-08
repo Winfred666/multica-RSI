@@ -10,91 +10,97 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"time"
 
-	"github.com/multica-ai/multica/server/internal/daemon/execenv"
-	"github.com/multica-ai/multica/server/internal/util"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
-const remoteSOPPrefix = "!sop "
-
-type remoteSOPContextKey struct{}
-
-type remoteSOPContext struct {
-	task     Task
-	env      *execenv.Environment
-	provider string
-	seq      *atomic.Int32
+func (d *Daemon) executeRemoteSOPs(ctx context.Context, runtimeID string) {
+	var requests []protocol.RemoteSOPRequest
+	if err := d.client.postJSON(ctx, "/api/daemon/runtimes/"+url.PathEscape(runtimeID)+"/remote-sops/take", nil, &requests); err != nil {
+		d.logger.Debug("remote SOP poll failed", "error", err)
+		return
+	}
+	for _, request := range requests {
+		d.executeRemoteSOP(ctx, request)
+	}
 }
 
-func (d *Daemon) interceptRemoteSOP(ctx context.Context, state remoteSOPContext, commentID, content string) (bool, error) {
-	if !strings.HasPrefix(content, remoteSOPPrefix) {
-		return false, nil
+// Remote SOPs run directly from heartbeat actions, outside agent task execution.
+func (d *Daemon) executeRemoteSOP(ctx context.Context, request protocol.RemoteSOPRequest) {
+	output, code, err := d.runRemoteSOP(ctx, request)
+	diagnostic := ""
+	if err != nil {
+		diagnostic = err.Error()
 	}
-	report := func(message TaskMessageData) error {
-		message.Seq = int(state.seq.Add(1))
-		message.CallID, message.Tool, message.CreatedAt = commentID, "remote-sop", time.Now().UTC()
-		return d.client.ReportTaskMessages(ctx, state.task.ID, []TaskMessageData{message})
+	result := TaskMessageData{Seq: 2, CallID: request.ID, Type: "tool_result", Tool: "remote-sop", Output: output, Content: diagnostic, Input: map[string]any{"exit_code": code}, CreatedAt: time.Now().UTC()}
+	if err := d.client.ReportTaskMessages(ctx, request.ID, []TaskMessageData{result}); err != nil {
+		d.logger.Error("remote SOP result failed", "request_id", request.ID, "error", err)
 	}
-	if err := report(TaskMessageData{Type: "tool_use", Content: content, Input: map[string]any{"command": content}}); err != nil {
-		return true, err
+}
+
+func (d *Daemon) runRemoteSOP(ctx context.Context, request protocol.RemoteSOPRequest) (string, int, error) {
+	name, payload, _ := strings.Cut(strings.TrimPrefix(request.Content, "/note !sop "), " ")
+	var argv []string
+	if err := json.Unmarshal([]byte(payload), &argv); err != nil {
+		return "", 1, err
 	}
-	output, diagnostic, code := "", "", 0
-	consumePath := "/api/daemon/tasks/" + url.PathEscape(state.task.ID) + "/remote-sop/consume?comment_id=" + url.QueryEscape(commentID)
-	if err := d.client.postJSON(ctx, consumePath, nil, nil); err != nil {
-		diagnostic, code = err.Error(), 1
-	} else {
-		name, payload, _ := strings.Cut(strings.TrimPrefix(content, remoteSOPPrefix), " ")
-		var argv []string
-		decoder := json.NewDecoder(strings.NewReader(payload))
-		err := decoder.Decode(&argv)
-		if err == nil && strings.TrimSpace(util.MentionRe.ReplaceAllString(payload[decoder.InputOffset():], "")) != "" {
-			err = fmt.Errorf("expected !sop <name> <JSON argument array>")
-		}
-		if err != nil {
-			diagnostic, code = err.Error(), 1
-		} else {
-			wrapper, available := findRemoteSOP(state.env, state.provider, name)
-			if wrapper == "" {
-				output, code = fmt.Sprintf("SOP %q not found. Available SOPs: %s\n", name, strings.Join(available, ", ")), 1
-			} else {
-				process := exec.CommandContext(ctx, "python3", append([]string{wrapper}, argv...)...)
-				process.Dir = state.env.WorkDir
-				remoteTask := state.task
-				remoteTask.ID = "0"
-				env := taskMulticaEnvironment(remoteTask, state.provider, "", state.task.AuthToken, state.env.MulticaConfigRoot, d.cfg.WorkspacesRoot, d.cfg.ServerBaseURL, 0, 0, state.env.RootDir)
-				for _, item := range os.Environ() {
-					key, _, _ := strings.Cut(item, "=")
-					if !strings.HasPrefix(key, "MULTICA_") {
-						process.Env = append(process.Env, item)
-					}
-				}
-				for key, value := range env {
-					process.Env = append(process.Env, key+"="+value)
-				}
-				data, err := process.CombinedOutput()
-				output = string(data)
-				if err != nil {
-					code = 1
-					if process.ProcessState != nil {
-						code = process.ProcessState.ExitCode()
-					}
-					if code < 0 {
-						code = 1
-					}
-					diagnostic = err.Error()
-				}
+	root := filepath.Join(d.cfg.WorkspacesRoot, "remote-sops", request.IssueID, request.AgentID)
+	var skills []SkillData
+	if err := json.Unmarshal(request.Skills, &skills); err != nil {
+		return "", 1, err
+	}
+	bound := filepath.Join(root, "skills")
+	for _, skill := range skills {
+		dir := filepath.Join(bound, skill.Name)
+		for _, file := range append([]SkillFileData{{Path: "SKILL.md", Content: skill.Content}}, skill.Files...) {
+			path := filepath.Join(dir, file.Path)
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				return "", 1, err
+			}
+			if err := os.WriteFile(path, []byte(file.Content), 0600); err != nil {
+				return "", 1, err
 			}
 		}
 	}
-	return true, report(TaskMessageData{Type: "tool_result", Output: output, Content: diagnostic, Input: map[string]any{"exit_code": code}})
+	work := request.WorkDir
+	if info, err := os.Stat(work); err != nil || !info.IsDir() {
+		work = filepath.Join(root, "workdir")
+	}
+	if err := os.MkdirAll(work, 0700); err != nil {
+		return "", 1, err
+	}
+	wrapper, available := findRemoteSOP([]string{bound, filepath.Join(work, ".agents", "skills"), filepath.Join(work, ".agents")}, name)
+	if wrapper == "" {
+		return fmt.Sprintf("SOP %q not found. Available SOPs: %s\n", name, strings.Join(available, ", ")), 1, nil
+	}
+	config := filepath.Join(root, "config")
+	if err := os.MkdirAll(config, 0700); err != nil {
+		return "", 1, err
+	}
+	process := exec.CommandContext(ctx, "python3", append([]string{wrapper}, argv...)...)
+	process.Dir = work
+	for _, item := range os.Environ() {
+		key, _, _ := strings.Cut(item, "=")
+		if !strings.HasPrefix(key, "MULTICA_") {
+			process.Env = append(process.Env, item)
+		}
+	}
+	process.Env = append(process.Env, "MULTICA_TASK_ID=0", "MULTICA_AGENT_ID="+request.AgentID, "MULTICA_ISSUE_ID="+request.IssueID, "MULTICA_WORKSPACE_ID="+request.WorkspaceID, "MULTICA_TOKEN="+request.AuthToken, "MULTICA_SERVER_URL="+d.cfg.ServerBaseURL, "MULTICA_TASK_CONFIG_ROOT="+config)
+	output, err := process.CombinedOutput()
+	code := 0
+	if err != nil {
+		code = 1
+		if process.ProcessState != nil && process.ProcessState.ExitCode() > 0 {
+			code = process.ProcessState.ExitCode()
+		}
+	}
+	return string(output), code, err
 }
 
-func findRemoteSOP(env *execenv.Environment, provider, name string) (string, []string) {
-	roots := []string{env.SkillsDir(provider), filepath.Join(env.WorkDir, ".agents", "skills"), filepath.Join(env.WorkDir, ".agents")}
+func findRemoteSOP(roots []string, name string) (string, []string) {
 	available := []string{}
-	var wrapper string
+	wrapper := ""
 	for _, root := range roots {
 		entries, _ := os.ReadDir(root)
 		for _, entry := range entries {
@@ -118,34 +124,4 @@ func findRemoteSOP(env *execenv.Environment, provider, name string) (string, []s
 	}
 	slices.Sort(available)
 	return wrapper, available
-}
-
-func (d *Daemon) interceptTaskRemoteSOPs(ctx context.Context, task *Task, state remoteSOPContext) (bool, error) {
-	if task.TriggerCommentID == "" {
-		return false, nil
-	}
-	comments := append(append([]CoalescedCommentData{}, task.CoalescedComments...), CoalescedCommentData{ID: task.TriggerCommentID, Content: task.TriggerCommentContent})
-	remaining := []CoalescedCommentData{}
-	for _, comment := range comments {
-		handled, err := d.interceptRemoteSOP(ctx, state, comment.ID, comment.Content)
-		if err != nil {
-			return false, err
-		}
-		if !handled {
-			remaining = append(remaining, comment)
-		}
-	}
-	if len(remaining) == len(comments) {
-		return false, nil
-	}
-	if len(remaining) == 0 {
-		return true, nil
-	}
-	last := remaining[len(remaining)-1]
-	task.TriggerCommentID, task.TriggerCommentContent = last.ID, last.Content
-	task.CoalescedComments, task.CoalescedCommentIDs = remaining[:len(remaining)-1], nil
-	for _, comment := range task.CoalescedComments {
-		task.CoalescedCommentIDs = append(task.CoalescedCommentIDs, comment.ID)
-	}
-	return false, nil
 }
