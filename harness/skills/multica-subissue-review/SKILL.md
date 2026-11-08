@@ -19,3 +19,8 @@ Finish this SOP once every child is reviewed and settled, then continue the pare
 goal. Follow returned error guidance, reconcile writes before retrying, and use
 `repaired` once for assertion failures; report repeated failure through
 `multica-surface-block`.
+
+See [DEBUG.md](DEBUG.md) for this procedure’s states. In every state, follow
+returned error guidance and finish unmet prerequisites before retrying. Reconcile
+writes first. For assertion failures, use the returned `repaired` callback once;
+report a repeated failure through native Multica block.
