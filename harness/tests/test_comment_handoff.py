@@ -67,15 +67,55 @@ class CommentHandoff(unittest.TestCase):
         self.assertEqual(self.issue['status'], 'in_review')
         self.assertNotIn('metadata', self.issue)
 
-    def test_blocker_is_posted_before_the_native_parent_wakeup_trigger(self):
+    def test_r206_blocker_finishes_only_after_parent_help_dispatch(self):
         block = load('native_block', 'multica-surface-block', 'controller.py')
-        context = {'initial': self.issue, 'cli': self.cli,
-                   'error': lambda code, message: ValueError(message)}
-        block.block(SimpleNamespace(reason='Dataset missing; parent must provide it.'), context)
-        self.assertEqual([kind for kind, _ in self.writes], ['reply', 'status'])
-        self.assertIn('parent must provide it', self.comments[-1]['content'])
-        self.assertEqual(self.issue['status'], 'blocked')
-        self.assertNotIn('metadata', self.issue)
+        parent = {'id': 'parent', 'workspace_id': 'workspace', 'status': 'in_progress',
+                  'assignee_type': 'agent', 'assignee_id': 'parent-agent'}
+        args = SimpleNamespace(reason='Frontend must hide /note while preserving routing.', parent_thread='parent-thread')
+        for dispatch in ('queued', 'steered', 'coalesced', 'deferred', 'blocked', None):
+            with self.subTest(dispatch=dispatch), tempfile.TemporaryDirectory() as directory:
+                self.issue['status'] = 'in_progress'
+                writes = []
+
+                def cli(*words, **kwargs):
+                    if words == ('get', 'parent'):
+                        return parent
+                    if words[:3] == ('comment', 'list', 'parent'):
+                        return [{'id': 'parent-thread', 'issue_id': 'parent'}]
+                    if words[:2] == ('comment', 'add'):
+                        content = Path(words[words.index('--content-file') + 1]).read_text()
+                        writes.append((words[2], content, words))
+                        return {'id': words[2] + '-reply', 'trigger_outcomes': [] if dispatch is None else [
+                            {'target_type': 'agent', 'target_id': 'parent-agent', 'status': dispatch}]}
+                    if words[0] == 'status':
+                        self.issue['status'] = words[2]
+                        writes.append(('status', words[2], words))
+                        return
+                    return self.cli(*words, **kwargs)
+
+                context = {'initial': self.issue, 'cli': cli, 'issue_id': 'child', 'task_id': 'r206-regression',
+                           'error': lambda code, message: ValueError(message)}
+                with patch.object(block.Path, 'cwd', return_value=Path(directory)):
+                    if dispatch in ('blocked', None):
+                        with self.assertRaisesRegex(ValueError, 'dispatch was not confirmed'):
+                            block.block(args, context)
+                        # A blocked child's init must resume, not claim a completed handoff.
+                        self.assertEqual(block.precheck(context)['status'], 'blocked')
+                        with self.assertRaises(ValueError):
+                            block.block(args, context)
+                    else:
+                        result = block.block(args, context)
+                        self.assertEqual(result['data']['parent_comment_id'], 'parent-reply')
+                        self.assertEqual(result['data']['parent_dispatch'], dispatch)
+                        block.block(args, context)
+                self.assertEqual([row[0] for row in writes], ['child', 'status', 'parent'])
+                request = writes[-1]
+                self.assertIn('mention://agent/parent-agent', request[1])
+                self.assertIn(args.reason, request[1])
+                self.assertIn('mention://issue/child', request[1])
+                self.assertIn('child-reply', request[1])
+                self.assertIn('--steer-active', request[2])
+                self.assertEqual(request[2][-3:-1], ('--parent', 'parent-thread'))
 
 
 if __name__ == '__main__':
