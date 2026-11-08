@@ -383,6 +383,10 @@ export default function SkillsPage() {
 
     const dir = sortDirection === "asc" ? 1 : -1;
     filtered.sort((a, b) => {
+      const systemOrder =
+        Number(b.skill.is_system_skill === true) -
+        Number(a.skill.is_system_skill === true);
+      if (systemOrder !== 0) return systemOrder;
       if (sortField === "name") {
         return a.skill.name.localeCompare(b.skill.name) * dir;
       }
@@ -417,6 +421,7 @@ export default function SkillsPage() {
         key: "name",
         header: t(($) => $.table.name),
         sortKey: "name",
+        width: 200,
         cell: (row) => <NameCell row={row} />,
       },
       {
