@@ -30,12 +30,13 @@ rejects existing names unless `--replace-existing` authorizes replacement; insta
 updates the named startup kit. See the [package contract](../docs/engineering/workspace-packages.md).
 System skills inherit into newly created agents; optional skills remain in the
 workspace library for attachment.
+The optional library contains `create-symbolic-sop` for SOP authoring and
+`harness-backup-restore`. Mika onboarding guidance renders in the chat system
+prompt and applies only when product-authored onboarding context is present.
 
 Plugin packages and checks live in [plugins/](plugins/README.md). Startup publishes
 and installs their bundles without provisioning execution credentials. Configure
 hosted execution separately with an owner/admin PAT before running hooks.
-[Grilling](skills/grilling/SKILL.md) is from
-Matt Pocock's MIT-licensed skills collection; its license is included alongside it.
 
 ```sh
 cd harness

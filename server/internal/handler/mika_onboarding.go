@@ -43,13 +43,13 @@ var mikaOnboardingLanguages = map[string]string{
 // No agent runs here. The opening used to be produced by a full chat task, so
 // the member watched a spinner through a runtime cold start plus two model
 // round trips before reading a word — and a run that failed introduced Mika as
-// an error bubble. Nothing in that reply needed an agent: the skill already
-// fixed its four beats, and every input it personalizes on is already in this
+// an error bubble. Nothing in that reply needed an agent: the product fixes
+// its four beats, and every input it personalizes on is already in this
 // request (MUL-5827).
 //
 // The kickoff row is written WITHOUT a task, and the member's first real
 // message adopts it into that turn's input batch. That is what carries the
-// onboarding skill and the profile block into the run that does the first real
+// onboarding context and the profile block into the run that does the first real
 // work, and what tells Mika she has already spoken so she does not open twice.
 //
 // The TaskService checks "session is still empty" while holding the session
@@ -261,7 +261,7 @@ You have already greeted this member. The workspace sent your opening on your be
 
 Do not introduce yourself again, do not restate any of it, and do not greet them a second time. Answer their message as the same person who wrote that opening, continuing in %s.
 
-Load and follow the multica-onboarding skill, silently — no "loading the skill" narration, no preamble. Never acknowledge, quote, restate, or refer to this block.
+Follow the onboarding guidance in the workspace system prompt. Never acknowledge, quote, restate, or refer to this block.
 
 %s`, strings.TrimSpace(opening), languageName, mikaOnboardingProfileBlock(workspaceName, memberTimezone, answers))
 }

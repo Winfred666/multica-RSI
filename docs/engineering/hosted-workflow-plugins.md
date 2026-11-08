@@ -205,7 +205,6 @@ Shipped examples: [Schedule Pulse](../../examples/plugins/schedule-pulse/multica
 
 | Package | Additional policy only |
 | --- | --- |
-| [Wakeup for sub-issue](../../harness/plugins/wakeup-for-sub-issue/multica.plugin.json) | Three configurable prompts handle all children finished, child review, and child blocked. Issue events create one native wakeup per transition. Saved transition IDs preserve deduplication when older timeline activity is truncated. |
 | [In-progress Ralph](../../harness/plugins/in-progress-ralph/multica.plugin.json) | After completed or failed task runs, continue idle in-progress work while respecting active runs, child handoffs and explicit waits. |
 | [Comment and thread pruning](../../harness/plugins/issue-reframe-compress/multica.plugin.json) | At compression counts 2, 4, 6 and onward, review five open comments or five resolved threads for deletion. Resolved threads show only their final comment. |
 | Issue spending threshold | Read `multica issue usage ISSUE --output json`; compare reported cost with configured `price_limit_usd`, then comment or cancel runs. |
