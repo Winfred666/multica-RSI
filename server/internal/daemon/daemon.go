@@ -8633,6 +8633,14 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	stopPrepareLease()
 	prepareComplete = true
 	cancelPrepare()
+	var msgSeq atomic.Int32
+	remoteSOP := remoteSOPContext{task: task, env: env, provider: provider, seq: &msgSeq}
+	ctx = context.WithValue(ctx, remoteSOPContextKey{}, remoteSOP)
+	if handled, err := d.interceptTaskRemoteSOPs(ctx, &task, remoteSOP); err != nil {
+		return TaskResult{}, err
+	} else if handled {
+		return TaskResult{Status: "completed", SessionID: task.PriorSessionID, WorkDir: task.PriorWorkDir, EnvRoot: env.RootDir}, nil
+	}
 	_ = d.client.ReportProgress(ctx, task.ID, fmt.Sprintf("Launching %s", provider), 1, 2)
 
 	taskCtx = execenv.ApplyPreparedSkillNames(taskCtx, env.PreparedSkillNames)
@@ -9042,7 +9050,6 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 
 	// Shared across the resume-retry below so the retry's transcript rows
 	// keep ascending seq values for the same task.
-	var msgSeq atomic.Int32
 	d.reportThinkingLevelWarning(ctx, task.ID, selection.ThinkingLevelWarning, &msgSeq, taskLog)
 	outputObserver := &taskOutputObserver{}
 	ctx = withTaskOutputObserver(ctx, outputObserver)

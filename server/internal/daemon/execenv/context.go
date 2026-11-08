@@ -324,6 +324,17 @@ func resolveSkillsDir(workDir, provider string, manifest *sidecarManifest) (stri
 	return skillsDir, nil
 }
 
+// SkillsDir locates the prepared skills in the runtime home or workspace.
+func (e *Environment) SkillsDir(provider string) string {
+	if e.CodexHome != "" {
+		return filepath.Join(e.CodexHome, "skills")
+	}
+	if e.HermesHome != "" {
+		return filepath.Join(e.HermesHome, "skills")
+	}
+	return skillsDirPath(e.WorkDir, provider)
+}
+
 // skillsDirPath returns the provider-native skills parent directory under
 // workDir WITHOUT creating it or recording anything. resolveSkillsDir wraps
 // this with the MkdirAll/manifest bookkeeping; the reuse-path skill rollback
