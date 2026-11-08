@@ -70,6 +70,11 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## CLI and daemon
 
+- **Agent workspace creation.** Any active agent can run `multica workspace create`
+  through its local daemon. The daemon validates the task credential and uses its
+  private member PAT; the created workspace belongs to that PAT's owner. The
+  originating task stays bound to its original workspace.
+
 - **Remote SOPs.** `multica remote-sop ISSUE SOP [args...]` posts
   `/note !sop <name> <JSON argv>`. Try `--help` as the first SOP argument.
   The native `/note` prefix prevents agent activation. On each heartbeat the
