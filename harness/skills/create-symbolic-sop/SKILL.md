@@ -172,14 +172,14 @@ declared in the branch's routes. Branches are transient and route directly to
 states. Labels describe the script outcomes. The renderer reads these declarations
 without running conditions or inferring routes from docstrings or execution history.
 
-An action's optional fenced Mermaid `flowchart LR` docstring supplies only its
+An action's optional fenced `dot` docstring supplies only its
 expanded local flowchart. Show validation, exceptions, side effects and local
 branches or loops that change the action's work. Keep global state-routing
-diamonds and state-to-state links out of these diagrams. Use local node IDs prefixed
-with the function name. There is no overview block in a docstring and no duplicate
+diamonds and state-to-state links out of these diagrams. Name each DOT `digraph`
+after its function. There is no overview block in a docstring and no duplicate
 `DEBUG.md`. Keep the action diagram short and consistent with its implementation.
 
-Use Mermaid's small-circle start and framed-circle stop shapes linked to the
+Use Graphviz's `point` start and filled `doublecircle` stop shapes linked to the
 initial/final states with plain arrows. These markers and boundary links are not
 clickable or workflow options.
 Final states have no options; the review action can complete directly without an
@@ -196,13 +196,19 @@ size and allow horizontal scrolling. This follows the HTML viewport and updates
 automatically on resize or rotation. Selecting a state shows formatted agent JSON; visited states
 replay their emitted decision, while unvisited states show declared guidance and
 static options without executing workflow code. Selecting an edge shows the agent's
-option JSON followed by its rendered Mermaid logic, before issue/task metadata.
+option JSON followed by its rendered DOT logic, before issue/task metadata.
 State selection shows the diagrams for its available options. Read docstrings with
 `inspect.getdoc`; omit function definitions from the preview. Cache diagrams for
 dynamic options when the workflow resolves them; do not rerun option factories
 to render a preview.
-Load Mermaid's single bundled script rather than its ES module entrypoint, which
-fetches multiple dependent chunks before a sandboxed preview can render.
+Install Graphviz on the CLI/daemon host and expose `dot` on PATH (on Debian/Ubuntu:
+`sudo apt-get install --no-install-recommends graphviz`). Like the sandbox helper's
+external `bwrap` lookup, the renderer finds the system executable and calls it directly.
+Compile the global DOT graph and local DOT diagrams with `dot -Tsvg` before uploading
+the HTML. Embed the SVGs and use small local JavaScript for selection; opening or
+clicking the artifact must require no external scripts, fonts, network or browser-side
+layout engine. Keep missing-tool and invalid-DOT errors actionable; artifact failures
+must leave workflow results intact.
 Omit HTML help controls.
 Cache dynamic option targets when resolving choices so previews never repeat
 option factories. DEBUG defaults

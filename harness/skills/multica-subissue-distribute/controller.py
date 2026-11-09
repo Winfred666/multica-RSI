@@ -124,13 +124,13 @@ def validate_creation(args, value):
 
 
 def create_action(args, context):
-    """```mermaid
-    flowchart LR
-      create_validate[Validate child specification and cohort] --> create_lock[Lock branch allocation]
-      create_lock --> create_parent[Prepare parent binding]
-      create_parent --> create_child[Create and label child]
-      create_child --> create_binding[Prepare branch and sandbox]
-      create_binding --> create_assign[Assign and optionally dispatch]
+    """```dot
+    digraph create_action {
+        rankdir=LR; node [shape=box];
+        "Validate child specification and cohort" -> "Lock branch allocation"
+          -> "Prepare parent binding" -> "Create and label child"
+          -> "Prepare branch and sandbox" -> "Assign and optionally dispatch";
+    }
     ```"""
     args.issue, args.workspace = context['issue_id'], context['workspace_id']
     value = issue(args.issue, args.workspace)

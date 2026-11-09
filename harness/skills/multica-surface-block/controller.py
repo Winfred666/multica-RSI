@@ -16,15 +16,16 @@ def post(context, issue_id, content, *options):
 
 
 def block(args, context):
-    """```mermaid
-    flowchart LR
-      block_validate[Validate reason and parent owner] --> block_receipt[Reconcile saved handoff]
-      block_receipt --> block_post[Publish blocker once]
-      block_post --> block_status[Persist blocked status]
-      block_status --> block_parent{Has parent?}
-      block_parent -->|yes| block_steer[Request help and verify dispatch]
-      block_parent -->|no| block_return[Return receipt]
-      block_steer --> block_return
+    """```dot
+    digraph block {
+        rankdir=LR; node [shape=box];
+        "Validate reason and parent owner" -> "Reconcile saved handoff"
+          -> "Publish blocker once" -> "Persist blocked status" -> "Has parent?";
+        "Has parent?" [shape=diamond];
+        "Has parent?" -> "Request help and verify dispatch" [label="yes"];
+        "Has parent?" -> "Return receipt" [label="no"];
+        "Request help and verify dispatch" -> "Return receipt";
+    }
     ```"""
     issue, cli, error = context['initial'], context['cli'], context['error']
     reason = args.reason.strip()

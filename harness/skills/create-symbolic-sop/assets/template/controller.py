@@ -36,10 +36,11 @@ def valid(context):
 
 
 def configure(args, context):
-    """```mermaid
-    flowchart LR
-        configure_bind["Bind script and workspace"] --> configure_validate["Run delivery-format check"]
-        configure_validate --> configure_save["Save baseline_pending and return phase"]
+    """```dot
+    digraph configure {
+        rankdir=LR; node [shape=box];
+        "Bind script and workspace" -> "Run delivery-format check" -> "Save baseline_pending and return phase";
+    }
     ```"""
     save(context, test_script=str(args.test_script.resolve()), workspace=str(Path.cwd()))
     baseline = valid(context)
@@ -63,11 +64,13 @@ def view(context):
 
 
 def test(args, context):
-    """```mermaid
-    flowchart LR
-        test_gate{"One paragraph and valid delivery?"}
-        test_gate -->|yes| test_launch["Start monitor and return job handle"]
-        test_gate -->|no| test_reject["Reject; keep current state"]
+    """```dot
+    digraph test {
+        rankdir=LR; node [shape=box];
+        "One paragraph and valid delivery?" [shape=diamond];
+        "One paragraph and valid delivery?" -> "Start monitor and return job handle" [label="yes"];
+        "One paragraph and valid delivery?" -> "Reject; keep current state" [label="no"];
+    }
     ```"""
     description = args.description.strip()
     if not description or re.search(r'\n\s*\n', description):
@@ -81,11 +84,12 @@ def test(args, context):
 
 
 def observe(args, context):
-    """```mermaid
-    flowchart LR
-        observe_wait["Collect new logs or process exit"] --> observe_parse["Read completed delivery and score; capture errors"]
-        observe_parse --> observe_save["Save report and baseline when applicable"]
-        observe_save --> observe_return["Return report and phase"]
+    """```dot
+    digraph observe {
+        rankdir=LR; node [shape=box];
+        "Collect new logs or process exit" -> "Read delivery and score; capture errors"
+          -> "Save report and baseline when applicable" -> "Return report and phase";
+    }
     ```"""
     state = context['state']
     report = monitor.wait(state['job'], state.setdefault('monitor', {}))
@@ -114,21 +118,25 @@ def observe(args, context):
 
 
 def exception(args, context):
-    """```mermaid
-    flowchart LR
-        exception_stop["Stop monitor"] --> exception_observe["Collect and route result via observe"]
+    """```dot
+    digraph exception {
+        rankdir=LR; node [shape=box];
+        "Stop monitor" -> "Collect result via observe";
+    }
     ```"""
     monitor.stop(context['state']['job'])
     return observe(args, context)
 
 
 def record(args, context):
-    """```mermaid
-    flowchart LR
-        record_review{"Review is one paragraph?"}
-        record_review -->|no| record_reject["Reject; keep current state"]
-        record_review -->|yes| record_save["Write review.json"]
-        record_save --> record_return["Return report and phase"]
+    """```dot
+    digraph record {
+        rankdir=LR; node [shape=box];
+        "Review is one paragraph?" [shape=diamond];
+        "Review is one paragraph?" -> "Reject; keep current state" [label="no"];
+        "Review is one paragraph?" -> "Write review.json" [label="yes"];
+        "Write review.json" -> "Return report and phase";
+    }
     ```"""
     review = args.review.strip()
     if not review or re.search(r'\n\s*\n', review):

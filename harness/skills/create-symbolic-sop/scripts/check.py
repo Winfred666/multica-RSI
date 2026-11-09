@@ -1,5 +1,6 @@
 """Validate a package, then check its shared runtime in temporary template fixtures."""
 import importlib.util
+from html import unescape
 import json
 import os
 from pathlib import Path
@@ -166,25 +167,26 @@ workflow = Workflow(
         filename, html = upload.call_args.args
         self.assertEqual(filename, 'multica-parallel-refinement-state.html')
         self.assertIn('protocol-fixture', html)
-        self.assertIn('initialize __option_0@--&gt;|configure| configure_result', html)
-        self.assertIn('configure_result --&gt;|yes| variant', html)
-        self.assertIn('configure_result --&gt;|no| scaffold', html)
-        self.assertIn('__start@{ shape: sm-circ } --&gt; initialize', html)
-        self.assertIn('finished --&gt; __end@{ shape: fr-circ }', html)
+        self.assertIn('initialize->configure_result', unescape(html))
+        self.assertIn('configure_result->variant', unescape(html))
+        self.assertIn('configure_result->scaffold', unescape(html))
+        self.assertIn('__start->initialize', unescape(html))
+        self.assertIn('finished->__end', unescape(html))
         self.assertLess(html.index('id="workflow"'), html.index('<h1>'))
         data = json.loads(html.split('<script id="sop-data" type="application/json">', 1)[1].split('</script>', 1)[0])
         self.assertEqual(data['nodes']['initialize'], initial)
         self.assertEqual(data['nodes']['variant'], current)
-        self.assertEqual(data['edges']['__option_0']['decision'], initial['next_step'][0])
-        self.assertIn('Run delivery-format check', data['edges']['__option_0']['logic']['configure'])
-        overview = html.split('<pre class="mermaid" id="workflow">', 1)[1].split('</pre>', 1)[0]
+        self.assertEqual(data['edges']['option_0']['decision'], initial['next_step'][0])
+        self.assertIn('Run delivery-format check', unescape(data['edges']['option_0']['logic']['configure']))
+        overview = html.split('<div class="diagram" id="workflow">', 1)[1].split('</div>', 1)[0]
         self.assertNotIn('Reject; keep current state', overview)
         self.assertNotIn('Review is one paragraph?', overview)
         self.assertNotIn('Measured delivery complete?', overview)
         self.assertIn('Reject; keep current state', data['logic']['variant']['test'])
-        state['option_diagrams']['initialize']['configure'] = 'flowchart LR\n    doc_only{"Local check?"} --> doc_done'
+        controller.workflow.states['initialize'].options[0].action.__doc__ = ('```dot\n'
+            'digraph local { check [label="Local check?", shape=diamond]; check -> done; }\n```')
         changed = wrapper.state_artifact(context, controller, result)
-        changed_overview = changed.split('<pre class="mermaid" id="workflow">', 1)[1].split('</pre>', 1)[0]
+        changed_overview = changed.split('<div class="diagram" id="workflow">', 1)[1].split('</div>', 1)[0]
         self.assertEqual(overview, changed_overview)
         self.assertNotIn('def configure', html)
         self.assertNotIn('__start', data['nodes'])
@@ -193,6 +195,13 @@ workflow = Workflow(
         self.assertLess(html.index('id="detail"'), html.index('id="logic"'))
         self.assertLess(html.index('id="logic"'), html.index('id="metadata"'))
         self.assertNotIn('<button', html)
+        self.assertNotIn('<script src=', html)
+        self.assertNotIn('mermaid', html)
+        with patch.object(wrapper.shutil, 'which', return_value=None):
+            with self.assertRaisesRegex(FileNotFoundError, 'Install Graphviz'):
+                wrapper.graph_svg('digraph { a -> b; }', 'missing_tool')
+        with self.assertRaisesRegex(ValueError, 'Invalid DOT diagram'):
+            wrapper.graph_svg('digraph { broken -> }', 'invalid_dot')
         self.assertNotIn('help', data)
         for name in controller.workflow.states:
             self.assertIn(name, html)

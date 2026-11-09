@@ -60,16 +60,17 @@ to validate a new SOP and check its shared runtime in temporary template fixture
 The two executable system SOPs share the approved template runtime, including
 read-only help replay and Workflow-based HTML. Graphs fit the width in landscape
 and keep their natural size with horizontal scrolling in portrait.
-The HTML loads Mermaid's single bundle to avoid a cascade of module downloads.
+Install Graphviz on the CLI/daemon host and put `dot` on PATH. The wrapper compiles
+DOT to embedded SVG before upload; preview opening and selection need no network.
 RSI keeps its native single-task lifecycle procedures. The authoring reference
 points to RSI's bundled platform guidance.
 
 Set `config.json` to `{"DEBUG": true}` to publish the controller's state HTML on native
 state shifts. The global graph comes from Workflow states, option targets and
-automatic Branch routes selected by script output. Mermaid action docstrings
+automatic Branch routes selected by script output. DOT action docstrings
 render only local logic, checks and exceptions on selection, before the issue metadata.
 Native small-circle
-start and framed-circle stop markers and their boundary links are non-clickable; final states
+start and double-circle stop markers and their boundary links are non-clickable; final states
 need no extra finish option. Read-only controller `artifacts(context)` can also
 publish live HTML; upload failures leave the procedure result intact. Existing `.state` records and
 procedure-specific policies must be preserved when updating installed bundles.
