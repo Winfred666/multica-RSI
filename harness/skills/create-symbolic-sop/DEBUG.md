@@ -13,8 +13,8 @@ protocol to symbolic SoPs in `harness/` and distributions such as
 `dist/AIDE^2-harness`, preserving controllers and live state.
 
 The standalone package includes `SKILL.md`, `config.json`, `controller.py`,
-`sop.py`, `wrapper.py`, `monitor.py` and procedure dependencies. The runtime owns
-`.state/<task_id>.json`; preserve existing records during updates. `config.json`
+`sop.py`, `wrapper.py`, `monitor.py` and procedure dependencies. The runtime owns one serialized current record in
+`issue.metadata["sop.<skill-name>"]`; preserve it during updates. `config.json`
 contains a boolean `DEBUG` (default `false`). Changing issue metadata does not
 configure that package flag.
 
@@ -31,7 +31,6 @@ context construction and `cli` implementation in [wrapper.py](assets/template/wr
 
 | Context key | Value and availability |
 | --- | --- |
-| `task_id` | Native `MULTICA_TASK_ID` string; identifies this run's JSON record. |
 | `issue_id`, `workspace_id` | Native issue/workspace IDs. A declared `--issue` input can override the issue; `--workspace` must match the native workspace. |
 | `agent_id` | Native `MULTICA_AGENT_ID`, or `None` when absent. |
 | `phase` | State name used for option selection or guidance. In a target precheck, use `result['phase']` for the target. |
@@ -39,12 +38,13 @@ context construction and `cli` implementation in [wrapper.py](assets/template/wr
 | `initial` | Current precheck's return value, available after that check; `None` if it has no precheck. |
 | `result` | Target precheck only: generated transition result, including `phase` and any `data`, `instruction` or `accepted` value. Use `'result' in context` to distinguish target checks from current checks. |
 | `cli` | Callable `cli(*words, write=False)` described below. |
+| `save_state` | Call after changing procedure facts in `context['state']`. |
 | `error` | Exception class: `raise context['error']('invalid_child', 'Choose an open direct child.', hint=None)`. |
 
 Use your own context keys to cache JSON-compatible observations within one call.
-Each wrapper invocation builds a new context. `context['state']` is the task's
-JSON record; the template stores its bound test script there. Persist procedure
-facts when an action stays in the same state; keep the runtime's `status` and
+Each invocation reads fresh issue metadata. `context['state']` is the SoP's
+current record; the template stores its bound test script there. Persist procedure
+facts with `context['save_state']()` when needed; keep the runtime's `status` and
 `recovery` fields unchanged. Read external facts from Multica or Git on later calls.
 
 `cli` runs `multica issue <words> --output json`, inheriting the process environment
@@ -78,23 +78,23 @@ to select one of its routes; the target state's precheck still runs. Agent JSON 
 `instruction`, and `next_step`: a list of options, each with its own `instruction`
 and executable `command`. Keep state guidance separate from option prompts.
 Start with a bare call or `init`, then pass an option name as
-the first argument. The wrapper reads the task JSON record and checks its status
-before running an option. Invalid options or parameters return current guidance
-without changing state. Bare calls run no action. Completion removes the task JSON
-file; a later bare call or `init` starts another run within the same native task.
-`--help` is read-only: replay the last emitted decision JSON for a recorded task,
-including its output and options; for a new or completed task, print the `SKILL.md`
-body after YAML frontmatter without creating a task record. Cache each emitted
-decision in the existing task record, including callbacks that stay in one state,
-and retain the latest emitted decision per state for the HTML preview.
+the first argument. The wrapper reads the issue's current SoP status before an
+option runs. Invalid options return current guidance without changing state.
+Bare calls run no action. Completion and quit delete only this SoP's key.
+`--help` reads the latest saved decision without executing the controller or
+writing metadata. Without a record it shows the skill body. Handoff rebinds saved
+commands to the receiving checkout. Keep only current status, latest guidance
+and necessary procedure facts; do not save decision history, diagram caches or
+local recovery/outbox files. The existing 8 KB limit covers all issue metadata;
+coordinate callbacks on the same issue sequentially.
 
 Use `view(context)` for decision evidence and `options(context)` for choices bound
 to actual IDs. Keep both read-only; reuse observations in the current context.
 Option factories can run before selection, so option-specific arguments may not
 exist yet. Return JSON-compatible precheck observations and action results so the
-wrapper can save them for recovery. In the refinement template, the saved solution
-`workspace` pins the test's working directory and log root across recalls; keep it
-internal rather than repeating it in agent guidance.
+wrapper can save them for recovery. The refinement template runs tests and writes logs in the current issue folder;
+it stores no workspace folder configuration. On another machine, make the test
+script, solution and existing job files available before continuing.
 Script fixed work and leave judgment at explicit options. Preserve the procedure's
 conditions, side effects, rejection paths and termination behavior.
 
@@ -168,19 +168,18 @@ connected before execution; handlers can still return another state for a retry.
 
 Set `"DEBUG": true` in the skill's `config.json` to publish `<skill-name>-state.html`
 on every state shift. The wrapper renders `controller.workflow` states, option
-targets and symbolic branches, with state meanings, native issue/task
-IDs and assertion failures. Put the graph before headings and metadata so it is
+targets and symbolic branches, with state meanings, native issue
+ID and assertion failures. Put the graph before headings and metadata so it is
 visible in thumbnails. Use a CSS orientation media query: in landscape, fit SVGs
 to the available width without horizontal scrolling; in portrait, keep their natural
 size and allow horizontal scrolling. This follows the HTML viewport and updates
-automatically on resize or rotation. Selecting a state shows formatted agent JSON; visited states
-replay their emitted decision, while unvisited states show declared guidance and
-static options without executing workflow code. Selecting an edge shows the agent's
-option JSON followed by its rendered DOT logic, before issue/task metadata.
+automatically on resize or rotation. Selecting a state shows formatted agent JSON. The current state replays the
+latest guidance; other states show declared guidance and static options without
+executing workflow code. Selecting an edge shows the agent's
+option JSON followed by its rendered DOT logic, before issue metadata.
 State selection shows the diagrams for its available options. Read docstrings with
-`inspect.getdoc`; omit function definitions from the preview. Cache diagrams for
-dynamic options when the workflow resolves them; do not rerun option factories
-to render a preview.
+`inspect.getdoc`; omit function definitions from the preview. Use choices resolved in the current invocation for dynamic option diagrams;
+never run option factories solely to render a preview.
 The wrapper automatically installs Graphviz on the CLI/daemon host when `dot`
 is missing, using the same `ensure_command` helper as bubblewrap consumers.
 Compile the global DOT graph and local DOT diagrams with `dot -Tsvg` before uploading
@@ -196,8 +195,7 @@ clicking the artifact must require no external scripts, fonts, network or browse
 layout engine. Keep missing-tool and invalid-DOT errors actionable; artifact failures
 must leave workflow results intact.
 Omit HTML help controls.
-Cache dynamic option targets when resolving choices so previews never repeat
-option factories. DEBUG defaults
+Resolve dynamic option targets during normal choice resolution. DEBUG defaults
 to `false`. For an existing HTML view, export read-only `artifacts(context)` from
 `controller.py` returning `{stable_filename: html_string}`; the wrapper updates
 these live artifacts after accepted callbacks. Upload failures leave workflow
@@ -220,7 +218,7 @@ Use proactive keyword + time-trigger monitoring for long experiment scripts:
 the background job keeps logging while the SOP returns `continue`/`exception`.
 The launch option must return the monitor state immediately; only its `continue`
 recall may block.
-The task JSON keeps checkpoint and log positions; the next recall shows only new
+The SoP metadata keeps checkpoint and log positions; the next recall shows only new
 output. Follow the recall in the same turn.
 Default to passive native delivery/block steering for Multica sub-issues;
 proactive escalation there is reserved for unstable DEV SOPs. A `done` option must

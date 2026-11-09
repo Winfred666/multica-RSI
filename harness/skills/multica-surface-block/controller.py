@@ -1,6 +1,5 @@
 """Ask the caller's two blocking questions, then notify the parent."""
 from sop import Completed, Option, Parameter, State, Workflow
-import json
 import tempfile
 from pathlib import Path
 
@@ -38,8 +37,7 @@ def block(args, context):
             raise error('missing_parent_thread', 'Supply --parent-thread with the relevant parent request comment.')
         if parent.get('assignee_type') not in {'agent', 'squad'} or not parent.get('assignee_id'):
             raise error('missing_parent_owner', 'Assign a responsible agent or squad to the parent before handing off.')
-    path = Path.cwd() / ('.multica-blocker-' + context['task_id'] + '.json')
-    receipt = json.loads(path.read_text()) if path.exists() else {'reason': reason, 'parent_thread': args.parent_thread}
+    receipt = context['state'].setdefault('handoff', {'reason': reason, 'parent_thread': args.parent_thread})
     require(receipt['reason'] == reason and receipt['parent_thread'] == args.parent_thread,
             'Blocker request changed; reconcile the saved handoff before retrying')
 
@@ -48,10 +46,11 @@ def block(args, context):
             if receipt.get('posting'):
                 raise error('unconfirmed_post', 'A blocker comment write is uncertain; inspect the saved handoff and native thread before retrying.')
             receipt['posting'] = key
-            path.write_text(json.dumps(receipt))
-            receipt[key] = post(context, identity, content, *options)
+            context['save_state']()
+            posted = post(context, identity, content, *options)
+            receipt[key] = {field: posted[field] for field in ('id', 'trigger_outcomes') if field in posted}
             receipt.pop('posting')
-            path.write_text(json.dumps(receipt))
+            context['save_state']()
         return receipt[key]
 
     comment = publish('blocker', issue['id'], '/note\n' + reason)

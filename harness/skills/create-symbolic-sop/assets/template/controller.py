@@ -1,4 +1,4 @@
-"""Refine one bound workspace; each issue owns its SOP state."""
+"""Refine the current issue folder; each issue owns its SOP state."""
 import importlib.util
 import json
 import math
@@ -37,10 +37,10 @@ def configure(args, context):
     """```dot
     digraph configure {
         rankdir=LR; node [shape=box];
-        "Bind script and workspace" -> "Run delivery-format check" -> "Save baseline_pending and return phase";
+        "Bind test script" -> "Run delivery-format check" -> "Save baseline_pending and return phase";
     }
     ```"""
-    save(context, test_script=str(args.test_script.resolve()), workspace=str(Path.cwd()))
+    save(context, test_script=str(args.test_script.resolve()))
     baseline = valid(context)
     save(context, baseline_pending=not baseline)
     return {'phase': 'variant' if baseline else 'scaffold'}
@@ -48,12 +48,12 @@ def configure(args, context):
 
 def precheck(context):
     state = context['state']
-    if not Path(state['test_script']).is_file() or not Path(state['workspace']).is_dir():
-        raise AssertionError('The bound workspace and test script must exist.')
+    if not Path(state['test_script']).is_file():
+        raise AssertionError('The bound test script must exist.')
     phase = context.get('result', {}).get('phase', context['phase'])
     if phase in {'variant', 'finished'} and not valid(context):
         raise AssertionError('The baseline must pass the test script’s delivery-format gate.')
-    return {'test_script': state['test_script'], 'workspace': state['workspace']}
+    return {'test_script': state['test_script']}
 
 
 def view(context):
@@ -91,7 +91,7 @@ def test(args, context):
     if not valid(context):
         return {'accepted': False, 'instruction': 'Implement a template in the testable delivery format before testing.'}
     state = context['state']
-    job = monitor.start([sys.executable, state['test_script']], state['workspace'], Path(state['workspace']) / 'logs')
+    job = monitor.start([sys.executable, state['test_script']], Path.cwd(), Path.cwd() / 'logs')
     save(context, description=description, job=job, test_result=None)
     return {'phase': 'test', 'data': {'job': job}}
 

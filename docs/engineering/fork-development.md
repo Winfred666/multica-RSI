@@ -117,7 +117,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   and deletes only its own key on completion or quit. Required identity is issue
   and workspace. Each key keeps only the current status, latest guidance and necessary
   procedure facts, with no decision history, diagram cache or local error outbox.
-  Other installed SoPs await human approval before adopting this template.
+  Executable system SoPs use the same approved issue-owned protocol. The refinement
+  template uses the current issue folder for tests and logs, with no saved workspace path.
   The existing scalar API and 8 KB issue metadata
   limit apply; overlapping callbacks on the same SoP require coordination.
   Controller `data` remains internal; state instructions and option descriptions

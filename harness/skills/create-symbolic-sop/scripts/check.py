@@ -28,8 +28,7 @@ class SymbolicProtocol(unittest.TestCase):
         binary = self.root / 'bin'
         binary.mkdir()
         cli = binary / 'multica'
-        cli.write_text('''#!/usr/bin/env python3
-import json, os, sys
+        cli.write_text(f'#!{sys.executable}\n' + '''import json, os, sys
 from pathlib import Path
 path = Path(os.environ['SOP_TEST_METADATA'])
 store = json.loads(path.read_text()) if path.exists() else {}
@@ -122,8 +121,9 @@ workflow = Workflow(
         spec = importlib.util.spec_from_file_location('protocol_wrapper', self.package / 'wrapper.py')
         wrapper = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(wrapper)
-        binaries = self.root / 'bin'
+        binaries = self.root / 'installers'
         binaries.mkdir()
+        shutil.copy2(self.root / 'bin/multica', binaries / 'multica')
         installer = binaries / 'apt-get'
         installer.write_text(f'''#!{sys.executable}
 from pathlib import Path
@@ -182,8 +182,7 @@ workflow = Workflow(
                           'def is_complete(delivery): return delivery["score"] == 1\n'
                           'if __name__ == "__main__": print(\'{"score": \' + Path("score").read_text() + \'}\')\n')
         (self.root / 'score').write_text('1')
-        elsewhere = self.root / 'elsewhere'
-        elsewhere.mkdir()
+
         initial = self.run_sop()
         self.assertEqual(initial['status'], 'initialize')
         self.assertIsInstance(initial['next_step'], list)
@@ -192,9 +191,10 @@ workflow = Workflow(
         self.assertEqual(configured['status'], 'variant')
         self.assertNotIn('data', configured)
         self.assertNotIn(str(self.root), configured['instruction'])
-        started = self.run_sop('test', '--description', 'Measure this solution.', cwd=elsewhere)
+        started = self.run_sop('test', '--description', 'Measure this solution.')
         self.assertEqual(started['status'], 'test')
         state = self.state()
+        self.assertNotIn('workspace', state)
         job = Path(state['job'])
         self.assertNotIn('data', started)
         self.assertIn(str(job / 'stderr.log'), started['instruction'])
