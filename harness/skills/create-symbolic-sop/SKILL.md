@@ -205,11 +205,12 @@ Install Graphviz on the CLI/daemon host and expose `dot` on PATH (on Debian/Ubun
 `sudo apt-get install --no-install-recommends graphviz`). Like the sandbox helper's
 external `bwrap` lookup, the renderer finds the system executable and calls it directly.
 Compile the global DOT graph and local DOT diagrams with `dot -Tsvg` before uploading
-the HTML. Use shared Graphviz defaults for fonts, rounded states, soft colors and spacing.
-Lay out global forward flow downward in Workflow declaration order; return arrows
-remain visible but do not constrain ranks. Keep presentation separate from routing.
+the HTML. Use Graphviz's native attributes for simple styling and horizontal `rankdir=LR` layout;
+let `dot` place nodes and route edges. Avoid custom ranking, label wrapping or SVG minification.
+Use native edge `xlabel` for labels near arrow centers and `fixedsize=shape` for slim
+diamonds whose text may extend beyond the border. Keep borders plain.
 Embed each local SVG once in an HTML template, referenced by state and option selections,
-and omit SVG comments and inter-element whitespace. Use small local JavaScript; opening or
+using small local JavaScript; opening or
 clicking the artifact must require no external scripts, fonts, network or browser-side
 layout engine. Keep missing-tool and invalid-DOT errors actionable; artifact failures
 must leave workflow results intact.
