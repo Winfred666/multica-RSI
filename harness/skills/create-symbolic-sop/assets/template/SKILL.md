@@ -8,7 +8,7 @@ workspace. Follow the returned recalls in the same turn until completion. Each
 parallel issue owns its own workspace and task record.
 Use `--help` to replay the saved decision without running checks or actions.
 Before starting or after completion, it shows these instructions without starting
-a task. The HTML state graph offers the same `--help` view.
+a task.
 
 Supply the Python test script at configuration. It is bound to this workspace:
 `validate() -> bool` checks the delivery format, `score(delivery) -> number` ranks

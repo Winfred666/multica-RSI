@@ -1,6 +1,5 @@
 """The portable package validates and runs the synchronized Symbolic protocol."""
 import importlib.util
-import inspect
 import json
 import os
 from pathlib import Path
@@ -130,6 +129,12 @@ workflow = Workflow(
         self.assertEqual(second['new_output'], {})
 
     def test_configured_preview_uses_actual_workflow(self):
+        script = self.root / 'test_solution.py'
+        script.write_text('def validate(): return True\n'
+                          'def score(delivery): return 1\n'
+                          'def is_complete(delivery): return True\n')
+        initial = self.run_sop()
+        current = self.run_sop('configure', '--test-script', str(script))
         spec = importlib.util.spec_from_file_location('protocol_wrapper', self.package / 'wrapper.py')
         wrapper = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(wrapper)
@@ -138,19 +143,26 @@ workflow = Workflow(
             sys.modules.pop('sop', None)
             sys.modules.pop('monitor', None)
             controller = wrapper.load_controller()
-        context = {'task_id': 'fixture-task', 'state': {}, 'argv': ['configure'], 'prior_status': 'initialize'}
+        state = json.loads((self.package / '.state/protocol-fixture.json').read_text())
+        context = {'task_id': 'protocol-fixture', 'state': state, 'argv': ['configure'],
+                   'prior_status': 'initialize', 'output': current}
         result = {'status': 'variant', 'state_changed': True, 'accepted': True}
-        with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue', MULTICA_TASK_ID='fixture-task',
+        with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue', MULTICA_TASK_ID='protocol-fixture',
                         MULTICA_WORKSPACE_ID='fixture-workspace', MULTICA_TOKEN='fixture-token',
                         MULTICA_SERVER_URL='http://fixture.invalid'), patch.object(wrapper, 'upload_artifact') as upload:
             wrapper.publish_artifacts(context, controller, result)
         filename, html = upload.call_args.args
         self.assertEqual(filename, 'multica-parallel-refinement-state.html')
-        self.assertIn('fixture-task', html)
+        self.assertIn('protocol-fixture', html)
         self.assertIn('initialize --&gt;|configure| variant', html)
         self.assertLess(html.index('<pre class="mermaid">'), html.index('<h1>'))
         data = json.loads(html.split('<script id="sop-data" type="application/json">', 1)[1].split('</script>', 1)[0])
-        self.assertEqual(data['edges'][0]['action'], inspect.getsource(controller.configure))
+        self.assertEqual(data['nodes']['initialize'], initial)
+        self.assertEqual(data['nodes']['variant'], current)
+        self.assertEqual(data['edges'][0], initial['next_step'][0])
+        self.assertLess(html.index('id="detail"'), html.index('id="metadata"'))
+        self.assertNotIn('<button', html)
+        self.assertNotIn('help', data)
         for name in controller.workflow.states:
             self.assertIn(name, html)
 

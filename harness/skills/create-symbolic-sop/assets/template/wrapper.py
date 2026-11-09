@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 import hashlib
 from html import escape
 import importlib.util
-import inspect
 import json
 import os
 from pathlib import Path
@@ -512,42 +511,40 @@ def state_artifact(context, controller, result):
     details = {'issue_id': os.environ['MULTICA_ISSUE_ID'], 'task_id': context['task_id'], 'status': status}
     if result.get('error'):
         details.update(failed_state=phase, boundary=assertion.get('boundary'), error=result['error'])
-    nodes, links = {}, []
+    nodes = {name: decision for name, decision in context.get('state', {}).get('decisions', {}).items()
+             if name in states}
     for state in states.values():
-        nodes[state.name] = {'status': state.name, 'instruction': state.description,
-                            'initial': state.initial, 'final': state.final,
-                            'precheck': inspect.getsource(state.precheck) if state.precheck else None,
-                            'view': inspect.getsource(state.view) if state.view else None,
-                            'options': inspect.getsource(state.options) if callable(state.options) else None}
-    for (source, name), target in edges.items():
-        state = states[source]
-        option = next((option for option in state.options if option.name == name), None) if not callable(state.options) else None
-        links.append({'source': source, 'option': name, 'target': target,
-                      'instruction': option.prompt if option else None,
-                      'parameters': [vars(param) for param in option.params] if option else [],
-                      'action': inspect.getsource(option.action) if option and option.action else None,
-                      'options': nodes[source]['options']})
-    payload = json.dumps(redact({'nodes': nodes, 'edges': links, 'decision': context.get('output'),
-                                'help': help_output(context)}), default=str).replace('<', '\\u003c')
+        if state.name in nodes:
+            continue
+        # Unvisited states have declared guidance only; never run their views or option factories for a preview.
+        choices = [callback(option.prompt, option.callback()) for option in state.options] if not callable(state.options) else []
+        if state.initial:
+            choices.append(callback('Stop this SOP.', ['quit']))
+        nodes[state.name] = response({'status': state.name,
+                                     'next_step': {**callback(state.description), 'alternatives': choices}})
+    if context.get('output'):
+        nodes[phase] = context['output']
+    links = [next((option for option in nodes[source]['next_step']
+                   if shlex.split(option['command'])[2] == name), None)
+             for source, name in edges]
+    payload = json.dumps(redact({'nodes': nodes, 'edges': links, 'decision': nodes[phase]})).replace('<', '\\u003c')
     return ('<!doctype html><html lang="en"><meta charset="utf-8"><title>' + escape(controller.SOP_NAME) + '</title>'
-            '<style>body{font:15px system-ui;margin:8px;color:#172033}pre{white-space:pre-wrap;overflow-wrap:anywhere}'
+            '<style>body{font:15px system-ui;margin:8px;color:#172033}pre{white-space:pre;overflow-x:auto}'
             '.mermaid{margin:0}.mermaid svg{display:block;max-width:100%;max-height:65vh;margin:auto}'
             '.node,.flowchart-link,.edgeLabel{cursor:pointer}.flowchart-link{pointer-events:stroke}'
-            'button{font:inherit}h1{font-size:18px}</style>'
+            'h1{font-size:18px}</style>'
             '<pre class="mermaid">' + escape(diagram) + '</pre>'
-            '<h1>' + escape(controller.SOP_NAME) + '</h1><button id="help" type="button">--help</button>'
-            '<pre>' + escape(json.dumps(redact(details), indent=2)) + '</pre><pre id="detail" aria-live="polite"></pre>'
+            '<h1>' + escape(controller.SOP_NAME) + '</h1><pre id="detail" aria-live="polite">'
+            + escape(json.dumps(redact(nodes[phase]), indent=2)) + '</pre>'
+            '<pre id="metadata">' + escape(json.dumps(redact(details), indent=2)) + '</pre>'
             '<script id="sop-data" type="application/json">' + payload + '</script>'
             '<script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";'
             'const data=JSON.parse(document.getElementById("sop-data").textContent),detail=document.getElementById("detail");'
-            'const show=value=>{detail.textContent=typeof value==="string"?value:JSON.stringify(value,null,2)};'
-            'const select=value=>show(Object.entries(value).filter(([,v])=>v!==null).map(([key,v])=>'
-            'key+":\\n"+(typeof v==="string"?v:JSON.stringify(v,null,2))).join("\\n\\n"));'
-            'show(data.decision);document.getElementById("help").onclick=()=>show(data.help);'
+            'const show=value=>{detail.textContent=JSON.stringify(value,null,2)};'
             'mermaid.initialize({startOnLoad:false,securityLevel:"strict"});await mermaid.run({querySelector:".mermaid"});'
             'const bind=(element,value)=>{element.setAttribute("tabindex","0");element.setAttribute("role","button");'
-            'element.onclick=()=>select(value);element.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){'
-            'event.preventDefault();select(value)}}};'
+            'element.onclick=()=>show(value);element.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){'
+            'event.preventDefault();show(value)}}};'
             'for(const [name,value] of Object.entries(data.nodes)){'
             'const node=document.querySelector(`.node[id*="flowchart-${name}-"]`);if(node)bind(node,value)}'
             'document.querySelectorAll(".edgePaths .flowchart-link").forEach((edge,i)=>bind(edge,data.edges[i]));'
@@ -618,10 +615,12 @@ def main(argv=None):
             state_path(context).unlink(missing_ok=True)
             result.update(status='quitted', state_changed=True, next_step=callback(str(error)))
     output = redact(response(result))
-    if controller and context.get('state') and state_path(context).exists():
+    if controller and context.get('state'):
         state = context['state']
         state['output'] = output
-        save_state(context, state)
+        state.setdefault('decisions', {})[output['status']] = output
+        if state_path(context).exists():
+            save_state(context, state)
     context['output'] = output
     publish_artifacts(context, controller, result)
     print(json.dumps(output, allow_nan=False))

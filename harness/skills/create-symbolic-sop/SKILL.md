@@ -112,7 +112,8 @@ file; a later bare call or `init` starts another run within the same native task
 `--help` is read-only: replay the last emitted decision JSON for a recorded task,
 including its output and options; for a new or completed task, print the `SKILL.md`
 body after YAML frontmatter without creating a task record. Cache each emitted
-decision in the existing task record, including callbacks that stay in one state.
+decision in the existing task record, including callbacks that stay in one state,
+and retain the latest emitted decision per state for the HTML preview.
 
 Use `view(context)` for decision evidence and `options(context)` for choices bound
 to actual IDs. Keep both read-only; reuse observations in the current context.
@@ -157,9 +158,11 @@ Set `"DEBUG": true` in the skill's `config.json` to publish `<skill-name>-state.
 on every state shift. The wrapper renders `controller.workflow` states, declared
 option targets and the actual transition, with state meanings, native issue/task
 IDs and assertion failures. Put the graph before headings and metadata so it is
-visible in thumbnails. Selecting a state or edge shows its exact instructions,
-parameters and handler source; the view's `--help` shows the same read-only help
-as the wrapper. Dynamic routes appear when selected. DEBUG defaults
+visible in thumbnails. Selecting a state shows formatted agent JSON; visited states
+replay their emitted decision, while unvisited states show declared guidance and
+static options without executing workflow code. Selecting an edge shows the agent's
+option JSON. Put issue/task metadata last; omit handler source and HTML help controls.
+Dynamic routes appear when selected. DEBUG defaults
 to `false`. For an existing HTML view, export read-only `artifacts(context)` from
 `controller.py` returning `{stable_filename: html_string}`; the wrapper updates
 these live artifacts after accepted callbacks. Upload failures leave workflow

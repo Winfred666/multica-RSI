@@ -92,8 +92,9 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 - **Symbolic SoP protocol changes.** Update `harness/skills/create-symbolic-sop`
   and its template first; require human approval before mechanically propagating
   the approved protocol to other symbolic SoPs and distributions. The pending
-  template puts its interactive graph first in HTML previews and makes `--help`
-  replay a recorded decision or show the skill body without starting a task.
+  template puts its interactive graph first, shows agent JSON on selection and
+  puts issue/task metadata last. CLI `--help` replays a recorded decision or shows
+  the skill body without starting a task.
 
 - **Workspace packages.** `workspace package`, `workspace export` and
   `workspace import` expose the native package API with paged summaries, JSON
