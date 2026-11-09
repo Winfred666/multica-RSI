@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/multica-ai/multica/server/internal/cli"
 	"github.com/spf13/cobra"
@@ -28,14 +29,14 @@ func newWorkspacePackageCommands() []*cobra.Command {
 	export.Flags().String("file", "", "Write the package to a file instead of stdout")
 	importCmd := &cobra.Command{
 		Use: "import [workspace-id|slug|prefix]", Short: "Import a workspace JSON package",
-		Long: "Imports everything by default. --selection-file uses the same selection object as export; {} imports nothing. Imported agents remain offline and require runtime setup. Existing skills, MCPs and plugins require --replace-existing to replace them.",
+		Long: "Imports everything by default. --selection-file uses the same selection object as export; {} imports nothing. Imported agents remain offline and require runtime setup. Matching skill/MCP names and plugin keys in the destination workspace are replaced.",
 		Args: cobra.MaximumNArgs(1), RunE: runWorkspacePackage,
 	}
 	importCmd.Flags().String("file", "", "Package JSON file to import")
 	_ = importCmd.MarkFlagRequired("file")
 	importCmd.Flags().Bool("inspect", false, "Validate and inspect the package without importing")
-	importCmd.Flags().Bool("replace-existing", false, "Replace existing skills, MCPs and installed plugins")
-	importCmd.MarkFlagsMutuallyExclusive("inspect", "replace-existing")
+	importCmd.Flags().Bool("activate-plugins", false, "Activate hosted plugins using the current member personal access token")
+	importCmd.MarkFlagsMutuallyExclusive("inspect", "activate-plugins")
 	for _, cmd := range []*cobra.Command{inventory, importCmd} {
 		cmd.Flags().String("category", "", "Summary category: agents, skills, mcps or plugins (import requires --inspect)")
 		cmd.Flags().Int("limit", 50, "Summary page size (1–100)")
@@ -70,6 +71,7 @@ func runWorkspacePackage(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--output must be json")
 	}
 	body := map[string]any{}
+	var pluginExecutionToken string
 	var selection json.RawMessage = []byte(`{}`)
 	if file, _ := cmd.Flags().GetString("selection-file"); file != "" {
 		raw, err := readWorkspacePackageJSON(file)
@@ -91,8 +93,13 @@ func runWorkspacePackage(cmd *cobra.Command, args []string) error {
 		if inspect {
 			suffix += "/inspect"
 		} else {
-			replace, _ := cmd.Flags().GetBool("replace-existing")
-			body["replace_existing"] = replace
+			if activate, _ := cmd.Flags().GetBool("activate-plugins"); activate {
+				pluginExecutionToken = resolveToken(cmd)
+				if len(pluginExecutionToken) > 256 || !strings.HasPrefix(pluginExecutionToken, "mul_") {
+					return fmt.Errorf("--activate-plugins requires a member personal access token (mul_...)")
+				}
+				body["plugin_execution_token"] = pluginExecutionToken
+			}
 		}
 	}
 	if cmd.Name() == "package" || inspect {
@@ -130,6 +137,10 @@ func runWorkspacePackage(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	client.WorkspaceID = wsID
+	if cmd.Name() == "import" && !inspect {
+		fmt.Fprintln(cmd.ErrOrStderr(), "Replaces matching skill/MCP names and plugin keys in this workspace.")
+		fmt.Fprintf(cmd.ErrOrStderr(), "Plugin activation: --activate-plugins=%t (default: false). Opt in with --activate-plugins.\n", pluginExecutionToken != "")
+	}
 	ctx, cancel := cli.APIContext(cmd.Context())
 	defer cancel()
 	path := "/api/workspaces/" + url.PathEscape(wsID) + suffix
@@ -144,6 +155,10 @@ func runWorkspacePackage(cmd *cobra.Command, args []string) error {
 		err = client.PostJSON(ctx, path, request, &response)
 	}
 	if err != nil {
+		if pluginExecutionToken != "" {
+			// A proxy may echo the import request, including its credential.
+			return fmt.Errorf("workspace import: %s", strings.ReplaceAll(err.Error(), pluginExecutionToken, "[REDACTED]"))
+		}
 		return err
 	}
 	if file, _ := cmd.Flags().GetString("file"); cmd.Name() == "export" && file != "" {
