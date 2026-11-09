@@ -100,7 +100,7 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   the approved protocol to other symbolic SoPs and distributions. The approved
   template derives its graph from `controller.workflow` without `DEBUG.md`, shows
   agent JSON and rendered DOT logic from action docstrings before the final
-  issue/task metadata. Workflow states, option targets and explicit Branch routes
+  issue/SoP metadata. Workflow states, option targets and explicit Branch routes
   supply the global graph; action docstrings supply only local logic. Graphs fit the
   viewport width in landscape and scroll horizontally at natural size in portrait.
   Graphviz `dot -Tsvg` compiles all DOT diagrams to embedded SVG on the CLI host;
@@ -109,7 +109,13 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   Native small-circle start and double-circle stop markers have non-clickable boundary links. The creator's
   `scripts/check.py` validates a selected package and checks its shared runtime in
   temporary template fixtures. CLI `--help` replays a recorded decision or shows
-  the skill body without starting a task.
+  the skill body without starting a run. The R-262 canonical template stores serialized
+  JSON in one `sop.<skill-name>` issue metadata key, with no local task state file.
+  It resumes across tasks/agents, rebinds replayed commands to the current checkout,
+  and deletes only its own key on completion or quit. Required identity is issue
+  and workspace; task ID is optional. Other installed SoPs await human approval
+  before adopting this template. The existing scalar API and 8 KB issue metadata
+  limit apply; overlapping callbacks on the same SoP require coordination.
 
 - **Workspace packages.** `workspace package`, `workspace export` and
   `workspace import` expose the native package API with paged summaries, JSON

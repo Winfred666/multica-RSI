@@ -8,10 +8,10 @@ Skill names may contain only lowercase letters, numbers and hyphens.
 Name Multica SOPs with the `multica-` prefix. Keep their `SKILL.md` limited to when
 to use the skill, required inputs, the entry command and how to follow its choices.
 Implementation details belong in code.
-Each invocation stays within one agent task and issue. For another issue or agent,
-use native steering or a mention asking its model to call the named SOP. Exchange
-results through reply comments and steering prompts; keep delivery and review
-records out of issue metadata.
+Each SoP belongs to an issue, shared across agent tasks and machines. Hand off
+through native steering or a mention asking the next agent to call the same SoP
+on the same issue. Store runtime state in its own `sop.<skill-name>` metadata key;
+exchange delivery and review evidence through native issue comments.
 For in-platform capabilities, give rough direction to follow Multica best practice
 and the relevant native SOP. Leave platform actions and mechanics to that SOP.
 
@@ -21,8 +21,10 @@ mechanically copy the approved protocol to all symbolic SoPs in `harness/` and
 distributions such as `dist/AIDE^2-harness`, preserving controllers and live state.
 
 The standalone package contains `SKILL.md`, `config.json`, `controller.py`, `sop.py`, `wrapper.py`, `monitor.py`
-and procedure dependencies. The wrapper creates `.state/<task_id>.json` at runtime.
-Preserve live state when revising an installed skill. Customize `controller.py`;
+and procedure dependencies. The wrapper stores serialized JSON in the issue metadata
+key `sop.<skill-name>` using the existing scalar metadata API. Names must be at most
+60 characters to fit the key. No local task state file or fallback is used. Preserve
+issue metadata when revising an installed skill. Customize `controller.py`;
 `sop.py` defines the objects and `wrapper.py` drives them.
 
 Export `workflow = Workflow(...)` with ordinary `State` objects. Declare exactly
@@ -60,20 +62,21 @@ context construction and `cli` implementation in [wrapper.py](assets/template/wr
 
 | Context key | Value and availability |
 | --- | --- |
-| `task_id` | Native `MULTICA_TASK_ID` string; identifies this run's JSON record. |
-| `issue_id`, `workspace_id` | Native issue/workspace IDs. A declared `--issue` input can override the issue; `--workspace` must match the native workspace. |
+| `task_id` | Optional native run ID for diagnostics; never identifies or gates SOP state. |
+| `issue_id`, `workspace_id` | Required native issue/workspace IDs. A declared `--issue` input can override the issue; `--workspace` must match the native workspace. |
 | `agent_id` | Native `MULTICA_AGENT_ID`, or `None` when absent. |
 | `phase` | State name used for option selection or guidance. In a target precheck, use `result['phase']` for the target. |
 | `args` | Argparse namespace. Shared workflow inputs are available before the current precheck; selected option inputs are parsed before its action. `--some-flag` becomes `args.some_flag`; `args.event` is the selected option name, or `init` on a bare call. |
 | `initial` | Current precheck's return value, available after that check; `None` if it has no precheck. |
 | `result` | Target precheck only: generated transition result, including `phase` and any `data`, `instruction` or `accepted` value. Use `'result' in context` to distinguish target checks from current checks. |
 | `cli` | Callable `cli(*words, write=False)` described below. |
+| `save_state` | Call `context['save_state']()` after updating procedure facts in `context['state']`. Available to checks and actions. |
 | `error` | Exception class: `raise context['error']('invalid_child', 'Choose an open direct child.', hint=None)`. |
 
 Use your own context keys to cache JSON-compatible observations within one call.
-Each wrapper invocation builds a new context. `context['state']` is the task's
-JSON record; the template stores its bound test script there. Persist procedure
-facts when an action stays in the same state; keep the runtime's `status` and
+Each wrapper invocation builds a new context. `context['state']` is the issue's
+SoP metadata record; the template stores its bound test script there. Persist procedure
+facts with `context['save_state']()` when an action stays in the same state; keep the runtime's `status` and
 `recovery` fields unchanged. Read external facts from Multica or Git on later calls.
 
 `cli` runs `multica issue <words> --output json`, inheriting the process environment
@@ -105,15 +108,22 @@ to select one of its routes; the target state's precheck still runs. Agent JSON 
 `instruction`, and `next_step`: a list of options, each with its own `instruction`
 and executable `command`. Keep state guidance separate from option prompts.
 Start with a bare call or `init`, then pass an option name as
-the first argument. The wrapper reads the task JSON record and checks its status
+the first argument. The wrapper reads the issue's SoP metadata and checks its status
 before running an option. Invalid options or parameters return current guidance
-without changing state. Bare calls run no action. Completion removes the task JSON
-file; a later bare call or `init` starts another run within the same native task.
-`--help` is read-only: replay the last emitted decision JSON for a recorded task,
-including its output and options; for a new or completed task, print the `SKILL.md`
-body after YAML frontmatter without creating a task record. Cache each emitted
-decision in the existing task record, including callbacks that stay in one state,
-and retain the latest emitted decision per state for the HTML preview.
+without changing state. Bare calls run no action. Completion or initial-state `quit`
+deletes only this SoP's metadata key; another call can start again on the same issue.
+`--help` is read-only: replay the last emitted decision JSON for this issue and SoP,
+including its output and options; for a new or completed SoP, print the `SKILL.md`
+body after YAML frontmatter without writing metadata. Cache each emitted decision,
+including callbacks that stay in one state, and the latest decision per state for HTML.
+On another checkout, replayed commands use the receiving Python and wrapper path;
+help imports no controller and runs no checks or actions. State access errors must
+fail visibly, never start a new local run. Metadata writes replace only this key,
+preserving other SoPs and unrelated keys. Callbacks on one SoP must be coordinated
+sequentially; the API has no compare-and-set for overlapping callbacks. The existing
+8 KB limit covers all metadata on the issue; keep stored facts and guidance compact.
+Issue state is portable; workspace files, local jobs and logs still require their
+procedure's handoff on another machine.
 
 Use `view(context)` for decision evidence and `options(context)` for choices bound
 to actual IDs. Keep both read-only; reuse observations in the current context.
@@ -188,15 +198,14 @@ connected before execution; handlers can still return another state for a retry.
 
 Set `"DEBUG": true` in the skill's `config.json` to publish `<skill-name>-state.html`
 on every state shift. The wrapper renders `controller.workflow` states, option
-targets and symbolic branches, with state meanings, native issue/task
-IDs and assertion failures. Put the graph before headings and metadata so it is
+targets and symbolic branches, with state meanings, the issue ID and SoP name and assertion failures. Put the graph before headings and metadata so it is
 visible in thumbnails. Use a CSS orientation media query: in landscape, fit SVGs
 to the available width without horizontal scrolling; in portrait, keep their natural
 size and allow horizontal scrolling. This follows the HTML viewport and updates
 automatically on resize or rotation. Selecting a state shows formatted agent JSON; visited states
 replay their emitted decision, while unvisited states show declared guidance and
 static options without executing workflow code. Selecting an edge shows the agent's
-option JSON followed by its rendered DOT logic, before issue/task metadata.
+option JSON followed by its rendered DOT logic, before issue/SoP metadata.
 State selection shows the diagrams for its available options. Read docstrings with
 `inspect.getdoc`; omit function definitions from the preview. Cache diagrams for
 dynamic options when the workflow resolves them; do not rerun option factories
@@ -225,7 +234,7 @@ Use proactive keyword + time-trigger monitoring for long experiment scripts:
 the background job keeps logging while the SOP returns `continue`/`exception`.
 The launch option must return the monitor state immediately; only its `continue`
 recall may block.
-The task JSON keeps checkpoint and log positions; the next recall shows only new
+The SoP metadata keeps checkpoint and log positions; the next recall shows only new
 output. Follow the recall in the same turn.
 Default to passive native delivery/block steering for Multica sub-issues;
 proactive escalation there is reserved for unstable DEV SOPs. A `done` option must
