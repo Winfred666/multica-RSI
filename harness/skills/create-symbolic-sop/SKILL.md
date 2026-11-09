@@ -153,14 +153,16 @@ For conservative refinement, define states directly inside the exported
 initial and final boundaries from these declarations. Live Multica execution
 establishes effectiveness.
 
-Use `controller.workflow` as the graph's source; do not maintain a duplicate
-`DEBUG.md`. Generate the HTML from the declared states and option targets.
-For scripted branches, put a fenced Mermaid `flowchart LR` in the action's
+Keep `Workflow` for execution and state guidance; do not maintain a duplicate
+`DEBUG.md` or global topology. The HTML reuses each option's overview diagram.
+Put a fenced Mermaid `flowchart LR` in the action's
 docstring. The first node is its entry; use workflow state names as exits and
 prefix internal node IDs with the function name. The renderer connects the option
-to this entry and includes the diagram unchanged, so diamond conditions and all
-documented routes appear before execution. Without a diagram, use the declared
-option target. Keep these diagrams short and consistent with the Python logic.
+to this entry and includes that first diagram in the global view. An optional
+second Mermaid block supplies the expanded view on selection. Keep paragraph
+checks, rejections and exception details there, outside the overview. With one
+block, both views reuse it; without a diagram, use the declared option target.
+Keep diagrams short and consistent with the Python logic.
 For example, `configure` documents its branch as:
 
 ````python

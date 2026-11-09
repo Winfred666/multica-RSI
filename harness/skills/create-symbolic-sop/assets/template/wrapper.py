@@ -502,14 +502,15 @@ def state_artifact(context, controller, result):
     logic = dict(context.get('state', {}).get('option_diagrams', {}))
     for state in states.values():
         if not callable(state.options):
-            logic.setdefault(state.name, {option.name: option.diagram() for option in state.options})
+            logic.setdefault(state.name, {option.name: option.diagrams() for option in state.options})
     source = context.get('prior_status')
     if source in states and phase in states and context['argv'] and (
             result.get('accepted') or assertion.get('boundary') == 'after'):
         edges[source, context['argv'][0]] = phase
     routes, bodies = [], []
     for index, ((source, option), target) in enumerate(edges.items()):
-        chart = logic.get(source, {}).get(option, '')
+        charts = logic.get(source, {}).get(option, [])
+        chart = charts[0] if charts else ''
         body = chart.split('\n', 1)[1] if chart else ''
         entry = re.match(r'\s*(\w+)', body).group(1) if body else target
         routes.append(f'{source} __option_{index}@-->|{option}| {entry}')
@@ -541,7 +542,7 @@ def state_artifact(context, controller, result):
     links = {f'__option_{index}': {
         'decision': next((option for option in nodes[source]['next_step']
                           if shlex.split(option['command'])[2] == name), None),
-        'logic': {name: logic.get(source, {}).get(name, '')}}
+        'logic': {name: logic.get(source, {}).get(name, [])}}
         for index, (source, name) in enumerate(edges)}
     payload = json.dumps(redact({'nodes': nodes, 'edges': links, 'decision': nodes[phase], 'logic': logic})).replace('<', '\\u003c')
     return ('<!doctype html><html lang="en"><meta charset="utf-8"><title>' + escape(controller.SOP_NAME) + '</title>'
@@ -558,7 +559,7 @@ def state_artifact(context, controller, result):
             '<script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";'
             'const data=JSON.parse(document.getElementById("sop-data").textContent),detail=document.getElementById("detail"),logic=document.getElementById("logic");'
             'const show=(value,charts={})=>{detail.textContent=JSON.stringify(value,null,2);logic.replaceChildren();'
-            'for(const [name,source] of Object.entries(charts)){if(!source)continue;'
+            'for(const [name,sources] of Object.entries(charts)){const source=sources.at(-1);if(!source)continue;'
             'const heading=document.createElement("h2"),chart=document.createElement("pre");'
             'heading.textContent=name;chart.className="mermaid";chart.textContent=source;logic.append(heading,chart)}'
             'mermaid.run({nodes:logic.querySelectorAll(".mermaid")})};'

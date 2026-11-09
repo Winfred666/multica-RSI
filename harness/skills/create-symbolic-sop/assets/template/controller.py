@@ -66,6 +66,12 @@ def view(context):
 def test(args, context):
     """```mermaid
     flowchart LR
+        test
+    ```
+
+    Expanded checks:
+    ```mermaid
+    flowchart LR
         test_gate{"One paragraph and valid delivery?"}
         test_gate -->|yes: start monitor| test
         test_gate -->|no| test_reject["Reject; keep current state"]
@@ -83,6 +89,16 @@ def test(args, context):
 
 def observe(args, context):
     """```mermaid
+    flowchart LR
+        observe_status["Collect progress"]
+        observe_status -->|running| test
+        observe_status -->|variant result| review
+        observe_status -->|baseline accepted| variant
+        observe_status -->|baseline complete| finished
+    ```
+
+    Expanded routing:
+    ```mermaid
     flowchart LR
         observe_running{"Job still running?"}
         observe_running -->|yes| test
@@ -119,12 +135,31 @@ def observe(args, context):
 
 
 def exception(args, context):
+    """```mermaid
+    flowchart LR
+        exception_stop["Stop monitor"] --> observe_status
+    ```
+
+    Expanded action:
+    ```mermaid
+    flowchart LR
+        exception_stop["Stop monitor"] --> exception_observe["Collect and route result via observe"]
+    ```"""
     monitor.stop(context['state']['job'])
     return observe(args, context)
 
 
 def record(args, context):
     """```mermaid
+    flowchart LR
+        record_save["Record review"]
+        record_save -->|complete| finished
+        record_save -->|baseline pending| scaffold
+        record_save -->|refine| variant
+    ```
+
+    Expanded routing:
+    ```mermaid
     flowchart LR
         record_review{"Review is one paragraph?"}
         record_review -->|no| review

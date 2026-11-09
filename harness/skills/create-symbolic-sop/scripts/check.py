@@ -158,7 +158,12 @@ workflow = Workflow(
         self.assertEqual(data['nodes']['initialize'], initial)
         self.assertEqual(data['nodes']['variant'], current)
         self.assertEqual(data['edges']['__option_0']['decision'], initial['next_step'][0])
-        self.assertIn('configure_gate -->|no| scaffold', data['edges']['__option_0']['logic']['configure'])
+        self.assertIn('configure_gate -->|no| scaffold', data['edges']['__option_0']['logic']['configure'][0])
+        overview = html.split('<pre class="mermaid" id="workflow">', 1)[1].split('</pre>', 1)[0]
+        self.assertNotIn('Reject; keep current state', overview)
+        self.assertNotIn('Review is one paragraph?', overview)
+        self.assertNotIn('Measured delivery complete?', overview)
+        self.assertIn('Reject; keep current state', data['logic']['variant']['test'][-1])
         self.assertNotIn('def configure', html)
         self.assertNotIn('__start', data['nodes'])
         self.assertNotIn('__end', data['nodes'])

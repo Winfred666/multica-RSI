@@ -63,7 +63,9 @@ points to RSI's bundled platform guidance.
 
 Set `config.json` to `{"DEBUG": true}` to publish the controller's state HTML on native
 state shifts. Mermaid flowcharts in action docstrings show conditional routes and
-render the selected state/option's logic before the issue metadata. Native small-circle
+render the selected state/option's logic before the issue metadata. The first block
+supplies the overview; an optional second block expands checks and exceptions.
+Workflow declarations still drive execution. Native small-circle
 start and framed-circle stop markers and their boundary links are non-clickable; final states
 need no extra finish option. Read-only controller `artifacts(context)` can also
 publish live HTML; upload failures leave the procedure result intact. Existing `.state` records and

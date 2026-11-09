@@ -29,10 +29,10 @@ class Option:
     def callback(self):
         return [self.name, *(word for param in self.params for word in param.words())]
 
-    def diagram(self):
+    def diagrams(self):
         doc = inspect.getdoc(self.action) if self.action else ''
-        match = re.search(r'```mermaid\s*\n((?:flowchart|graph) [A-Z]+\n.*?)```', doc or '', re.S)
-        return match.group(1).strip() if match else ''
+        return [chart.strip() for chart in re.findall(
+            r'```mermaid\s*\n((?:flowchart|graph) [A-Z]+\n.*?)```', doc or '', re.S)]
 
 
 class State:
@@ -95,7 +95,7 @@ class Workflow:
         view = state.view(context) if state.view else {}
         options = state.choices(context)
         self.validate_options(options)
-        context.setdefault('option_diagrams', {})[state.name] = {option.name: option.diagram() for option in options}
+        context.setdefault('option_diagrams', {})[state.name] = {option.name: option.diagrams() for option in options}
         text = result.pop('instruction', None) or view.get('instruction') or state.description
         result.setdefault('data', view.get('data'))
         return {**result, 'phase': state.name, 'instruction': text,
@@ -113,7 +113,7 @@ class Workflow:
             return self.guidance(state, context)
         options = state.choices(context)
         self.validate_options(options)
-        context.setdefault('option_diagrams', {})[state.name] = {option.name: option.diagram() for option in options}
+        context.setdefault('option_diagrams', {})[state.name] = {option.name: option.diagrams() for option in options}
         matches = [option for option in options if option.name == args.event]
         if not matches:
             raise context['error']('invalid_transition', 'Choose one of the returned options for ' + phase)
