@@ -1,6 +1,5 @@
 """Validate a package, then check its shared runtime in temporary template fixtures."""
 import importlib.util
-import inspect
 import json
 import os
 from pathlib import Path
@@ -149,22 +148,23 @@ workflow = Workflow(
         filename, html = upload.call_args.args
         self.assertEqual(filename, 'multica-parallel-refinement-state.html')
         self.assertIn('protocol-fixture', html)
-        self.assertIn('initialize --&gt;|configure| variant', html)
-        self.assertIn('review --&gt;|record| finished', html)
-        self.assertIn('__start((&quot; &quot;)) --&gt; initialize', html)
-        self.assertIn('finished --&gt; __end((&quot; &quot;))', html)
-        self.assertLess(html.index('<pre class="mermaid">'), html.index('<h1>'))
+        self.assertIn('initialize __option_0@--&gt;|configure| configure_gate', html)
+        self.assertIn('configure_gate --&gt;|yes| variant', html)
+        self.assertIn('configure_gate --&gt;|no| scaffold', html)
+        self.assertIn('__start@{ shape: sm-circ } --&gt; initialize', html)
+        self.assertIn('finished --&gt; __end@{ shape: fr-circ }', html)
+        self.assertLess(html.index('id="workflow"'), html.index('<h1>'))
         data = json.loads(html.split('<script id="sop-data" type="application/json">', 1)[1].split('</script>', 1)[0])
         self.assertEqual(data['nodes']['initialize'], initial)
         self.assertEqual(data['nodes']['variant'], current)
-        self.assertEqual(data['edges'][0], initial['next_step'][0])
-        self.assertEqual(data['code'][0], inspect.getsource(controller.configure))
-        self.assertEqual(data['edges'][-2:], [None, None])
+        self.assertEqual(data['edges']['__option_0']['decision'], initial['next_step'][0])
+        self.assertIn('configure_gate -->|no| scaffold', data['edges']['__option_0']['logic']['configure'])
+        self.assertNotIn('def configure', html)
         self.assertNotIn('__start', data['nodes'])
         self.assertNotIn('__end', data['nodes'])
         self.assertEqual(data['nodes']['finished']['next_step'], [])
-        self.assertLess(html.index('id="detail"'), html.index('id="code"'))
-        self.assertLess(html.index('id="code"'), html.index('id="metadata"'))
+        self.assertLess(html.index('id="detail"'), html.index('id="logic"'))
+        self.assertLess(html.index('id="logic"'), html.index('id="metadata"'))
         self.assertNotIn('<button', html)
         self.assertNotIn('help', data)
         for name in controller.workflow.states:

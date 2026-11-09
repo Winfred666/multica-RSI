@@ -36,6 +36,12 @@ def valid(context):
 
 
 def configure(args, context):
+    """```mermaid
+    flowchart LR
+        configure_gate{"Delivery format valid?"}
+        configure_gate -->|yes| variant
+        configure_gate -->|no| scaffold
+    ```"""
     save(context, test_script=str(args.test_script.resolve()), workspace=str(Path.cwd()))
     baseline = valid(context)
     save(context, baseline_pending=not baseline)
@@ -58,6 +64,12 @@ def view(context):
 
 
 def test(args, context):
+    """```mermaid
+    flowchart LR
+        test_gate{"One paragraph and valid delivery?"}
+        test_gate -->|yes: start monitor| test
+        test_gate -->|no| test_reject["Reject; keep current state"]
+    ```"""
     description = args.description.strip()
     if not description or re.search(r'\n\s*\n', description):
         return {'accepted': False, 'instruction': 'Describe the idea in one paragraph.'}
@@ -70,6 +82,16 @@ def test(args, context):
 
 
 def observe(args, context):
+    """```mermaid
+    flowchart LR
+        observe_running{"Job still running?"}
+        observe_running -->|yes| test
+        observe_running -->|no| observe_baseline{"Valid new baseline?"}
+        observe_baseline -->|no| review
+        observe_baseline -->|yes: save baseline| observe_done{"Exit condition met?"}
+        observe_done -->|yes| finished
+        observe_done -->|no| variant
+    ```"""
     state = context['state']
     report = monitor.wait(state['job'], state.setdefault('monitor', {}))
     if report['state'] == 'running':
@@ -102,6 +124,16 @@ def exception(args, context):
 
 
 def record(args, context):
+    """```mermaid
+    flowchart LR
+        record_review{"Review is one paragraph?"}
+        record_review -->|no| review
+        record_review -->|yes: save review| record_done{"Measured delivery complete?"}
+        record_done -->|yes| finished
+        record_done -->|no| record_baseline{"Baseline still pending?"}
+        record_baseline -->|yes| scaffold
+        record_baseline -->|no| variant
+    ```"""
     review = args.review.strip()
     if not review or re.search(r'\n\s*\n', review):
         return {'accepted': False, 'instruction': 'Review this result in one paragraph.'}

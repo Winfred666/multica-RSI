@@ -62,8 +62,9 @@ RSI keeps its native single-task lifecycle procedures. The authoring reference
 points to RSI's bundled platform guidance.
 
 Set `config.json` to `{"DEBUG": true}` to publish the controller's state HTML on native
-state shifts. Selecting an option shows its Python action source before the issue
-metadata. Start/end dots and their boundary links are non-clickable; final states
+state shifts. Mermaid flowcharts in action docstrings show conditional routes and
+render the selected state/option's logic before the issue metadata. Native small-circle
+start and framed-circle stop markers and their boundary links are non-clickable; final states
 need no extra finish option. Read-only controller `artifacts(context)` can also
 publish live HTML; upload failures leave the procedure result intact. Existing `.state` records and
 procedure-specific policies must be preserved when updating installed bundles.

@@ -499,17 +499,26 @@ def state_artifact(context, controller, result):
         f'{name}["{name}"]' for name in states)
     edges = {(state.name, option.name): option.target for state in states.values()
              if not callable(state.options) for option in state.options}
+    logic = dict(context.get('state', {}).get('option_diagrams', {}))
+    for state in states.values():
+        if not callable(state.options):
+            logic.setdefault(state.name, {option.name: option.diagram() for option in state.options})
     source = context.get('prior_status')
     if source in states and phase in states and context['argv'] and (
             result.get('accepted') or assertion.get('boundary') == 'after'):
         edges[source, context['argv'][0]] = phase
-    diagram += '\n' + '\n'.join(f'{source} -->|{option}| {target}'
-                                for (source, option), target in edges.items())
+    routes, bodies = [], []
+    for index, ((source, option), target) in enumerate(edges.items()):
+        chart = logic.get(source, {}).get(option, '')
+        body = chart.split('\n', 1)[1] if chart else ''
+        entry = re.match(r'\s*(\w+)', body).group(1) if body else target
+        routes.append(f'{source} __option_{index}@-->|{option}| {entry}')
+        bodies.append(body)
+    diagram += '\n' + '\n'.join([*routes, *dict.fromkeys(bodies)])
     # Boundary markers are diagram-only; they never introduce workflow options.
-    boundaries = [f'__start((" ")) --> {controller.workflow.initial}']
-    boundaries.extend(f'{state.name} --> __end((" "))' for state in states.values() if state.final)
+    boundaries = [f'__start@{{ shape: sm-circ }} --> {controller.workflow.initial}']
+    boundaries.extend(f'{state.name} --> __end@{{ shape: fr-circ }}' for state in states.values() if state.final)
     diagram += '\n' + '\n'.join(boundaries)
-    diagram += '\nclassDef boundary fill:#172033,stroke:#172033\nclass __start,__end boundary\n'
     if phase in states:
         color = '#fee2e2' if result.get('error') else '#dcfce7'
         diagram += f'\nclassDef current fill:{color},stroke:#2563eb,stroke-width:3px\nclass {phase} current\n'
@@ -529,37 +538,40 @@ def state_artifact(context, controller, result):
                                      'next_step': {**callback(state.description), 'alternatives': choices}})
     if context.get('output'):
         nodes[phase] = context['output']
-    links = [next((option for option in nodes[source]['next_step']
-                   if shlex.split(option['command'])[2] == name), None)
-             for source, name in edges]
-    code = dict(context.get('state', {}).get('option_code', {}))
-    for state in states.values():
-        if not callable(state.options):
-            code.setdefault(state.name, {option.name: option.source() for option in state.options})
-    payload = json.dumps(redact({'nodes': nodes, 'edges': links + [None] * len(boundaries), 'decision': nodes[phase],
-                                'code': [code.get(source, {}).get(name, '') for source, name in edges]})).replace('<', '\\u003c')
+    links = {f'__option_{index}': {
+        'decision': next((option for option in nodes[source]['next_step']
+                          if shlex.split(option['command'])[2] == name), None),
+        'logic': {name: logic.get(source, {}).get(name, '')}}
+        for index, (source, name) in enumerate(edges)}
+    payload = json.dumps(redact({'nodes': nodes, 'edges': links, 'decision': nodes[phase], 'logic': logic})).replace('<', '\\u003c')
     return ('<!doctype html><html lang="en"><meta charset="utf-8"><title>' + escape(controller.SOP_NAME) + '</title>'
             '<style>body{font:15px system-ui;margin:8px;color:#172033}pre{white-space:pre;overflow-x:auto}'
             '.mermaid{margin:0}.mermaid svg{display:block;max-width:100%;max-height:65vh;margin:auto}'
             '[role="button"]{cursor:pointer}.flowchart-link{pointer-events:stroke}'
             'h1{font-size:18px}</style>'
-            '<pre class="mermaid">' + escape(diagram) + '</pre>'
+            '<pre class="mermaid" id="workflow">' + escape(diagram) + '</pre>'
             '<h1>' + escape(controller.SOP_NAME) + '</h1><pre id="detail" aria-live="polite">'
             + escape(json.dumps(redact(nodes[phase]), indent=2)) + '</pre>'
-            '<pre id="code" hidden></pre>'
+            '<div id="logic"></div>'
             '<pre id="metadata">' + escape(json.dumps(redact(details), indent=2)) + '</pre>'
             '<script id="sop-data" type="application/json">' + payload + '</script>'
             '<script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";'
-            'const data=JSON.parse(document.getElementById("sop-data").textContent),detail=document.getElementById("detail"),code=document.getElementById("code");'
-            'const show=(value,source="")=>{detail.textContent=JSON.stringify(value,null,2);code.textContent=source;code.hidden=!source};'
+            'const data=JSON.parse(document.getElementById("sop-data").textContent),detail=document.getElementById("detail"),logic=document.getElementById("logic");'
+            'const show=(value,charts={})=>{detail.textContent=JSON.stringify(value,null,2);logic.replaceChildren();'
+            'for(const [name,source] of Object.entries(charts)){if(!source)continue;'
+            'const heading=document.createElement("h2"),chart=document.createElement("pre");'
+            'heading.textContent=name;chart.className="mermaid";chart.textContent=source;logic.append(heading,chart)}'
+            'mermaid.run({nodes:logic.querySelectorAll(".mermaid")})};'
             'mermaid.initialize({startOnLoad:false,securityLevel:"strict"});await mermaid.run({querySelector:".mermaid"});'
-            'const bind=(element,value,source="")=>{if(!value)return;element.setAttribute("tabindex","0");element.setAttribute("role","button");'
-            'element.onclick=()=>show(value,source);element.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){'
-            'event.preventDefault();show(value,source)}}};'
+            'const bind=(element,value,charts={})=>{if(!element||!value)return;element.setAttribute("tabindex","0");element.setAttribute("role","button");'
+            'element.onclick=()=>show(value,charts);element.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){'
+            'event.preventDefault();show(value,charts)}}};'
             'for(const [name,value] of Object.entries(data.nodes)){'
-            'const node=document.querySelector(`.node[id*="flowchart-${name}-"]`);if(node)bind(node,value)}'
-            'document.querySelectorAll(".edgePaths .flowchart-link").forEach((edge,i)=>bind(edge,data.edges[i],data.code[i]));'
-            'document.querySelectorAll(".edgeLabels > .edgeLabel").forEach((label,i)=>bind(label,data.edges[i],data.code[i]));'
+            'const node=document.querySelector(`#workflow .node[id*="flowchart-${name}-"]`);bind(node,value,data.logic[name])}'
+            'for(const [id,edge] of Object.entries(data.edges)){'
+            'bind(document.querySelector(`#workflow .edgePaths [data-id="${id}"]`),edge.decision,edge.logic);'
+            'bind(document.querySelector(`#workflow .edgeLabel [data-id="${id}"]`)?.parentElement,edge.decision,edge.logic)}'
+            'show(data.decision,data.logic[data.decision.status]);'
             '</script></html>')
 
 
@@ -630,7 +642,7 @@ def main(argv=None):
         state = context['state']
         state['output'] = output
         state.setdefault('decisions', {})[output['status']] = output
-        state.setdefault('option_code', {}).update(context.get('option_code', {}))
+        state.setdefault('option_diagrams', {}).update(context.get('option_diagrams', {}))
         if state_path(context).exists():
             save_state(context, state)
     context['output'] = output

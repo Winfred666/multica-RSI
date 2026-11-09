@@ -154,10 +154,29 @@ initial and final boundaries from these declarations. Live Multica execution
 establishes effectiveness.
 
 Use `controller.workflow` as the graph's source; do not maintain a duplicate
-`DEBUG.md`. Generate the HTML from the declared states and option targets, and
-read Python handler source with the standard library's `inspect` module.
-Render small start/end pseudo nodes linked to the initial/final states with plain
-arrows. These markers and boundary links are not clickable or workflow options.
+`DEBUG.md`. Generate the HTML from the declared states and option targets.
+For scripted branches, put a fenced Mermaid `flowchart LR` in the action's
+docstring. The first node is its entry; use workflow state names as exits and
+prefix internal node IDs with the function name. The renderer connects the option
+to this entry and includes the diagram unchanged, so diamond conditions and all
+documented routes appear before execution. Without a diagram, use the declared
+option target. Keep these diagrams short and consistent with the Python logic.
+For example, `configure` documents its branch as:
+
+````python
+def configure(args, context):
+    """```mermaid
+    flowchart LR
+        configure_gate{"Delivery format valid?"}
+        configure_gate -->|yes| variant
+        configure_gate -->|no| scaffold
+    ```"""
+    # Bind the script and return its selected phase.
+````
+
+Use Mermaid's small-circle start and framed-circle stop shapes linked to the
+initial/final states with plain arrows. These markers and boundary links are not
+clickable or workflow options.
 Final states have no options; the review action can complete directly without an
 extra finish action. Declare its normal completion target so the final state is
 connected before execution; handlers can still return another state for a retry.
@@ -169,9 +188,11 @@ IDs and assertion failures. Put the graph before headings and metadata so it is
 visible in thumbnails. Selecting a state shows formatted agent JSON; visited states
 replay their emitted decision, while unvisited states show declared guidance and
 static options without executing workflow code. Selecting an edge shows the agent's
-option JSON followed by its Python action source, before issue/task metadata.
-Cache source for dynamic options when the workflow resolves them; do not rerun
-option factories to render a preview. Node selection clears the option code.
+option JSON followed by its rendered Mermaid logic, before issue/task metadata.
+State selection shows the diagrams for its available options. Read docstrings with
+`inspect.getdoc`; omit function definitions from the preview. Cache diagrams for
+dynamic options when the workflow resolves them; do not rerun option factories
+to render a preview.
 Omit HTML help controls.
 Dynamic routes appear when selected. DEBUG defaults
 to `false`. For an existing HTML view, export read-only `artifacts(context)` from

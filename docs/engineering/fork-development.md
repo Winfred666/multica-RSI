@@ -96,8 +96,9 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   and its template first; require human approval before mechanically propagating
   the approved protocol to other symbolic SoPs and distributions. The pending
   template derives its graph from `controller.workflow` without `DEBUG.md`, shows
-  agent JSON on selection and option handler code before the final issue/task
-  metadata, with non-clickable start/end markers and boundary links. The creator's
+  agent JSON and rendered Mermaid logic from action docstrings before the final
+  issue/task metadata. Docstrings provide diamond branches; native small-circle
+  start and framed-circle stop markers have non-clickable boundary links. The creator's
   `scripts/check.py` validates a selected package and checks its shared runtime in
   temporary template fixtures. CLI `--help` replays a recorded decision or shows
   the skill body without starting a task.
