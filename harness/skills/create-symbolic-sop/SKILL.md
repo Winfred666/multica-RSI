@@ -188,8 +188,10 @@ Set `"DEBUG": true` in the skill's `config.json` to publish `<skill-name>-state.
 on every state shift. The wrapper renders `controller.workflow` states, option
 targets and symbolic branches, with state meanings, native issue/task
 IDs and assertion failures. Put the graph before headings and metadata so it is
-visible in thumbnails. Keep SVGs at their natural size with horizontal scrolling,
-including on mobile; do not shrink the graph to fit the viewport. Selecting a state shows formatted agent JSON; visited states
+visible in thumbnails. Use a CSS orientation media query: in landscape, fit SVGs
+to the available width without horizontal scrolling; in portrait, keep their natural
+size and allow horizontal scrolling. This follows the HTML viewport and updates
+automatically on resize or rotation. Selecting a state shows formatted agent JSON; visited states
 replay their emitted decision, while unvisited states show declared guidance and
 static options without executing workflow code. Selecting an edge shows the agent's
 option JSON followed by its rendered Mermaid logic, before issue/task metadata.

@@ -101,8 +101,9 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   template derives its graph from `controller.workflow` without `DEBUG.md`, shows
   agent JSON and rendered Mermaid logic from action docstrings before the final
   issue/task metadata. Workflow states, option targets and explicit Branch routes
-  supply the global graph; action docstrings supply only local logic. Native small-circle
-  start and framed-circle stop markers have non-clickable boundary links. The creator's
+  supply the global graph; action docstrings supply only local logic. Graphs fit the
+  viewport width in landscape and scroll horizontally at natural size in portrait.
+  Native small-circle start and framed-circle stop markers have non-clickable boundary links. The creator's
   `scripts/check.py` validates a selected package and checks its shared runtime in
   temporary template fixtures. CLI `--help` replays a recorded decision or shows
   the skill body without starting a task.

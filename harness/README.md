@@ -58,7 +58,8 @@ generates its graph from `controller.workflow` and needs no `DEBUG.md`.
 Run `python3 harness/skills/create-symbolic-sop/scripts/check.py <skill-directory>`
 to validate a new SOP and check its shared runtime in temporary template fixtures.
 The two executable system SOPs share the approved template runtime, including
-read-only help replay and Workflow-based HTML with horizontally scrollable graphs.
+read-only help replay and Workflow-based HTML. Graphs fit the width in landscape
+and keep their natural size with horizontal scrolling in portrait.
 RSI keeps its native single-task lifecycle procedures. The authoring reference
 points to RSI's bundled platform guidance.
 
