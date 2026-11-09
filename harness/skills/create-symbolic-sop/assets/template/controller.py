@@ -59,7 +59,7 @@ def precheck(context):
 
 def view(context):
     state = context['state']
-    return {'data': {key: state.get(key) for key in ('workspace', 'test_script', 'description', 'test_result')}}
+    return {'data': {key: state.get(key) for key in ('test_script', 'description', 'test_result')}}
 
 
 def test(args, context):

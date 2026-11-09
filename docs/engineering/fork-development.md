@@ -103,6 +103,7 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   issue/task metadata. Workflow states, option targets and explicit Branch routes
   supply the global graph; action docstrings supply only local logic. Graphs fit the
   viewport width in landscape and scroll horizontally at natural size in portrait.
+  A single bundled Mermaid script avoids dependent module downloads in each preview.
   Native small-circle start and framed-circle stop markers have non-clickable boundary links. The creator's
   `scripts/check.py` validates a selected package and checks its shared runtime in
   temporary template fixtures. CLI `--help` replays a recorded decision or shows

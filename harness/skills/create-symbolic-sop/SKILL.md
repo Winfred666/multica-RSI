@@ -119,7 +119,9 @@ Use `view(context)` for decision evidence and `options(context)` for choices bou
 to actual IDs. Keep both read-only; reuse observations in the current context.
 Option factories can run before selection, so option-specific arguments may not
 exist yet. Return JSON-compatible precheck observations and action results so the
-wrapper can save them for recovery.
+wrapper can save them for recovery. In the refinement template, the saved solution
+`workspace` pins the test's working directory and log root across recalls; keep it
+internal rather than repeating it in agent guidance.
 Script fixed work and leave judgment at explicit options. Preserve the procedure's
 conditions, side effects, rejection paths and termination behavior.
 
@@ -199,6 +201,8 @@ State selection shows the diagrams for its available options. Read docstrings wi
 `inspect.getdoc`; omit function definitions from the preview. Cache diagrams for
 dynamic options when the workflow resolves them; do not rerun option factories
 to render a preview.
+Load Mermaid's single bundled script rather than its ES module entrypoint, which
+fetches multiple dependent chunks before a sandboxed preview can render.
 Omit HTML help controls.
 Cache dynamic option targets when resolving choices so previews never repeat
 option factories. DEBUG defaults

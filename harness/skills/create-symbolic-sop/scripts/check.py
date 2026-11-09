@@ -28,9 +28,9 @@ class SymbolicProtocol(unittest.TestCase):
                     'PYTHONDONTWRITEBYTECODE': '1'}
         self.env.pop('MULTICA_TOKEN', None)
 
-    def run_sop(self, *args, valid=True, json_output=True):
+    def run_sop(self, *args, valid=True, json_output=True, cwd=None):
         result = subprocess.run([sys.executable, str(self.package / 'wrapper.py'), *args],
-                                cwd=self.root, env=self.env, capture_output=True, text=True, timeout=10)
+                                cwd=cwd or self.root, env=self.env, capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0 if valid else 1, result.stderr + result.stdout)
         return json.loads(result.stdout) if json_output else result.stdout.strip()
 
@@ -71,16 +71,25 @@ workflow = Workflow(
 
     def test_bound_script_monitor_dynamic_routes_and_completion(self):
         script = self.root / 'test_solution.py'
-        script.write_text('def validate(): return True\n'
+        script.write_text('from pathlib import Path\n'
+                          'def validate(): return True\n'
                           'def score(delivery): return delivery["score"]\n'
                           'def is_complete(delivery): return delivery["score"] == 1\n'
-                          'if __name__ == "__main__": print(\'{"score": 1}\')\n')
+                          'if __name__ == "__main__": print(\'{"score": \' + Path("score").read_text() + \'}\')\n')
+        (self.root / 'score').write_text('1')
+        elsewhere = self.root / 'elsewhere'
+        elsewhere.mkdir()
         initial = self.run_sop()
         self.assertEqual(initial['status'], 'initialize')
         self.assertIsInstance(initial['next_step'], list)
         self.assertTrue(all(set(option) == {'instruction', 'command'} for option in initial['next_step']))
-        self.assertEqual(self.run_sop('configure', '--test-script', str(script))['status'], 'variant')
-        self.assertEqual(self.run_sop('test', '--description', 'Measure this solution.')['status'], 'test')
+        configured = self.run_sop('configure', '--test-script', str(script))
+        self.assertEqual(configured['status'], 'variant')
+        self.assertNotIn('workspace', configured['data'])
+        started = self.run_sop('test', '--description', 'Measure this solution.', cwd=elsewhere)
+        self.assertEqual(started['status'], 'test')
+        job = Path(started['data']['job'])
+        self.assertEqual(json.loads((job / 'job.json').read_text())['cwd'], str(self.root))
         result = self.run_sop('continue')
         self.assertEqual(result['status'], 'review')
         self.assertEqual(result['data']['delivery'], {'score': 1})
