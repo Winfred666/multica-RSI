@@ -6,7 +6,7 @@ import re
 import sys
 
 import monitor
-from sop import Option, Parameter, State, Workflow
+from sop import Branch, Option, Parameter, State, Workflow
 
 
 ROOT = Path(__file__).resolve().parent
@@ -38,9 +38,8 @@ def valid(context):
 def configure(args, context):
     """```mermaid
     flowchart LR
-        configure_gate{"Delivery format valid?"}
-        configure_gate -->|yes| variant
-        configure_gate -->|no| scaffold
+        configure_bind["Bind script and workspace"] --> configure_validate["Run delivery-format check"]
+        configure_validate --> configure_save["Save baseline_pending and return phase"]
     ```"""
     save(context, test_script=str(args.test_script.resolve()), workspace=str(Path.cwd()))
     baseline = valid(context)
@@ -66,14 +65,8 @@ def view(context):
 def test(args, context):
     """```mermaid
     flowchart LR
-        test
-    ```
-
-    Expanded checks:
-    ```mermaid
-    flowchart LR
         test_gate{"One paragraph and valid delivery?"}
-        test_gate -->|yes: start monitor| test
+        test_gate -->|yes| test_launch["Start monitor and return job handle"]
         test_gate -->|no| test_reject["Reject; keep current state"]
     ```"""
     description = args.description.strip()
@@ -90,23 +83,9 @@ def test(args, context):
 def observe(args, context):
     """```mermaid
     flowchart LR
-        observe_status["Collect progress"]
-        observe_status -->|running| test
-        observe_status -->|variant result| review
-        observe_status -->|baseline accepted| variant
-        observe_status -->|baseline complete| finished
-    ```
-
-    Expanded routing:
-    ```mermaid
-    flowchart LR
-        observe_running{"Job still running?"}
-        observe_running -->|yes| test
-        observe_running -->|no| observe_baseline{"Valid new baseline?"}
-        observe_baseline -->|no| review
-        observe_baseline -->|yes: save baseline| observe_done{"Exit condition met?"}
-        observe_done -->|yes| finished
-        observe_done -->|no| variant
+        observe_wait["Collect new logs or process exit"] --> observe_parse["Read completed delivery and score; capture errors"]
+        observe_parse --> observe_save["Save report and baseline when applicable"]
+        observe_save --> observe_return["Return report and phase"]
     ```"""
     state = context['state']
     report = monitor.wait(state['job'], state.setdefault('monitor', {}))
@@ -137,12 +116,6 @@ def observe(args, context):
 def exception(args, context):
     """```mermaid
     flowchart LR
-        exception_stop["Stop monitor"] --> observe_status
-    ```
-
-    Expanded action:
-    ```mermaid
-    flowchart LR
         exception_stop["Stop monitor"] --> exception_observe["Collect and route result via observe"]
     ```"""
     monitor.stop(context['state']['job'])
@@ -152,22 +125,10 @@ def exception(args, context):
 def record(args, context):
     """```mermaid
     flowchart LR
-        record_save["Record review"]
-        record_save -->|complete| finished
-        record_save -->|baseline pending| scaffold
-        record_save -->|refine| variant
-    ```
-
-    Expanded routing:
-    ```mermaid
-    flowchart LR
         record_review{"Review is one paragraph?"}
-        record_review -->|no| review
-        record_review -->|yes: save review| record_done{"Measured delivery complete?"}
-        record_done -->|yes| finished
-        record_done -->|no| record_baseline{"Baseline still pending?"}
-        record_baseline -->|yes| scaffold
-        record_baseline -->|no| variant
+        record_review -->|no| record_reject["Reject; keep current state"]
+        record_review -->|yes| record_save["Write review.json"]
+        record_save --> record_return["Return report and phase"]
     ```"""
     review = args.review.strip()
     if not review or re.search(r'\n\s*\n', review):
@@ -182,8 +143,9 @@ def record(args, context):
 
 workflow = Workflow(
     State('initialize', 'Bind the workspace’s test and result-recording script.', initial=True, options=(
-        Option('configure', 'variant', 'Bind the supplied test script; its delivery gate selects scaffold or variant.', configure,
+        Option('configure', 'configure_result', 'Bind the supplied test script; its delivery gate selects scaffold or variant.', configure,
                params=(Parameter('--test-script', 'Absolute Python test script path', type=Path),)),)),
+    Branch('configure_result', 'Delivery format valid?', {'yes': 'variant', 'no': 'scaffold'}),
     State('scaffold', 'Implement a minimal template baseline in the testable delivery format. Describe it in one paragraph.',
           precheck=precheck, view=view, options=(
               Option('test', 'test', 'Test the template; a scorable baseline enters variant without a review.', test,
@@ -193,10 +155,13 @@ workflow = Workflow(
               Option('test', 'test', 'Test the bound solution.', test,
                      params=(Parameter('--description', 'One paragraph describing this idea'),)),)),
     State('test', 'Read the collected progress and choose continue or exception in this turn.', precheck=precheck, view=view, options=(
-        Option('continue', 'test', 'Monitor until an important log, time checkpoint or test exit.', observe),
-        Option('exception', 'review', 'End this experiment and review the recorded result.', exception),)),
+        Option('continue', 'test_result', 'Monitor until an important log, time checkpoint or test exit.', observe),
+        Option('exception', 'test_result', 'End this experiment and review the recorded result.', exception),)),
+    Branch('test_result', 'Test output', {'running': 'test', 'variant result': 'review',
+                                       'baseline accepted': 'variant', 'baseline complete': 'finished'}),
     State('review', 'Review the recorded test result in one paragraph.', precheck=precheck, view=view, options=(
-        Option('record', 'finished', 'Record the review; the measured exit condition selects completion or another variant.', record,
+        Option('record', 'review_result', 'Record the review; the measured exit condition selects completion or another variant.', record,
                params=(Parameter('--review', 'One paragraph reviewing the result'),)),)),
+    Branch('review_result', 'Review output', {'complete': 'finished', 'baseline pending': 'scaffold', 'refine': 'variant'}),
     State('finished', 'The measured delivery meets the test script’s exit condition. Deliver the result.', final=True, precheck=precheck),
 )

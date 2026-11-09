@@ -100,8 +100,8 @@ output for response fields. Other command groups such as `multica agent` are
 outside this helper's `issue` prefix; read their help before writing a helper.
 
 Return optional `data`, an `instruction`, or `accepted: False` to stay in the current
-state. An action may return `phase` to select a declared state through a scripted
-branch; its target precheck still runs. Agent JSON has `status`, a common state
+state. For scripted state selection, target a declared `Branch` and return `phase`
+to select one of its routes; the target state's precheck still runs. Agent JSON has `status`, a common state
 `instruction`, and `next_step`: a list of options, each with its own `instruction`
 and executable `command`. Keep state guidance separate from option prompts.
 Start with a bare call or `init`, then pass an option name as
@@ -153,28 +153,29 @@ For conservative refinement, define states directly inside the exported
 initial and final boundaries from these declarations. Live Multica execution
 establishes effectiveness.
 
-Keep `Workflow` for execution and state guidance; do not maintain a duplicate
-`DEBUG.md` or global topology. The HTML reuses each option's overview diagram.
-Put a fenced Mermaid `flowchart LR` in the action's
-docstring. The first node is its entry; use workflow state names as exits and
-prefix internal node IDs with the function name. The renderer connects the option
-to this entry and includes that first diagram in the global view. An optional
-second Mermaid block supplies the expanded view on selection. Keep paragraph
-checks, rejections and exception details there, outside the overview. With one
-block, both views reuse it; without a diagram, use the declared option target.
-Keep diagrams short and consistent with the Python logic.
-For example, `configure` documents its branch as:
+The global state graph comes only from `Workflow`: its `State` objects, option
+targets and explicit `Branch` declarations. An option is an agent choice. A
+diamond is an automatic transition selected by script output, with no extra
+option or callback. Import `Branch` from `sop` and declare it inside `Workflow`,
+for example:
 
-````python
-def configure(args, context):
-    """```mermaid
-    flowchart LR
-        configure_gate{"Delivery format valid?"}
-        configure_gate -->|yes| variant
-        configure_gate -->|no| scaffold
-    ```"""
-    # Bind the script and return its selected phase.
-````
+```python
+Branch('configure_result', 'Delivery format valid?',
+       {'yes': 'variant', 'no': 'scaffold'})
+```
+
+Set the configure option's target to `configure_result`. Its action returns
+`phase: 'variant'` or `phase: 'scaffold'`; the runtime checks that this phase is
+declared in the branch's routes. Branches are transient and route directly to
+states. Labels describe the script outcomes. The renderer reads these declarations
+without running conditions or inferring routes from docstrings or execution history.
+
+An action's optional fenced Mermaid `flowchart LR` docstring supplies only its
+expanded local flowchart. Show validation, exceptions, side effects and local
+branches or loops that change the action's work. Keep global state-routing
+diamonds and state-to-state links out of these diagrams. Use local node IDs prefixed
+with the function name. There is no overview block in a docstring and no duplicate
+`DEBUG.md`. Keep the action diagram short and consistent with its implementation.
 
 Use Mermaid's small-circle start and framed-circle stop shapes linked to the
 initial/final states with plain arrows. These markers and boundary links are not
@@ -184,10 +185,11 @@ extra finish action. Declare its normal completion target so the final state is
 connected before execution; handlers can still return another state for a retry.
 
 Set `"DEBUG": true` in the skill's `config.json` to publish `<skill-name>-state.html`
-on every state shift. The wrapper renders `controller.workflow` states, declared
-option targets and the actual transition, with state meanings, native issue/task
+on every state shift. The wrapper renders `controller.workflow` states, option
+targets and symbolic branches, with state meanings, native issue/task
 IDs and assertion failures. Put the graph before headings and metadata so it is
-visible in thumbnails. Selecting a state shows formatted agent JSON; visited states
+visible in thumbnails. Keep SVGs at their natural size with horizontal scrolling,
+including on mobile; do not shrink the graph to fit the viewport. Selecting a state shows formatted agent JSON; visited states
 replay their emitted decision, while unvisited states show declared guidance and
 static options without executing workflow code. Selecting an edge shows the agent's
 option JSON followed by its rendered Mermaid logic, before issue/task metadata.
@@ -196,7 +198,8 @@ State selection shows the diagrams for its available options. Read docstrings wi
 dynamic options when the workflow resolves them; do not rerun option factories
 to render a preview.
 Omit HTML help controls.
-Dynamic routes appear when selected. DEBUG defaults
+Cache dynamic option targets when resolving choices so previews never repeat
+option factories. DEBUG defaults
 to `false`. For an existing HTML view, export read-only `artifacts(context)` from
 `controller.py` returning `{stable_filename: html_string}`; the wrapper updates
 these live artifacts after accepted callbacks. Upload failures leave workflow

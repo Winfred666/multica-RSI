@@ -97,8 +97,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   the approved protocol to other symbolic SoPs and distributions. The pending
   template derives its graph from `controller.workflow` without `DEBUG.md`, shows
   agent JSON and rendered Mermaid logic from action docstrings before the final
-  issue/task metadata. The first Mermaid block supplies overview routes; an optional
-  second block expands checks and exceptions. Native small-circle
+  issue/task metadata. Workflow states, option targets and explicit Branch routes
+  supply the global graph; action docstrings supply only local logic. Native small-circle
   start and framed-circle stop markers have non-clickable boundary links. The creator's
   `scripts/check.py` validates a selected package and checks its shared runtime in
   temporary template fixtures. CLI `--help` replays a recorded decision or shows

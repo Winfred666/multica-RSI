@@ -86,6 +86,15 @@ workflow = Workflow(
         self.assertEqual(result['data']['delivery'], {'score': 1})
         self.assertEqual(self.run_sop('record', '--review', 'The measured result meets the exit condition.')['status'], 'finished')
         self.assertFalse((self.package / '.state/protocol-fixture.json').exists())
+        script.write_text(script.read_text().replace('def validate(): return True', 'def validate(): return False'))
+        self.run_sop()
+        self.assertEqual(self.run_sop('configure', '--test-script', str(script))['status'], 'scaffold')
+        self.env['MULTICA_TASK_ID'] = 'invalid-branch'
+        controller = self.package / 'controller.py'
+        controller.write_text(controller.read_text().replace("'variant' if baseline else 'scaffold'", "'finished'"))
+        self.run_sop()
+        invalid = self.run_sop('configure', '--test-script', str(script), valid=False)
+        self.assertEqual(invalid['error']['code'], 'invalid_branch_output')
 
     def test_assertion_repair_does_not_repeat_action(self):
         (self.package / 'controller.py').write_text('''from pathlib import Path
@@ -148,9 +157,9 @@ workflow = Workflow(
         filename, html = upload.call_args.args
         self.assertEqual(filename, 'multica-parallel-refinement-state.html')
         self.assertIn('protocol-fixture', html)
-        self.assertIn('initialize __option_0@--&gt;|configure| configure_gate', html)
-        self.assertIn('configure_gate --&gt;|yes| variant', html)
-        self.assertIn('configure_gate --&gt;|no| scaffold', html)
+        self.assertIn('initialize __option_0@--&gt;|configure| configure_result', html)
+        self.assertIn('configure_result --&gt;|yes| variant', html)
+        self.assertIn('configure_result --&gt;|no| scaffold', html)
         self.assertIn('__start@{ shape: sm-circ } --&gt; initialize', html)
         self.assertIn('finished --&gt; __end@{ shape: fr-circ }', html)
         self.assertLess(html.index('id="workflow"'), html.index('<h1>'))
@@ -158,12 +167,16 @@ workflow = Workflow(
         self.assertEqual(data['nodes']['initialize'], initial)
         self.assertEqual(data['nodes']['variant'], current)
         self.assertEqual(data['edges']['__option_0']['decision'], initial['next_step'][0])
-        self.assertIn('configure_gate -->|no| scaffold', data['edges']['__option_0']['logic']['configure'][0])
+        self.assertIn('Run delivery-format check', data['edges']['__option_0']['logic']['configure'])
         overview = html.split('<pre class="mermaid" id="workflow">', 1)[1].split('</pre>', 1)[0]
         self.assertNotIn('Reject; keep current state', overview)
         self.assertNotIn('Review is one paragraph?', overview)
         self.assertNotIn('Measured delivery complete?', overview)
-        self.assertIn('Reject; keep current state', data['logic']['variant']['test'][-1])
+        self.assertIn('Reject; keep current state', data['logic']['variant']['test'])
+        state['option_diagrams']['initialize']['configure'] = 'flowchart LR\n    doc_only{"Local check?"} --> doc_done'
+        changed = wrapper.state_artifact(context, controller, result)
+        changed_overview = changed.split('<pre class="mermaid" id="workflow">', 1)[1].split('</pre>', 1)[0]
+        self.assertEqual(overview, changed_overview)
         self.assertNotIn('def configure', html)
         self.assertNotIn('__start', data['nodes'])
         self.assertNotIn('__end', data['nodes'])
