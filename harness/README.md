@@ -2,8 +2,10 @@
 
 `manifest.json` selects the system skills, optional library skills and plugins.
 `startup.gotmpl` is the workspace's editable startup prompt. It routes issue turns
-to the brief textual `multica-issue-workflow` system skill and keeps common CLI
-contracts and a final Never-HERO/Stop-slop block.
+to `multica-issue-workflow` only when that skill is available, and keeps common CLI
+contracts and the final Never-HERO/Stop-slop block. Acceptance and benchmark
+delivery rules live in the skill's textual reference, so masking the skill removes
+those procedures without removing the writing rules.
 Startup carries common checkout rules. Read `multica-project-resource-contract`
 only for supplied benchmarks or fixed resource/submission contracts; its evaluator
 and canonical submission rules remain available to every agent as a system skill.
@@ -19,7 +21,9 @@ establishes working artifacts early and preserves measured improvements. Delegat
 remains available for independently useful work. `multica-subissue-distribute`
 creates children from the parent;
 `multica-surface-block` handles external blockers. Children post results as native
-issue comments and enter `in_review` while awaiting acceptance; `done` stays human.
+issue comments and enter `in_review` while awaiting acceptance. The textual
+acceptance policy lets parents accept children and scopes benchmark completion
+rules to benchmark work; other root completion stays human.
 The textual system skill follows the issue workflow in official Multica upstream
 [`73975653`](https://github.com/multica-ai/multica/blob/73975653323750d04c27047ea9c986ef06bdf6a1/server/internal/daemon/execenv/runtime_config_sections.go#L614-L653).
 That revision defines no separate delivery or sub-issue review skill.

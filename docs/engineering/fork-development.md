@@ -9,7 +9,9 @@ behavior. The [README](../../README.md) presents the research platform.
 - **Editable startup prompts.** We replaced embedded workflow instructions with
   workspace Go templates and SOP skills. You can edit the workspace prompt;
   the server validates the template on save. The kit routes issue turns to the
-  brief textual `multica-issue-workflow` system skill, keeps common CLI rules,
+  brief textual `multica-issue-workflow` skill only when available. Acceptance and
+  benchmark delivery rules live in its textual reference, so masking the skill
+  removes them. The prompt keeps common CLI rules,
   and ends with explicit Never-HERO
   scope limits and Stop-slop writing rules: confirmed verdict/achievement first, cause or method and decisive
   evidence next, with useful references beside each claim. Visuals show cause and effect
@@ -44,7 +46,8 @@ projects/issues, agents, skills, MCPs, plugins and the system prompt. Imported
 agents are offline and require runtime setup; plugin installation never creates
 an execution PAT. See [the API contract](workspace-packages.md). Child dispatch uses
 `multica-subissue-distribute`; delivery uses the textual issue-workflow skill and native
-comments, with `in_review` awaiting acceptance and `done` reserved for humans.
+comments, with `in_review` awaiting acceptance. Parents accept children; bounded
+benchmarks follow their scoped completion policy. Other root completion stays human.
 The kit has no separate executable delivery or review procedure.
 Quick-create keeps the upstream task routing: its execution rules render only
 for a quick-create turn, and the native task prompt supplies picker and field
