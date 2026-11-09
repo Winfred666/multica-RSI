@@ -89,6 +89,12 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   environment preparation. Completed execution records hold only the request
   and output. Registration and issue metadata writes are unnecessary.
 
+- **Symbolic SoP protocol changes.** Update `harness/skills/create-symbolic-sop`
+  and its template first; require human approval before mechanically propagating
+  the approved protocol to other symbolic SoPs and distributions. The pending
+  template puts its interactive graph first in HTML previews and makes `--help`
+  replay a recorded decision or show the skill body without starting a task.
+
 - **Workspace packages.** `workspace package`, `workspace export` and
   `workspace import` expose the native package API with paged summaries, JSON
   selection files and inactive imported agents. See [usage and defaults](workspace-packages.md#cli).

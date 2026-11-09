@@ -15,6 +15,11 @@ records out of issue metadata.
 For in-platform capabilities, give rough direction to follow Multica best practice
 and the relevant native SOP. Leave platform actions and mechanics to that SOP.
 
+For shared protocol changes, update this skill and its template first and submit
+the concrete changes for human review. Only after explicit human approval,
+mechanically copy the approved protocol to all symbolic SoPs in `harness/` and
+distributions such as `dist/AIDE^2-harness`, preserving controllers and live state.
+
 The standalone package contains `SKILL.md`, `DEBUG.md`, `config.json`, `controller.py`, `sop.py`, `wrapper.py`, `monitor.py`
 and procedure dependencies. The wrapper creates `.state/<task_id>.json` at runtime.
 Preserve live state when revising an installed skill. Customize `controller.py`;
@@ -104,6 +109,10 @@ the first argument. The wrapper reads the task JSON record and checks its status
 before running an option. Invalid options or parameters return current guidance
 without changing state. Bare calls run no action. Completion removes the task JSON
 file; a later bare call or `init` starts another run within the same native task.
+`--help` is read-only: replay the last emitted decision JSON for a recorded task,
+including its output and options; for a new or completed task, print the `SKILL.md`
+body after YAML frontmatter without creating a task record. Cache each emitted
+decision in the existing task record, including callbacks that stay in one state.
 
 Use `view(context)` for decision evidence and `options(context)` for choices bound
 to actual IDs. Keep both read-only; reuse observations in the current context.
@@ -147,7 +156,10 @@ chart stands alone; prefer chart labels to prose.
 Set `"DEBUG": true` in the skill's `config.json` to publish `<skill-name>-state.html`
 on every state shift. The wrapper renders `controller.workflow` states, declared
 option targets and the actual transition, with state meanings, native issue/task
-IDs and assertion failures. Dynamic routes appear when selected. DEBUG defaults
+IDs and assertion failures. Put the graph before headings and metadata so it is
+visible in thumbnails. Selecting a state or edge shows its exact instructions,
+parameters and handler source; the view's `--help` shows the same read-only help
+as the wrapper. Dynamic routes appear when selected. DEBUG defaults
 to `false`. For an existing HTML view, export read-only `artifacts(context)` from
 `controller.py` returning `{stable_filename: html_string}`; the wrapper updates
 these live artifacts after accepted callbacks. Upload failures leave workflow

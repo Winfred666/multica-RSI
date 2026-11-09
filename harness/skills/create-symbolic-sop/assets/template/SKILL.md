@@ -6,6 +6,9 @@ description: Refine a bound solution with a supplied test script, measured resul
 Run `python3 .pi/skills/multica-parallel-refinement/wrapper.py` in the solution
 workspace. Follow the returned recalls in the same turn until completion. Each
 parallel issue owns its own workspace and task record.
+Use `--help` to replay the saved decision without running checks or actions.
+Before starting or after completion, it shows these instructions without starting
+a task. The HTML state graph offers the same `--help` view.
 
 Supply the Python test script at configuration. It is bound to this workspace:
 `validate() -> bool` checks the delivery format, `score(delivery) -> number` ranks

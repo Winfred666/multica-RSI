@@ -1,5 +1,6 @@
 """The portable package validates and runs the synchronized Symbolic protocol."""
 import importlib.util
+import inspect
 import json
 import os
 from pathlib import Path
@@ -28,11 +29,40 @@ class SymbolicProtocol(unittest.TestCase):
                     'PYTHONDONTWRITEBYTECODE': '1'}
         self.env.pop('MULTICA_TOKEN', None)
 
-    def run_sop(self, *args, valid=True):
+    def run_sop(self, *args, valid=True, json_output=True):
         result = subprocess.run([sys.executable, str(self.package / 'wrapper.py'), *args],
                                 cwd=self.root, env=self.env, capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0 if valid else 1, result.stderr + result.stdout)
-        return json.loads(result.stdout)
+        return json.loads(result.stdout) if json_output else result.stdout.strip()
+
+    def test_help_shows_body_without_starting_then_replays_same_state_output(self):
+        body = (self.package / 'SKILL.md').read_text().split('---', 2)[2].strip()
+        self.assertEqual(self.run_sop('--help', json_output=False), body)
+        self.assertFalse((self.package / '.state').exists())
+        (self.package / 'controller.py').write_text('''from pathlib import Path
+from sop import Option, State, Workflow
+def observe(context):
+    p = Path('observations')
+    p.write_text(p.read_text() + 'x' if p.exists() else 'x')
+    return {'data': {'output': p.read_text()}}
+workflow = Workflow(
+    State('start', 'Start', initial=True, view=observe, options=(
+        Option('refresh', 'start', 'Refresh output'), Option('done', 'finished', 'Finish'))),
+    State('finished', 'Done', final=True))
+''')
+        initial = self.run_sop()
+        updated = self.run_sop('refresh')
+        self.assertNotEqual(initial['data'], updated['data'])
+        path = self.package / '.state/protocol-fixture.json'
+        saved, modified = path.read_bytes(), path.stat().st_mtime_ns
+        self.assertEqual(self.run_sop('--help'), updated)
+        self.assertEqual((self.root / 'observations').read_text(), 'xx')
+        self.assertEqual(path.read_bytes(), saved)
+        self.assertEqual(path.stat().st_mtime_ns, modified)
+        self.run_sop('done')
+        self.assertFalse(path.exists())
+        self.assertEqual(self.run_sop('--help', json_output=False), body)
+        self.assertFalse(path.exists())
 
     def test_required_debug_and_configuration_in_every_package(self):
         for source in PACKAGES:
@@ -78,6 +108,7 @@ workflow = Workflow(
         self.run_sop()
         failed = self.run_sop('write', valid=False)
         self.assertEqual(failed['status'], 'error')
+        self.assertEqual(self.run_sop('--help'), failed)
         (self.root / 'ready').touch()
         self.assertEqual(self.run_sop('repaired')['status'], 'finished')
         self.assertEqual((self.root / 'writes').read_text(), 'x')
@@ -117,6 +148,9 @@ workflow = Workflow(
         self.assertEqual(filename, 'multica-parallel-refinement-state.html')
         self.assertIn('fixture-task', html)
         self.assertIn('initialize --&gt;|configure| variant', html)
+        self.assertLess(html.index('<pre class="mermaid">'), html.index('<h1>'))
+        data = json.loads(html.split('<script id="sop-data" type="application/json">', 1)[1].split('</script>', 1)[0])
+        self.assertEqual(data['edges'][0]['action'], inspect.getsource(controller.configure))
         for name in controller.workflow.states:
             self.assertIn(name, html)
 
