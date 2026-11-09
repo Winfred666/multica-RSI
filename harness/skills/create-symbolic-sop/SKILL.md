@@ -25,6 +25,13 @@ and procedure dependencies. The wrapper creates `.state/<task_id>.json` at runti
 Preserve live state when revising an installed skill. Customize `controller.py`;
 `sop.py` defines the objects and `wrapper.py` drives them.
 
+For external executables, call `from wrapper import ensure_command`, then
+`ensure_command('dot', 'graphviz')` or `ensure_command('bwrap', 'bubblewrap')`
+where the tool is needed. It reuses PATH or automatically installs the declared
+package with the host package manager, then checks PATH again. Installation
+errors become wrapper exceptions; resolve the reported error before retrying.
+Keep dependency checks out of read-only help.
+
 Export `workflow = Workflow(...)` with ordinary `State` objects. Declare exactly
 one initial state and one or more final states with `final=True`. Each state has a brief
 description, options, and optional read-only `precheck(context)` and `view(context)`.
@@ -201,9 +208,8 @@ State selection shows the diagrams for its available options. Read docstrings wi
 `inspect.getdoc`; omit function definitions from the preview. Cache diagrams for
 dynamic options when the workflow resolves them; do not rerun option factories
 to render a preview.
-Install Graphviz on the CLI/daemon host and expose `dot` on PATH (on Debian/Ubuntu:
-`sudo apt-get install --no-install-recommends graphviz`). Like the sandbox helper's
-external `bwrap` lookup, the renderer finds the system executable and calls it directly.
+The wrapper automatically installs Graphviz on the CLI/daemon host when `dot`
+is missing, using the same `ensure_command` helper as bubblewrap consumers.
 Compile the global DOT graph and local DOT diagrams with `dot -Tsvg` before uploading
 the HTML. Use Graphviz's native attributes for simple styling and horizontal `rankdir=LR` layout;
 let `dot` place nodes and route edges. Avoid custom ranking, label wrapping or SVG minification.

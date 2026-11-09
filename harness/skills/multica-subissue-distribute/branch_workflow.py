@@ -8,9 +8,10 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import sys
+
+from wrapper import ensure_command
 
 
 class WorkflowError(Exception):
@@ -266,9 +267,7 @@ def sandbox_prefix(profile, policy, workdir, profiles_root=None):
                 or not os.access(prefix[0], os.X_OK)):
             raise WorkflowError("Profile requires an absolute executable and a final --")
     if policy is not None:
-        bwrap = shutil.which("bwrap")
-        if not bwrap:
-            raise WorkflowError("Sandbox requires bubblewrap")
+        bwrap = ensure_command("bwrap", "bubblewrap")
         prefix += [bwrap, "--die-with-parent", "--unshare-user", "--uid", str(os.getuid()),
                    "--gid", str(os.getgid()), "--unshare-pid", "--unshare-ipc", "--unshare-uts",
                    "--cap-drop", "ALL", "--new-session", "--bind", "/", "/", "--proc", "/proc",

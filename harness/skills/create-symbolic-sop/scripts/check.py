@@ -70,6 +70,62 @@ workflow = Workflow(
         (self.package / 'config.json').write_text('{"DEBUG": "false"}')
         self.assertIn('boolean DEBUG', self.run_sop('--validate', valid=False)['error'])
 
+    def test_dependencies_install_when_missing_and_report_install_failure(self):
+        spec = importlib.util.spec_from_file_location('protocol_wrapper', self.package / 'wrapper.py')
+        wrapper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(wrapper)
+        binaries = self.root / 'bin'
+        binaries.mkdir()
+        installer = binaries / 'apt-get'
+        installer.write_text(f'''#!{sys.executable}
+from pathlib import Path
+import sys
+root = Path(__file__).parent
+with (root / 'installs').open('a') as log: log.write(sys.argv[-1] + '\\n')
+print('package manager output')
+if (root / 'fail').exists():
+    print('installation refused', file=sys.stderr)
+    sys.exit(9)
+package = sys.argv[sys.argv.index('--id') + 1] if '--id' in sys.argv else sys.argv[-1]
+name = {{'graphviz': 'dot', 'Graphviz.Graphviz': 'dot', 'bubblewrap': 'bwrap'}}[package]
+tool = root / name
+tool.write_text('#!/bin/sh\\nexit 0\\n')
+tool.chmod(0o755)
+''')
+        installer.chmod(0o755)
+        sudo = binaries / 'sudo'
+        sudo.write_text('#!/bin/sh\nshift\nexec "$@"\n')
+        sudo.chmod(0o755)
+        with patch.dict(os.environ, PATH=str(binaries)):
+            for name, package in (('dot', 'graphviz'), ('bwrap', 'bubblewrap')):
+                self.assertEqual(wrapper.ensure_command(name, package), str(binaries / name))
+                self.assertEqual(wrapper.ensure_command(name, package), str(binaries / name))
+        self.assertEqual((binaries / 'installs').read_text().splitlines(), ['graphviz', 'bubblewrap'])
+        (binaries / 'dot').unlink()
+        (binaries / 'fail').touch()
+        self.env['PATH'] = str(binaries)
+        (self.package / 'controller.py').write_text('''from sop import Option, State, Workflow
+from wrapper import ensure_command
+def install(args, context): ensure_command('dot', 'graphviz')
+workflow = Workflow(
+    State('start', 'Start', initial=True, options=(Option('install', 'finished', 'Install', install),)),
+    State('finished', 'Done', final=True))
+''')
+        self.run_sop('--help', json_output=False)
+        self.run_sop()
+        self.assertEqual((binaries / 'installs').read_text().splitlines(), ['graphviz', 'bubblewrap'])
+        failed = self.run_sop('install', valid=False)
+        self.assertEqual(failed['error']['code'], 'dependency_install_failed')
+        self.assertIn('installation refused', failed['error']['message'])
+        self.assertIn('Resolve the installation error for graphviz', failed['instruction'])
+        self.assertEqual((binaries / 'installs').read_text().splitlines(), ['graphviz', 'bubblewrap', 'graphviz'])
+        self.assertEqual(failed['status'], 'start')
+        (binaries / 'fail').unlink()
+        installer.rename(binaries / 'winget')
+        with patch.dict(os.environ, PATH=str(binaries)):
+            self.assertEqual(wrapper.ensure_command('dot', 'graphviz'), str(binaries / 'dot'))
+        self.assertEqual((binaries / 'installs').read_text().splitlines()[-1], 'Graphviz.Graphviz')
+
     def test_bound_script_monitor_dynamic_routes_and_completion(self):
         script = self.root / 'test_solution.py'
         script.write_text('from pathlib import Path\n'
@@ -205,7 +261,7 @@ workflow = Workflow(
         self.assertNotIn('<script src=', html)
         self.assertNotIn('mermaid', html)
         with patch.object(wrapper.shutil, 'which', return_value=None):
-            with self.assertRaisesRegex(FileNotFoundError, 'Install Graphviz'):
+            with self.assertRaisesRegex(wrapper.SOPError, 'no supported package manager'):
                 wrapper.graph_svg('digraph { a -> b; }', 'missing_tool')
         with self.assertRaisesRegex(ValueError, 'Invalid DOT diagram'):
             wrapper.graph_svg('digraph { broken -> }', 'invalid_dot')

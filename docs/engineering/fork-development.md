@@ -104,8 +104,10 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   supply the global graph; action docstrings supply only local logic. Graphs fit the
   viewport width in landscape and scroll horizontally at natural size in portrait.
   Graphviz `dot -Tsvg` compiles all DOT diagrams to embedded SVG on the CLI host;
-  previews have no external renderer or network dependency. Graphviz is an OS
-  package on PATH, following the SoP sandbox helper's `bwrap` lookup pattern.
+  previews have no external renderer or network dependency. The wrapper's
+  `ensure_command` reuses tools on PATH or installs their declared OS package
+  when missing; Graphviz and bubblewrap use it. Failed installation returns an
+  actionable wrapper exception. Help does not install dependencies.
   Native small-circle start and double-circle stop markers have non-clickable boundary links. The creator's
   `scripts/check.py` validates a selected package and checks its shared runtime in
   temporary template fixtures. CLI `--help` replays a recorded decision or shows
