@@ -177,12 +177,19 @@ workflow = Workflow(
         self.assertEqual(data['nodes']['initialize'], initial)
         self.assertEqual(data['nodes']['variant'], current)
         self.assertEqual(data['edges']['option_0']['decision'], initial['next_step'][0])
-        self.assertIn('Run delivery-format check', unescape(data['edges']['option_0']['logic']['configure']))
+        self.assertEqual(data['edges']['option_0']['source'], 'initialize')
+        self.assertEqual(data['edges']['option_0']['option'], 'configure')
+        self.assertIn('Run delivery-format check', unescape(html))
+        self.assertNotIn('<svg', json.dumps(data))
+        for charts in data['logic'].values():
+            for template in charts.values():
+                self.assertEqual(html.count(f'<template id="{template}">'), 1)
         overview = html.split('<div class="diagram" id="workflow">', 1)[1].split('</div>', 1)[0]
         self.assertNotIn('Reject; keep current state', overview)
         self.assertNotIn('Review is one paragraph?', overview)
         self.assertNotIn('Measured delivery complete?', overview)
-        self.assertIn('Reject; keep current state', data['logic']['variant']['test'])
+        local = html.split(f'<template id="{data["logic"]["variant"]["test"]}">', 1)[1].split('</template>', 1)[0]
+        self.assertIn('Reject; keep current state', local)
         controller.workflow.states['initialize'].options[0].action.__doc__ = ('```dot\n'
             'digraph local { check [label="Local check?", shape=diamond]; check -> done; }\n```')
         changed = wrapper.state_artifact(context, controller, result)
