@@ -129,7 +129,7 @@ workflow = Workflow(
         Option('continue', 'test', 'Monitor until an important log, time checkpoint or test exit.', observe),
         Option('exception', 'review', 'End this experiment and review the recorded result.', exception),)),
     State('review', 'Review the recorded test result in one paragraph.', precheck=precheck, view=view, options=(
-        Option('record', 'variant', 'Record the review; the measured exit condition selects completion or another variant.', record,
+        Option('record', 'finished', 'Record the review; the measured exit condition selects completion or another variant.', record,
                params=(Parameter('--review', 'One paragraph reviewing the result'),)),)),
     State('finished', 'The measured delivery meets the test script’s exit condition. Deliver the result.', final=True, precheck=precheck),
 )

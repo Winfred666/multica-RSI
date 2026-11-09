@@ -142,8 +142,13 @@ exception protocol once in every generated `SKILL.md`, applying to all states:
 follow the returned error guidance, reconcile writes before retrying, use `repaired`
 once for assertion failures, and report a repeated failure through native Multica block.
 
-Run `python3 <skill-directory>/wrapper.py --validate` and focused checks for affected
-paths. Keep repository tests in `tests/`. For conservative refinement, define states directly inside the exported
+Run `python3 <creator-directory>/scripts/check.py <skill-directory>` when creating
+or revising a SOP. The [checker](scripts/check.py) validates the package, then runs shared-runtime checks
+in temporary template fixtures using that package's `sop.py`, `wrapper.py` and
+`monitor.py`; it does not execute the procedure's actions or replace live state.
+Omit the directory to check the canonical template. Keep these checks current
+with protocol changes, and verify procedure-specific behavior separately.
+For conservative refinement, define states directly inside the exported
 `Workflow(...)` and keep predefined prechecks with their states. The harness reads
 initial and final boundaries from these declarations. Live Multica execution
 establishes effectiveness.
@@ -151,6 +156,11 @@ establishes effectiveness.
 Use `controller.workflow` as the graph's source; do not maintain a duplicate
 `DEBUG.md`. Generate the HTML from the declared states and option targets, and
 read Python handler source with the standard library's `inspect` module.
+Render small start/end pseudo nodes linked to the initial/final states with plain
+arrows. These markers and boundary links are not clickable or workflow options.
+Final states have no options; the review action can complete directly without an
+extra finish action. Declare its normal completion target so the final state is
+connected before execution; handlers can still return another state for a retry.
 
 Set `"DEBUG": true` in the skill's `config.json` to publish `<skill-name>-state.html`
 on every state shift. The wrapper renders `controller.workflow` states, declared

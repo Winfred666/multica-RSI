@@ -94,7 +94,9 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   the approved protocol to other symbolic SoPs and distributions. The pending
   template derives its graph from `controller.workflow` without `DEBUG.md`, shows
   agent JSON on selection and option handler code before the final issue/task
-  metadata. CLI `--help` replays a recorded decision or shows
+  metadata, with non-clickable start/end markers and boundary links. The creator's
+  `scripts/check.py` validates a selected package and checks its shared runtime in
+  temporary template fixtures. CLI `--help` replays a recorded decision or shows
   the skill body without starting a task.
 
 - **Workspace packages.** `workspace package`, `workspace export` and

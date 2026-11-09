@@ -505,6 +505,11 @@ def state_artifact(context, controller, result):
         edges[source, context['argv'][0]] = phase
     diagram += '\n' + '\n'.join(f'{source} -->|{option}| {target}'
                                 for (source, option), target in edges.items())
+    # Boundary markers are diagram-only; they never introduce workflow options.
+    boundaries = [f'__start((" ")) --> {controller.workflow.initial}']
+    boundaries.extend(f'{state.name} --> __end((" "))' for state in states.values() if state.final)
+    diagram += '\n' + '\n'.join(boundaries)
+    diagram += '\nclassDef boundary fill:#172033,stroke:#172033\nclass __start,__end boundary\n'
     if phase in states:
         color = '#fee2e2' if result.get('error') else '#dcfce7'
         diagram += f'\nclassDef current fill:{color},stroke:#2563eb,stroke-width:3px\nclass {phase} current\n'
@@ -531,12 +536,12 @@ def state_artifact(context, controller, result):
     for state in states.values():
         if not callable(state.options):
             code.setdefault(state.name, {option.name: option.source() for option in state.options})
-    payload = json.dumps(redact({'nodes': nodes, 'edges': links, 'decision': nodes[phase],
+    payload = json.dumps(redact({'nodes': nodes, 'edges': links + [None] * len(boundaries), 'decision': nodes[phase],
                                 'code': [code.get(source, {}).get(name, '') for source, name in edges]})).replace('<', '\\u003c')
     return ('<!doctype html><html lang="en"><meta charset="utf-8"><title>' + escape(controller.SOP_NAME) + '</title>'
             '<style>body{font:15px system-ui;margin:8px;color:#172033}pre{white-space:pre;overflow-x:auto}'
             '.mermaid{margin:0}.mermaid svg{display:block;max-width:100%;max-height:65vh;margin:auto}'
-            '.node,.flowchart-link,.edgeLabel{cursor:pointer}.flowchart-link{pointer-events:stroke}'
+            '[role="button"]{cursor:pointer}.flowchart-link{pointer-events:stroke}'
             'h1{font-size:18px}</style>'
             '<pre class="mermaid">' + escape(diagram) + '</pre>'
             '<h1>' + escape(controller.SOP_NAME) + '</h1><pre id="detail" aria-live="polite">'
@@ -548,7 +553,7 @@ def state_artifact(context, controller, result):
             'const data=JSON.parse(document.getElementById("sop-data").textContent),detail=document.getElementById("detail"),code=document.getElementById("code");'
             'const show=(value,source="")=>{detail.textContent=JSON.stringify(value,null,2);code.textContent=source;code.hidden=!source};'
             'mermaid.initialize({startOnLoad:false,securityLevel:"strict"});await mermaid.run({querySelector:".mermaid"});'
-            'const bind=(element,value,source="")=>{element.setAttribute("tabindex","0");element.setAttribute("role","button");'
+            'const bind=(element,value,source="")=>{if(!value)return;element.setAttribute("tabindex","0");element.setAttribute("role","button");'
             'element.onclick=()=>show(value,source);element.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){'
             'event.preventDefault();show(value,source)}}};'
             'for(const [name,value] of Object.entries(data.nodes)){'

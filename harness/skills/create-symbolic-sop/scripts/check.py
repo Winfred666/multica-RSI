@@ -1,4 +1,4 @@
-"""The portable package validates and runs the synchronized Symbolic protocol."""
+"""Validate a package, then check its shared runtime in temporary template fixtures."""
 import importlib.util
 import inspect
 import json
@@ -11,10 +11,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-SKILLS = Path(__file__).resolve().parents[1] / 'skills'
-TEMPLATE = SKILLS / 'create-symbolic-sop/assets/template'
-PACKAGES = [TEMPLATE, *(SKILLS / name for name in (
-    'multica-subissue-distribute', 'multica-surface-block'))]
+TEMPLATE = Path(__file__).resolve().parents[1] / 'assets/template'
+PACKAGE = TEMPLATE
 
 
 class SymbolicProtocol(unittest.TestCase):
@@ -24,6 +22,8 @@ class SymbolicProtocol(unittest.TestCase):
         self.root = Path(temporary.name)
         self.package = self.root / 'skill'
         shutil.copytree(TEMPLATE, self.package)
+        for name in ('sop.py', 'wrapper.py', 'monitor.py'):
+            shutil.copy2(PACKAGE / name, self.package / name)
         self.env = {**os.environ, 'MULTICA_TASK_ID': 'protocol-fixture',
                     'MULTICA_ISSUE_ID': 'fixture-issue', 'MULTICA_WORKSPACE_ID': 'fixture-workspace',
                     'PYTHONDONTWRITEBYTECODE': '1'}
@@ -65,15 +65,10 @@ workflow = Workflow(
         self.assertFalse(path.exists())
 
     def test_package_configuration_and_template_without_debug_document(self):
-        for source in PACKAGES:
-            with self.subTest(package=source):
-                shutil.rmtree(self.package)
-                shutil.copytree(source, self.package)
-                self.assertEqual(self.run_sop('--validate')['status'], 'valid')
-                if source == TEMPLATE:
-                    self.assertFalse((self.package / 'DEBUG.md').exists())
-                (self.package / 'config.json').write_text('{"DEBUG": "false"}')
-                self.assertIn('boolean DEBUG', self.run_sop('--validate', valid=False)['error'])
+        self.assertEqual(self.run_sop('--validate')['status'], 'valid')
+        self.assertFalse((self.package / 'DEBUG.md').exists())
+        (self.package / 'config.json').write_text('{"DEBUG": "false"}')
+        self.assertIn('boolean DEBUG', self.run_sop('--validate', valid=False)['error'])
 
     def test_bound_script_monitor_dynamic_routes_and_completion(self):
         script = self.root / 'test_solution.py'
@@ -155,12 +150,19 @@ workflow = Workflow(
         self.assertEqual(filename, 'multica-parallel-refinement-state.html')
         self.assertIn('protocol-fixture', html)
         self.assertIn('initialize --&gt;|configure| variant', html)
+        self.assertIn('review --&gt;|record| finished', html)
+        self.assertIn('__start((&quot; &quot;)) --&gt; initialize', html)
+        self.assertIn('finished --&gt; __end((&quot; &quot;))', html)
         self.assertLess(html.index('<pre class="mermaid">'), html.index('<h1>'))
         data = json.loads(html.split('<script id="sop-data" type="application/json">', 1)[1].split('</script>', 1)[0])
         self.assertEqual(data['nodes']['initialize'], initial)
         self.assertEqual(data['nodes']['variant'], current)
         self.assertEqual(data['edges'][0], initial['next_step'][0])
         self.assertEqual(data['code'][0], inspect.getsource(controller.configure))
+        self.assertEqual(data['edges'][-2:], [None, None])
+        self.assertNotIn('__start', data['nodes'])
+        self.assertNotIn('__end', data['nodes'])
+        self.assertEqual(data['nodes']['finished']['next_step'], [])
         self.assertLess(html.index('id="detail"'), html.index('id="code"'))
         self.assertLess(html.index('id="code"'), html.index('id="metadata"'))
         self.assertNotIn('<button', html)
@@ -170,4 +172,7 @@ workflow = Workflow(
 
 
 if __name__ == '__main__':
+    if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
+        PACKAGE = Path(sys.argv.pop(1)).resolve()
+    subprocess.run([sys.executable, str(PACKAGE / 'wrapper.py'), '--validate'], check=True)
     unittest.main()

@@ -51,12 +51,15 @@ The complete template includes the background experiment monitor, persistent tas
 facts, scripted routes and separate callback options. The authoring template
 generates its graph from `controller.workflow` and needs no `DEBUG.md`.
 `--validate` checks package files and the boolean `config.json` DEBUG value.
+Run `python3 harness/skills/create-symbolic-sop/scripts/check.py <skill-directory>`
+to validate a new SOP and check its shared runtime in temporary template fixtures.
 Existing system SOPs retain their prior protocol until approved propagation.
 RSI keeps its native single-task lifecycle procedures. The authoring reference
 points to RSI's bundled platform guidance.
 
 Set `config.json` to `{"DEBUG": true}` to publish the controller's state HTML on native
 state shifts. Selecting an option shows its Python action source before the issue
-metadata. Read-only controller `artifacts(context)` can also publish live HTML;
-upload failures leave the procedure result intact. Existing `.state` records and
+metadata. Start/end dots and their boundary links are non-clickable; final states
+need no extra finish option. Read-only controller `artifacts(context)` can also
+publish live HTML; upload failures leave the procedure result intact. Existing `.state` records and
 procedure-specific policies must be preserved when updating installed bundles.
