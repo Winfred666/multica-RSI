@@ -1,4 +1,4 @@
-"""Refine one bound workspace; parallel issues each own their task record."""
+"""Refine one bound workspace; each issue owns its SOP state."""
 import importlib.util
 import json
 import math
@@ -10,12 +10,9 @@ import monitor
 from sop import Branch, Option, Parameter, State, Workflow
 
 
-ROOT = Path(__file__).resolve().parent
-
-
 def save(context, **values):
     context['state'].update(values)
-    monitor.write(ROOT / '.state' / (context['task_id'] + '.json'), context['state'])
+    context['save_state']()
 
 
 def benchmark(context):

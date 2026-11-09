@@ -24,10 +24,47 @@ class SymbolicProtocol(unittest.TestCase):
         shutil.copytree(TEMPLATE, self.package)
         for name in ('sop.py', 'wrapper.py', 'monitor.py'):
             shutil.copy2(PACKAGE / name, self.package / name)
-        self.env = {**os.environ, 'MULTICA_TASK_ID': 'protocol-fixture',
-                    'MULTICA_ISSUE_ID': 'fixture-issue', 'MULTICA_WORKSPACE_ID': 'fixture-workspace',
+        self.metadata = self.root / 'metadata'
+        binary = self.root / 'bin'
+        binary.mkdir()
+        cli = binary / 'multica'
+        cli.write_text('''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+path = Path(os.environ['SOP_TEST_METADATA'])
+store = json.loads(path.read_text()) if path.exists() else {}
+args = sys.argv[1:]
+if os.environ.get('SOP_TEST_CLI_FAIL'):
+    sys.exit('Metadata service unavailable')
+if args[:2] == ['issue', 'get']:
+    print(json.dumps({'id': args[2], 'metadata': store.get(args[2], {})}))
+else:
+    action, issue = args[2:4]
+    if os.environ.get('SOP_TEST_WRITE_FAIL'):
+        sys.exit('Metadata write unavailable')
+    key = args[args.index('--key') + 1]
+    metadata = store.setdefault(issue, {})
+    if action == 'set':
+        metadata[key] = args[args.index('--value') + 1]
+        if len(json.dumps(metadata).encode()) > 8192:
+            sys.exit('Issue metadata exceeds 8 KB')
+    elif action == 'delete':
+        metadata.pop(key, None)
+    else:
+        sys.exit('Unexpected fixture command')
+    path.write_text(json.dumps(store))
+    print(json.dumps({'metadata': metadata}))
+''')
+        cli.chmod(0o755)
+        self.env = {**os.environ, 'MULTICA_ISSUE_ID': 'fixture-issue', 'MULTICA_WORKSPACE_ID': 'fixture-workspace',
+                    'SOP_TEST_METADATA': str(self.metadata), 'PATH': str(binary) + os.pathsep + os.environ['PATH'],
                     'PYTHONDONTWRITEBYTECODE': '1'}
         self.env.pop('MULTICA_TOKEN', None)
+
+    def state(self):
+        metadata = json.loads(self.metadata.read_text())[self.env['MULTICA_ISSUE_ID']]
+        value = metadata.get('sop.multica-parallel-refinement')
+        return json.loads(value) if value is not None else {}
 
     def run_sop(self, *args, valid=True, json_output=True, cwd=None):
         result = subprocess.run([sys.executable, str(self.package / 'wrapper.py'), *args],
@@ -51,29 +88,29 @@ workflow = Workflow(
     State('finished', 'Done', final=True))
 ''')
         initial = self.run_sop()
+        self.assertEqual(set(self.state()), {'status', 'output', 'runtime'})
         updated = self.run_sop('refresh')
         self.assertNotEqual(initial['instruction'], updated['instruction'])
-        self.assertNotIn('data', initial)
         self.assertNotIn('data', updated)
-        path = self.package / '.state/protocol-fixture.json'
-        state = json.loads(path.read_text())
-        state['output']['data'] = {'internal': 'private-legacy-data'}
-        state['output']['workspace'] = 'private-workspace'
-        path.write_text(json.dumps(state))
-        saved, modified = path.read_bytes(), path.stat().st_mtime_ns
+        path = self.metadata
+        saved = path.read_bytes()
         self.assertEqual(self.run_sop('--help'), updated)
         self.assertEqual((self.root / 'observations').read_text(), 'xx')
         self.assertEqual(path.read_bytes(), saved)
-        self.assertEqual(path.stat().st_mtime_ns, modified)
-        state.pop('output')
-        path.write_text(json.dumps(state))
-        saved = path.read_bytes()
-        self.assertEqual(self.run_sop('--help'), {'status': 'start'})
-        self.assertEqual(path.read_bytes(), saved)
+        # A remote edit must be read on the next recall, without a local cache.
+        store = json.loads(saved)
+        state = self.state()
+        state['output']['instruction'] = 'Updated directly in issue metadata'
+        store['fixture-issue']['sop.multica-parallel-refinement'] = json.dumps(state)
+        path.write_text(json.dumps(store))
+        self.assertEqual(self.run_sop('--help'), state['output'])
+        self.assertEqual((self.root / 'observations').read_text(), 'xx')
+        self.assertEqual(set(self.state()), {'status', 'output', 'runtime'})
         self.run_sop('done')
-        self.assertFalse(path.exists())
+        self.assertFalse(self.state())
         self.assertEqual(self.run_sop('--help', json_output=False), body)
-        self.assertFalse(path.exists())
+        self.assertFalse(self.state())
+        self.assertFalse((self.package / '.state').exists())
 
     def test_package_configuration_and_template_without_debug_document(self):
         self.assertEqual(self.run_sop('--validate')['status'], 'valid')
@@ -157,7 +194,7 @@ workflow = Workflow(
         self.assertNotIn(str(self.root), configured['instruction'])
         started = self.run_sop('test', '--description', 'Measure this solution.', cwd=elsewhere)
         self.assertEqual(started['status'], 'test')
-        state = json.loads((self.package / '.state/protocol-fixture.json').read_text())
+        state = self.state()
         job = Path(state['job'])
         self.assertNotIn('data', started)
         self.assertIn(str(job / 'stderr.log'), started['instruction'])
@@ -167,17 +204,17 @@ workflow = Workflow(
         self.assertNotIn('data', result)
         self.assertIn('Result: {"score": 1}', result['instruction'])
         self.assertIn('stdout.log:\n', result['instruction'])
-        state = json.loads((self.package / '.state/protocol-fixture.json').read_text())
+        state = self.state()
         self.assertEqual(state['test_result']['delivery'], {'score': 1})
         completed = self.run_sop('record', '--review', 'The measured result meets the exit condition.')
         self.assertEqual(completed['status'], 'finished')
         self.assertNotIn('data', completed)
         self.assertIn('Result: {"score": 1}', completed['instruction'])
-        self.assertFalse((self.package / '.state/protocol-fixture.json').exists())
+        self.assertFalse(self.state())
         script.write_text(script.read_text().replace('def validate(): return True', 'def validate(): return False'))
         self.run_sop()
         self.assertEqual(self.run_sop('configure', '--test-script', str(script))['status'], 'scaffold')
-        self.env['MULTICA_TASK_ID'] = 'invalid-branch'
+        self.env['MULTICA_ISSUE_ID'] = 'invalid-branch'
         controller = self.package / 'controller.py'
         controller.write_text(controller.read_text().replace("'variant' if baseline else 'scaffold'", "'finished'"))
         self.run_sop()
@@ -202,14 +239,86 @@ workflow = Workflow(
         self.assertEqual(failed['status'], 'error')
         self.assertNotIn('data', failed)
         self.assertNotIn('private-action-data', json.dumps(failed))
-        saved = json.loads((self.package / '.state/protocol-fixture.json').read_text())
+        saved = self.state()
         self.assertEqual(saved['recovery']['assertion']['result']['data'], {'internal': 'private-action-data'})
+        self.assertNotIn('task_id', json.dumps(self.state()))
+        self.assertFalse((self.package / '.errors').exists())
         self.assertEqual(self.run_sop('--help'), failed)
+        self.env['MULTICA_AGENT_ID'] = 'another-agent'
         (self.root / 'ready').touch()
         completed = self.run_sop('repaired')
         self.assertEqual(completed['status'], 'finished')
         self.assertNotIn('data', completed)
         self.assertEqual((self.root / 'writes').read_text(), 'x')
+        (self.root / 'ready').unlink()
+        self.run_sop()
+        self.run_sop('write', valid=False)
+        self.assertEqual(self.run_sop('repaired', valid=False)['status'], 'blocked')
+        self.assertEqual(self.run_sop(valid=False)['status'], 'blocked')
+        self.assertEqual((self.root / 'writes').read_text(), 'xx')
+
+    def test_issue_sop_isolation_handoff_and_quit(self):
+        initial = self.run_sop()
+        store = json.loads(self.metadata.read_text())
+        store['fixture-issue']['unrelated'] = 'preserve'
+        self.metadata.write_text(json.dumps(store))
+        other = self.root / 'other-machine' / 'skill'
+        shutil.copytree(self.package, other)
+        self.package = other
+        self.env['MULTICA_AGENT_ID'] = 'receiving-agent'
+        replay = self.run_sop('--help')
+        self.assertEqual(replay['status'], initial['status'])
+        self.assertIn(str(other / 'wrapper.py'), replay['next_step'][0]['command'])
+        self.assertNotIn(str(self.root / 'skill'), replay['next_step'][0]['command'])
+        # Help must not import the receiving controller or write metadata.
+        controller = self.package / 'controller.py'
+        source = controller.read_text()
+        controller.write_text('raise RuntimeError("must not load")\n')
+        saved = self.metadata.read_bytes()
+        self.assertEqual(self.run_sop('--help'), replay)
+        self.assertEqual(self.metadata.read_bytes(), saved)
+        controller.write_text(source)
+        self.assertEqual(self.run_sop()['status'], 'initialize')
+        skill = self.package / 'SKILL.md'
+        original = skill.read_text()
+        skill.write_text(original.replace('multica-parallel-refinement', 'multica-other-sop'))
+        self.run_sop()
+        metadata = json.loads(self.metadata.read_text())['fixture-issue']
+        self.assertIn('sop.multica-other-sop', metadata)
+        self.assertIn('sop.multica-parallel-refinement', metadata)
+        skill.write_text(original)
+        self.env['MULTICA_ISSUE_ID'] = 'another-issue'
+        body = skill.read_text().split('---', 2)[2].strip()
+        self.assertEqual(self.run_sop('--help', json_output=False), body)
+        self.run_sop()
+        self.run_sop('quit', valid=False)
+        self.assertFalse(self.state())
+        self.env['MULTICA_ISSUE_ID'] = 'fixture-issue'
+        self.run_sop('quit', valid=False)
+        metadata = json.loads(self.metadata.read_text())['fixture-issue']
+        self.assertEqual(metadata['unrelated'], 'preserve')
+        self.assertIn('sop.multica-other-sop', metadata)
+        self.assertNotIn('sop.multica-parallel-refinement', metadata)
+        self.assertFalse(list(self.root.rglob('.state')))
+        self.assertFalse(list(self.root.rglob('.errors')))
+
+    def test_metadata_failures_preserve_saved_state(self):
+        self.run_sop()
+        saved = self.metadata.read_bytes()
+        self.env['SOP_TEST_CLI_FAIL'] = '1'
+        self.assertEqual(self.run_sop('--help', valid=False)['error']['code'], 'cli_error')
+        self.assertEqual(self.run_sop(valid=False)['error']['code'], 'cli_error')
+        self.env.pop('SOP_TEST_CLI_FAIL')
+        self.env['SOP_TEST_WRITE_FAIL'] = '1'
+        self.assertEqual(self.run_sop(valid=False)['error']['code'], 'state_write_failed')
+        self.assertEqual(self.run_sop('quit', valid=False)['error']['code'], 'state_write_failed')
+        self.assertEqual(self.metadata.read_bytes(), saved)
+        self.env.pop('SOP_TEST_WRITE_FAIL')
+        store = json.loads(saved)
+        store['fixture-issue']['sop.multica-parallel-refinement'] = '{broken'
+        self.metadata.write_text(json.dumps(store))
+        self.assertEqual(self.run_sop(valid=False)['error']['code'], 'invalid_state')
+        self.assertEqual(json.loads(self.metadata.read_text()), store)
 
     def test_monitor_returns_only_appended_output(self):
         spec = importlib.util.spec_from_file_location('protocol_monitor', self.package / 'monitor.py')
@@ -242,19 +351,26 @@ workflow = Workflow(
             sys.modules.pop('sop', None)
             sys.modules.pop('monitor', None)
             controller = wrapper.load_controller()
-        state = json.loads((self.package / '.state/protocol-fixture.json').read_text())
-        state['decisions']['initialize']['data'] = {'internal': 'private-legacy-data'}
-        state['decisions']['initialize']['workspace'] = 'private-workspace'
-        context = {'task_id': 'protocol-fixture', 'state': state, 'argv': ['configure'],
+        state = self.state()
+        context = {'issue_id': 'fixture-issue', 'skill': 'multica-parallel-refinement', 'state': state, 'argv': ['configure'],
                    'prior_status': 'initialize', 'output': {**current, 'workspace': 'private-workspace'}}
         result = {'status': 'variant', 'state_changed': True, 'accepted': True}
-        with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue', MULTICA_TASK_ID='protocol-fixture',
+        with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue',
                         MULTICA_WORKSPACE_ID='fixture-workspace', MULTICA_TOKEN='fixture-token',
                         MULTICA_SERVER_URL='http://fixture.invalid'), patch.object(wrapper, 'upload_artifact') as upload:
             wrapper.publish_artifacts(context, controller, result)
         filename, html = upload.call_args.args
+        self.assertEqual(upload.call_args.kwargs, {'issue_id': 'fixture-issue'})
+        with patch.dict(os.environ, MULTICA_ISSUE_ID='native-issue', MULTICA_WORKSPACE_ID='fixture-workspace',
+                        MULTICA_TOKEN='fixture-token', MULTICA_SERVER_URL='http://fixture.invalid'), \
+                patch.object(wrapper, 'urlopen') as request:
+            wrapper.upload_artifact(filename, html, issue_id='fixture-issue')
+        body = request.call_args.args[0].data
+        self.assertIn(b'name="issue_id"\r\n\r\nfixture-issue', body)
+        self.assertNotIn(b'name="task_id"', body)
         self.assertEqual(filename, 'multica-parallel-refinement-state.html')
-        self.assertIn('protocol-fixture', html)
+        self.assertIn('fixture-issue', html)
+        self.assertNotIn('task_id', html)
         self.assertIn('initialize->configure_result', unescape(html))
         self.assertIn('configure_result->variant', unescape(html))
         self.assertIn('configure_result->scaffold', unescape(html))

@@ -5,10 +5,13 @@ description: Refine a bound solution with a supplied test script, measured resul
 
 Run `python3 .pi/skills/multica-parallel-refinement/wrapper.py` in the solution
 workspace. Follow the returned recalls in the same turn until completion. Each
-parallel issue owns its own workspace and task record.
+parallel issue owns its own workspace and SoP metadata. Another agent can resume
+the same SoP on that issue. On another machine, make the bound workspace, test
+script and job logs available before continuing.
 Use `--help` to replay the saved decision without running checks or actions.
 Before starting or after completion, it shows these instructions without starting
-a task.
+a run. Required inputs are native `MULTICA_ISSUE_ID` and
+`MULTICA_WORKSPACE_ID`.
 
 Supply the Python test script at configuration. It is bound to this workspace:
 `validate() -> bool` checks the delivery format, `score(delivery) -> number` ranks
