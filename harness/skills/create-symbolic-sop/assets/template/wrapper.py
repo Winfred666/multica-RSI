@@ -524,7 +524,7 @@ def upload_artifact(filename, content):
 def graph_svg(source, identifier):
     dot = ensure_command('dot', 'graphviz')
     result = subprocess.run([dot, '-Tsvg', '-Gid=' + identifier,
-                             '-Nfontname=Helvetica', '-Nstyle=filled', '-Nmargin=0', '-Nheight=0.3',
+                             '-Nfontname=Helvetica', '-Nstyle=filled', '-Nmargin=0.2',
                              '-Nfillcolor=#eef2ff', '-Ncolor=#94a3b8',
                              '-Efontname=Helvetica', '-Efontsize=12', '-Ecolor=#64748b'], input=source, text=True,
                             capture_output=True, timeout=30)
@@ -547,8 +547,8 @@ def state_artifact(context, controller, result):
     diagram = 'digraph workflow {\nrankdir=LR; bgcolor="transparent";\nnode [shape=box];\n'
     diagram += '\n'.join(f'{quote(name)} [id={quote("state_" + name)}];' for name in states)
     for branch in controller.workflow.branches.values():
-        diagram += f'\n{quote(branch.name)} [shape=diamond, fixedsize=shape, width=1.6, height=0.3, fontsize=12, label={quote(branch.description)}];'
-        diagram += '\n' + '\n'.join(f'{quote(branch.name)} -> {quote(target)} [xlabel={quote(label)}];'
+        diagram += f'\n{quote(branch.name)} [shape=diamond, label={quote(branch.description)}];'
+        diagram += '\n' + '\n'.join(f'{quote(branch.name)} -> {quote(target)} [label={quote(label)}];'
                                      for label, target in branch.routes.items())
     edges = {(state.name, option.name): option.target for state in states.values()
              if not callable(state.options) for option in state.options}
@@ -563,7 +563,7 @@ def state_artifact(context, controller, result):
                      for name, source in charts.items()
                      if re.match(r'\s*(?:strict\s+)?(?:di)?graph\b', source)}
              for state, charts in logic.items()}
-    diagram += '\n' + '\n'.join(f'{quote(source)} -> {quote(target)} [id="option_{index}", xlabel={quote(option)}];'
+    diagram += '\n' + '\n'.join(f'{quote(source)} -> {quote(target)} [id="option_{index}", label={quote(option)}];'
                                 for index, ((source, option), target) in enumerate(edges.items()))
     # Boundary markers are diagram-only; they never introduce workflow options.
     boundaries = ['__start [shape=point, label="", fillcolor=black, color=black, width=0.05, height=0.05];',

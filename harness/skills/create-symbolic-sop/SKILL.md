@@ -213,8 +213,8 @@ is missing, using the same `ensure_command` helper as bubblewrap consumers.
 Compile the global DOT graph and local DOT diagrams with `dot -Tsvg` before uploading
 the HTML. Use Graphviz's native attributes for simple styling and horizontal `rankdir=LR` layout;
 let `dot` place nodes and route edges. Avoid custom ranking, label wrapping or SVG minification.
-Use native edge `xlabel` for labels near arrow centers and `fixedsize=shape` for slim
-diamonds whose text may extend beyond the border. Keep borders plain.
+Use native edge `label` so layout reserves space for option text. Let nodes and
+diamonds grow to contain their full text with normal padding. Keep borders plain.
 Limit CSS to readable text, arrow-label contrast and viewport scrolling; retain
 browser focus indicators and omit decorative effects.
 Embed each local SVG once in an HTML template, referenced by state and option selections,
