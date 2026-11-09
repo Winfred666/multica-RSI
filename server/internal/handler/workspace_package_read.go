@@ -39,7 +39,7 @@ func (h *Handler) WorkspacePackageContents(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		for _, row := range rows {
-			inventory.Items = append(inventory.Items, PackageSummary{ID: uuidToString(row.ID), Name: row.Name, IsSystemSkill: row.IsSystemSkill})
+			inventory.Items = append(inventory.Items, PackageSummary{ID: uuidToString(row.ID), Name: row.Name, IsSystemSkill: row.IsSystemSkill, Key: row.Key})
 		}
 	}
 	writeJSON(w, 200, inventory)
@@ -221,6 +221,7 @@ func (h *Handler) exportWorkspacePackage(ctx context.Context, ws pgtype.UUID, se
 
 // The same count/summary response describes stored inventory and an uploaded package.
 type PackageSummary struct {
+	Key           string `json:"key,omitempty"`
 	ID            string `json:"id"`
 	Name          string `json:"name"`
 	IsSystemSkill bool   `json:"is_system_skill,omitempty"`

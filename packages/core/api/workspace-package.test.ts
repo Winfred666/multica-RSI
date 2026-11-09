@@ -15,7 +15,7 @@ it("rejects malformed package responses at each API boundary", async () => {
   expect(await client.getDefaultWorkspacePackage("ws")).toBeNull();
   expect(await client.inspectWorkspacePackage("ws", pkg)).toBeNull();
   expect(await client.exportWorkspacePackage("ws", selection)).toBeNull();
-  expect(await client.importWorkspacePackage("ws", pkg, selection, false)).toBeNull();
+  expect(await client.importWorkspacePackage("ws", pkg, selection)).toBeNull();
 });
 
 it("preserves portable bodies and files while choosing all import resources and no export resources", () => {

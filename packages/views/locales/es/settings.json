@@ -787,7 +787,8 @@
     "prefix_new_label": "Nuevo prefijo",
     "prefix_rule": "Solo letras y números, hasta 10 caracteres.",
     "slug_hint": "Forma parte de cada URL del espacio de trabajo. No se puede cambiar.",
-    "transfer": "Importar y exportar"
+    "restore_harness": "Restaurar / importar harness",
+    "transfer": "Paquete del espacio de trabajo"
   },
   "delete_workspace_dialog": {
     "title": "Eliminar espacio de trabajo",

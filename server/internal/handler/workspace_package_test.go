@@ -42,7 +42,7 @@ func TestWorkspacePackageSelectiveRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	imported, err := testHandler.importWorkspacePackage(ctx, tx, parseUUID(ws), parseUUID(testUserID), p, false)
+	imported, err := testHandler.importWorkspacePackage(ctx, tx, parseUUID(ws), parseUUID(testUserID), p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestWorkspacePackageSelectiveRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := testHandler.importWorkspacePackage(ctx, tx, parseUUID(ws), parseUUID(testUserID), exportedPlugins, true); err != nil {
+	if _, err := testHandler.importWorkspacePackage(ctx, tx, parseUUID(ws), parseUUID(testUserID), exportedPlugins); err != nil {
 		t.Fatal(err)
 	}
 	after, err := pluginService.ListPackages(ctx, parseUUID(ws))
@@ -143,7 +143,7 @@ func TestWorkspacePackageSelectiveRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = testHandler.importWorkspacePackage(ctx, tx, parseUUID(ws), parseUUID(testUserID), changed, true)
+	_, err = testHandler.importWorkspacePackage(ctx, tx, parseUUID(ws), parseUUID(testUserID), changed)
 	var conflict *service.PluginError
 	if !errors.As(err, &conflict) || conflict.Kind != service.PluginErrorConflict {
 		t.Fatalf("expected immutable-version conflict, got %v", err)
@@ -194,7 +194,7 @@ func TestWorkspacePackageRejectsNonPortableValues(t *testing.T) {
 			if tc.project != nil {
 				p.Projects = []PackageProject{*tc.project}
 			}
-			if _, err := testHandler.importWorkspacePackage(ctx, tx, parseUUID(testWorkspaceID), parseUUID(testUserID), p, false); !errors.Is(err, errWorkspacePackageInvalid) {
+			if _, err := testHandler.importWorkspacePackage(ctx, tx, parseUUID(testWorkspaceID), parseUUID(testUserID), p); !errors.Is(err, errWorkspacePackageInvalid) {
 				t.Fatalf("wanted rejection, got %v", err)
 			}
 			_, err = testHandler.Queries.WithTx(tx).GetSkillByWorkspaceAndName(ctx, db.GetSkillByWorkspaceAndNameParams{WorkspaceID: parseUUID(testWorkspaceID), Name: p.Skills[0].Name})
@@ -220,10 +220,8 @@ func TestWorkspacePackageDestinationCollisions(t *testing.T) {
 	}
 	p := emptyWorkspacePackage()
 	p.Skills = []PackageSkill{{ID: "incoming", Name: "package-system-collision", Content: "incoming instructions"}}
-	for _, replace := range []bool{false, true} {
-		if _, err := testHandler.importWorkspacePackage(ctx, tx, ws, user, p, replace); !errors.Is(err, errWorkspacePackageConflict) {
-			t.Fatalf("system classification conflict: %v", err)
-		}
+	if _, err := testHandler.importWorkspacePackage(ctx, tx, ws, user, p); !errors.Is(err, errWorkspacePackageConflict) {
+		t.Fatalf("system classification conflict: %v", err)
 	}
 	got, err := q.GetSkillInWorkspace(ctx, db.GetSkillInWorkspaceParams{ID: parseUUID(existing.ID), WorkspaceID: ws})
 	if err != nil {
@@ -233,10 +231,7 @@ func TestWorkspacePackageDestinationCollisions(t *testing.T) {
 		t.Fatal("system skill was replaced or demoted")
 	}
 	p.Skills[0].IsSystemSkill = true
-	if _, err := testHandler.importWorkspacePackage(ctx, tx, ws, user, p, false); !errors.Is(err, errWorkspacePackageConflict) {
-		t.Fatalf("overwrite lacked consent: %v", err)
-	}
-	if _, err := testHandler.importWorkspacePackage(ctx, tx, ws, user, p, true); err != nil {
+	if _, err := testHandler.importWorkspacePackage(ctx, tx, ws, user, p); err != nil {
 		t.Fatal(err)
 	}
 	got, err = q.GetSkillInWorkspace(ctx, db.GetSkillInWorkspaceParams{ID: parseUUID(existing.ID), WorkspaceID: ws})
@@ -244,7 +239,7 @@ func TestWorkspacePackageDestinationCollisions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !got.IsSystemSkill || got.Content != "incoming instructions" {
-		t.Fatal("consented system update failed")
+		t.Fatal("system update failed")
 	}
 	p.Skills = nil
 	mcp, err := q.CreateWorkspaceMcpServer(ctx, db.CreateWorkspaceMcpServerParams{WorkspaceID: ws, Name: "package-mcp-collision", Config: []byte(`{"command":"old"}`), CreatedBy: user})
@@ -252,18 +247,15 @@ func TestWorkspacePackageDestinationCollisions(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.MCPs = []PackageMCP{{ID: "mcp", Name: mcp.Name, Config: json.RawMessage(`{"command":"new"}`)}}
-	if _, err := testHandler.importWorkspacePackage(ctx, tx, ws, user, p, false); !errors.Is(err, errWorkspacePackageConflict) {
-		t.Fatalf("MCP overwrite lacked consent: %v", err)
+	if _, err := testHandler.importWorkspacePackage(ctx, tx, ws, user, p); err != nil {
+		t.Fatal(err)
 	}
-	unchanged, err := q.GetWorkspaceMcpServer(ctx, db.GetWorkspaceMcpServerParams{ID: mcp.ID, WorkspaceID: ws})
+	gotMCP, err := q.GetWorkspaceMcpServer(ctx, db.GetWorkspaceMcpServerParams{ID: mcp.ID, WorkspaceID: ws})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !jsonEqual(json.RawMessage(unchanged.Config), json.RawMessage(mcp.Config)) {
-		t.Fatal("MCP conflict changed destination config")
-	}
-	if _, err := testHandler.importWorkspacePackage(ctx, tx, ws, user, p, true); err != nil {
-		t.Fatal(err)
+	if !jsonEqual(json.RawMessage(gotMCP.Config), p.MCPs[0].Config) {
+		t.Fatal("MCP update failed")
 	}
 }
 

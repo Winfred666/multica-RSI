@@ -261,17 +261,17 @@ FROM workspace w WHERE w.id = $1;
 
 -- name: ListWorkspacePackageSummaries :many
 -- Only expandable categories. Projects/issues stay a single count selection.
-SELECT resources.id, resources.name, resources.is_system_skill FROM (
-    SELECT s.id, s.name, s.is_system_skill FROM skill s
+SELECT resources.id, resources.name, resources.is_system_skill, resources.key FROM (
+    SELECT s.id, s.name, s.is_system_skill, ''::text AS key FROM skill s
     WHERE s.workspace_id = sqlc.arg('workspace_id') AND sqlc.arg('category')::text = 'skills'
     UNION ALL
-    SELECT a.id, a.name, false AS is_system_skill FROM agent a
+    SELECT a.id, a.name, false AS is_system_skill, ''::text AS key FROM agent a
     WHERE a.workspace_id = sqlc.arg('workspace_id') AND sqlc.arg('category')::text = 'agents' AND a.kind = 'user' AND a.archived_at IS NULL
     UNION ALL
-    SELECT m.id, m.name, false AS is_system_skill FROM workspace_mcp_server m
+    SELECT m.id, m.name, false AS is_system_skill, ''::text AS key FROM workspace_mcp_server m
     WHERE m.workspace_id = sqlc.arg('workspace_id') AND sqlc.arg('category')::text = 'mcps'
     UNION ALL
-    SELECT pi.id, pi.manifest->>'name' AS name, false AS is_system_skill FROM plugin_installation pi
+    SELECT pi.id, pi.manifest->>'name' AS name, false AS is_system_skill, pi.plugin_key AS key FROM plugin_installation pi
     WHERE pi.workspace_id = sqlc.arg('workspace_id') AND sqlc.arg('category')::text = 'plugins'
 ) AS resources
 ORDER BY resources.name, resources.id

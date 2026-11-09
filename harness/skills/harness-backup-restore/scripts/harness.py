@@ -61,20 +61,18 @@ def main():
     command.add_argument("--without-plugins", action="store_true")
     command = commands.add_parser("restore")
     command.add_argument("--input", type=Path, required=True)
-    command.add_argument("--replace-existing", action="store_true",
-                         help="replace matching destination skills, MCPs and plugin installations")
     args = parser.parse_args()
     api = API()
     if args.command == "install":
         package = api.request("GET", "/package/default")
         api.request("POST", "/import", {"package": package, "selection": selection(
-            package, plugins=not args.without_plugins, prompt=not args.keep_context), "replace_existing": True})
+            package, plugins=not args.without_plugins, prompt=not args.keep_context)})
     elif args.command == "backup":
         package = api.request("POST", "/export", inventory_selection(api, plugins=not args.without_plugins))
         with open(args.output, "x", opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
             json.dump(package, output, indent=2)
     else:
-        api.request("POST", "/import", {"package": json.loads(args.input.read_text()), "replace_existing": args.replace_existing})
+        api.request("POST", "/import", {"package": json.loads(args.input.read_text())})
     print(json.dumps({"status": "complete", "operation": args.command, "workspace_id": api.workspace}))
 
 

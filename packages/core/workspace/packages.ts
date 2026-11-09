@@ -43,8 +43,8 @@ export function packageSelection(pkg?: WorkspacePackage): WorkspacePackageSelect
 export function useImportWorkspacePackage(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ pkg, selection, replaceExisting }: { pkg: WorkspacePackage; selection: WorkspacePackageSelection; replaceExisting: boolean }) => {
-      const result = await api.importWorkspacePackage(wsId, pkg, selection, replaceExisting);
+    mutationFn: async ({ pkg, selection, pluginExecutionToken }: { pkg: WorkspacePackage; selection: WorkspacePackageSelection; pluginExecutionToken?: string }) => {
+      const result = await api.importWorkspacePackage(wsId, pkg, selection, pluginExecutionToken);
       if (!result) throw new Error("Invalid workspace import response");
       return result;
     },

@@ -32,8 +32,8 @@ The optional `harness-backup-restore` client fetches the server's embedded defau
 package through the native API. It exports and imports the same package format
 as the workspace UI and CLI; the server owns installation and validation. Backup
 reads count/summary pages before downloading selected content once. Restore
-rejects existing names unless `--replace-existing` authorizes replacement; install
-updates the named startup kit. See the [package contract](../docs/engineering/workspace-packages.md).
+replaces matching names/keys within the destination workspace; install updates
+the named startup kit. See the [package contract](../docs/engineering/workspace-packages.md).
 System skills inherit into newly created agents; optional skills remain in the
 workspace library for attachment.
 The optional library contains `create-symbolic-sop` for SOP authoring and

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const PackageItemSchema = z.object({ id: z.string(), name: z.string(), is_system_skill: z.boolean().optional() }).passthrough();
+const PackageItemSchema = z.object({ id: z.string(), name: z.string(), key: z.string().optional(), is_system_skill: z.boolean().optional() }).passthrough();
 const packageItems = z.array(PackageItemSchema).nullish().transform((items) => items ?? []);
 export const WorkspacePackageSchema = z.object({
   schema_version: z.literal(1),
