@@ -13,14 +13,14 @@ credentials are excluded using the existing actor classification.
 | GET | `/package/default` | | Full embedded startup package |
 | POST | `/export` | Selection | Selected content as a downloadable JSON package |
 | POST | `/import/inspect` | `{package, selection?}` | Validated counts; optional summary page |
-| POST | `/import` | `{package, selection?, replace_existing?: false}` | Imported counts |
+| POST | `/import` | `{package, selection?, plugin_execution_token?: string}` | Imported counts |
 
 Inventory and inspect return `{counts: {projects, issues, agents, skills, mcps,
 plugins, system_prompt}}`. Counts are integers; `system_prompt` is a boolean.
 Projects/issues stay a count selection, with no item expansion. To expand another
 category, use `?category=agents|skills|mcps|plugins&limit=50&offset=0` on the same
 inventory or inspect route. Responses add `category`, `limit`, `offset` (when
-nonzero) and `items: [{id, name, is_system_skill?}]` when nonempty. The maximum
+nonzero) and `items: [{id, name, is_system_skill?, key?}]` when nonempty. The maximum
 limit is 100; category counts give the total. Inventory orders by name and ID;
 inspection follows package order. Neither response includes bodies, files,
 configurations, ZIPs or issue IDs. The existing resource endpoints provide details.
@@ -43,17 +43,22 @@ Skills include content, config, system classification and supporting
 ZIP `bundle`, non-secret config and enabled state. Statuses include only key,
 name, description, category, color and icon.
 
-Skills, MCPs and installed plugins that already exist by name/key return 409
-unless the owner/admin supplies `replace_existing: true`. Replacement keeps skill
+Skills and MCPs with matching names, and plugins with matching keys, are replaced
+within the destination workspace. The checklist marks matching items; the CLI
+prints a short replacement hint. Inventory includes plugin keys for this comparison. Replacement keeps skill
 identity, bindings and system classification; a classification mismatch always
 returns 409. Agent name collisions return 409. Plugin versions remain immutable:
 the importer reuses matching published content or publishes a new version through
 the plugin service. Existing version IDs and digests remain unchanged. When JSONB
 has reordered manifest keys, the importer compares only the selected version's
 manifest and stored file hashes. Changed content requires a different version;
-replacement consent cannot overwrite published code. Plugin selection requires
+import cannot overwrite published code. Plugin selection requires
 the server feature flag. Package plugin selection grants the bundle's declared
-scopes; execution credentials still require separate setup.
+scopes. Supplying `plugin_execution_token` activates hosted execution with that
+PAT through the existing activation service, in the same import transaction.
+Omitting it leaves the workspace's execution credential unchanged. Activation
+requires the plugins feature flag, host configuration and a valid member PAT;
+the credential is encrypted and excluded from the package and response.
 
 Projects/issues receive new IDs, issue numbers and creators. Hierarchy, selected
 agent assignments, dates, stages, metadata and status keys survive. Repository
@@ -74,7 +79,19 @@ Every import commits or rolls back as one transaction and enqueues no agent work
 `POST /api/workspaces` creates owner membership, built-in issue statuses and any
 explicit context transactionally. It installs no startup resources. Onboarding
 fetches `/package/default` and imports the checklist selection before runtime
-setup; leaving every box unchecked installs nothing.
+setup; leaving every resource box unchecked installs nothing. Settings → General
+→ Danger Zone → Restore / import harness opens the same import module. Export
+stays in the package section. Both flows start with the default kit; an uploaded export
+replaces the selected source. Reading or inspecting a file writes no resources.
+The browser reads JSON with `File.text()`, checks the package schema and calls
+`/import/inspect`; clicking Import posts the package and checklist selection to
+`/import`. There is no separate upload store or server-side file path.
+
+The default route builds a package from the server's embedded `harness/manifest.json`,
+`startup.gotmpl`, skills and plugin bundles; it reflects the deployed server build.
+For clients with a member PAT, activation defaults on during startup and off for
+existing workspaces. Clients reuse their current PAT when activation is selected;
+otherwise existing workspace authorization is used implicitly. Import has no PAT input.
 
 ## CLI
 
@@ -89,6 +106,7 @@ multica workspace export SOURCE --selection-file selection.json --file workspace
 multica workspace import DESTINATION --file workspace.json --inspect
 multica workspace import DESTINATION --file workspace.json --inspect --category skills
 multica workspace import DESTINATION --file workspace.json
+multica workspace import DESTINATION --file workspace.json --activate-plugins
 multica workspace import DESTINATION --file workspace.json --selection-file selection.json
 multica workspace package DESTINATION --default > startup.json
 ```
@@ -96,7 +114,12 @@ multica workspace package DESTINATION --default > startup.json
 The optional workspace accepts an ID, slug or short ID prefix and otherwise uses
 the current profile's workspace. Export selects nothing when no selection file
 is supplied; import selects everything when it is omitted and nothing for `{}`.
-Import selection IDs come from the package, not destination resources. Use
-`--replace-existing` to consent to replacing colliding skills, MCPs or installed
-plugins. Imported agents remain offline and require runtime setup. Export writes
+Import selection IDs come from the package, not destination resources. Matching
+skill/MCP names and plugin keys in this workspace are replaced automatically.
+Imported agents remain offline and require runtime setup. Export writes
 JSON to stdout unless `--file` is supplied; new package files use mode `0600`.
+
+`--activate-plugins` defaults to false. Set it to activate hosted execution using
+the member PAT authenticating the CLI; JWT and agent task credentials cannot be
+reused for activation. Normal import prints the current setting and opt-in syntax
+to stderr, keeping JSON stdout unchanged. `--inspect` never activates execution.

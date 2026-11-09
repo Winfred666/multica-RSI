@@ -24,9 +24,8 @@ sets the startup prompt. `--keep-context` preserves the prompt;
 create a PAT. Hosted plugin execution requires separate credential setup.
 
 Backup reads bounded inventory summaries, then downloads selected harness content
-once in the same package format used by the workspace UI and CLI. Restore rejects
-existing skill/MCP names and plugin keys with 409. Supply `--replace-existing` only
-when replacing those destination resources is intended. System-skill classification
+once in the same package format used by the workspace UI and CLI. Restore replaces
+matching skill/MCP names and plugin keys within the destination workspace. System-skill classification
 cannot change on import; published plugin code stays immutable and differing code
 requires a new version. Agents receive new identities.
 Imported agents are offline and private, owned by the importer, and need a runtime

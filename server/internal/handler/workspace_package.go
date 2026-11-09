@@ -134,9 +134,9 @@ type PackageSelection struct {
 	SystemPrompt   bool     `json:"system_prompt"`
 }
 type ImportWorkspacePackageRequest struct {
-	Package         WorkspacePackage  `json:"package"`
-	Selection       *PackageSelection `json:"selection,omitempty"`
-	ReplaceExisting bool              `json:"replace_existing"`
+	Package              WorkspacePackage  `json:"package"`
+	Selection            *PackageSelection `json:"selection,omitempty"`
+	PluginExecutionToken string            `json:"plugin_execution_token,omitempty"`
 }
 type PackageImportResult struct {
 	Projects map[string]string `json:"projects"`
@@ -483,7 +483,7 @@ func (h *Handler) ImportWorkspacePackage(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if len(p.Plugins) > 0 && !h.requirePluginsV1(w, r) {
+	if (len(p.Plugins) > 0 || req.PluginExecutionToken != "") && !h.requirePluginsV1(w, r) {
 		return
 	}
 	tx, err := h.TxStarter.Begin(r.Context())
@@ -492,7 +492,13 @@ func (h *Handler) ImportWorkspacePackage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer tx.Rollback(r.Context())
-	_, err = h.importWorkspacePackage(r.Context(), tx, ws, user, p, req.ReplaceExisting)
+	_, err = h.importWorkspacePackage(r.Context(), tx, ws, user, p)
+	if err == nil && req.PluginExecutionToken != "" {
+		plugins := *h.PluginService
+		plugins.Queries = h.Queries.WithTx(tx)
+		plugins.TxStarter = tx
+		_, err = plugins.SetPluginExecution(r.Context(), ws, req.PluginExecutionToken)
+	}
 	if err == nil {
 		err = tx.Commit(r.Context())
 	}
