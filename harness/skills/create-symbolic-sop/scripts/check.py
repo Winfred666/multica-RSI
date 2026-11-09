@@ -57,6 +57,7 @@ workflow = Workflow(
         path = self.package / '.state/protocol-fixture.json'
         state = json.loads(path.read_text())
         state['output']['data'] = {'internal': 'private-legacy-data'}
+        state['output']['workspace'] = 'private-workspace'
         path.write_text(json.dumps(state))
         saved, modified = path.read_bytes(), path.stat().st_mtime_ns
         self.assertEqual(self.run_sop('--help'), updated)
@@ -186,8 +187,9 @@ workflow = Workflow(
             controller = wrapper.load_controller()
         state = json.loads((self.package / '.state/protocol-fixture.json').read_text())
         state['decisions']['initialize']['data'] = {'internal': 'private-legacy-data'}
+        state['decisions']['initialize']['workspace'] = 'private-workspace'
         context = {'task_id': 'protocol-fixture', 'state': state, 'argv': ['configure'],
-                   'prior_status': 'initialize', 'output': current}
+                   'prior_status': 'initialize', 'output': {**current, 'workspace': 'private-workspace'}}
         result = {'status': 'variant', 'state_changed': True, 'accepted': True}
         with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue', MULTICA_TASK_ID='protocol-fixture',
                         MULTICA_WORKSPACE_ID='fixture-workspace', MULTICA_TOKEN='fixture-token',
@@ -207,6 +209,7 @@ workflow = Workflow(
         self.assertEqual(data['nodes']['variant'], current)
         self.assertTrue(all('data' not in decision for decision in data['nodes'].values()))
         self.assertNotIn('private-legacy-data', html)
+        self.assertNotIn('private-workspace', html)
         self.assertEqual(data['edges']['__option_0']['decision'], initial['next_step'][0])
         self.assertIn('Run delivery-format check', data['edges']['__option_0']['logic']['configure'])
         overview = html.split('<pre class="mermaid" id="workflow">', 1)[1].split('</pre>', 1)[0]

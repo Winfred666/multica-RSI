@@ -153,9 +153,7 @@ def help_output(context):
     path = state_path(context)
     if path.exists():
         state = json.loads(path.read_text(encoding='utf-8'))
-        output = dict(state.get('output', {'status': state.get('status')}))
-        output.pop('data', None)
-        return json.dumps(redact(output), allow_nan=False)
+        return json.dumps(redact(agent_decision(state.get('output', state))), allow_nan=False)
     return (ROOT / 'SKILL.md').read_text(encoding='utf-8').split('---', 2)[2].strip()
 
 
@@ -441,6 +439,10 @@ def exception_result(error, context):
     return result
 
 
+def agent_decision(output):
+    return {key: output[key] for key in ('status', 'instruction', 'next_step', 'error', 'evidence', 'usage') if key in output}
+
+
 def response(result):
     """Agent guidance; diagnostics remain in the saved incident."""
     step = result['next_step']
@@ -461,7 +463,7 @@ def response(result):
             value = {k: v for k, v in value.items() if v not in (None, '', [], {})}
         if value not in (None, '', [], {}):
             output[key] = value
-    return output
+    return agent_decision(output)
 
 
 def upload_artifact(filename, content):
@@ -523,7 +525,7 @@ def state_artifact(context, controller, result):
     details = {'issue_id': os.environ['MULTICA_ISSUE_ID'], 'task_id': context['task_id'], 'status': status}
     if result.get('error'):
         details.update(failed_state=phase, boundary=assertion.get('boundary'), error=result['error'])
-    nodes = {name: {key: value for key, value in decision.items() if key != 'data'}
+    nodes = {name: agent_decision(decision)
              for name, decision in context.get('state', {}).get('decisions', {}).items()
              if name in states}
     for state in states.values():
@@ -536,7 +538,7 @@ def state_artifact(context, controller, result):
         nodes[state.name] = response({'status': state.name,
                                      'next_step': {**callback(state.description), 'alternatives': choices}})
     if context.get('output'):
-        nodes[phase] = context['output']
+        nodes[phase] = agent_decision(context['output'])
     links = {f'__option_{index}': {
         'decision': next((option for option in nodes[source]['next_step']
                           if shlex.split(option['command'])[2] == name), None),

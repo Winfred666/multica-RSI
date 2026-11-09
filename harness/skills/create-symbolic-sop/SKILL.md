@@ -100,8 +100,8 @@ output for response fields. Other command groups such as `multica agent` are
 outside this helper's `issue` prefix; read their help before writing a helper.
 
 Return optional internal `data`, an `instruction`, or `accepted: False` to stay in the current
-state. `data` never appears in agent-facing decisions, `--help` replay or HTML
-decision previews. Keep it available to checks and recovery. Export only facts
+state. Normal output, `--help` replay and HTML previews share one public decision
+schema; `data` stays internal to checks and recovery. Export only facts
 needed for the next decision through the state's `view(context)['instruction']`,
 an action's `instruction`, or an option's prompt. Do not dump internal records
 into guidance.
