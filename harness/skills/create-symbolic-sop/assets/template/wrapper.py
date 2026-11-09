@@ -570,10 +570,10 @@ def state_artifact(context, controller, result):
                          separators=(',', ':')).replace('<', '\\u003c')
     return ('<!doctype html><html lang="en"><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1"><title>' + escape(controller.SOP_NAME) + '</title>'
-            '<style>body{font:15px system-ui;margin:16px;color:#172033}pre{white-space:pre;overflow-x:auto;background:#f8fafc;padding:12px}'
+            '<style>body{font:15px system-ui;margin:8px}pre{white-space:pre;overflow-x:auto}'
             '.diagram{margin:0;max-width:100%;overflow-x:auto}.diagram svg{display:block;max-width:none;margin:auto}'
             '@media(orientation:landscape){.diagram{overflow-x:hidden}.diagram svg{max-width:100%;height:auto}}'
-            '[role="button"]{cursor:pointer;outline:none}[role="button"]:hover{filter:brightness(.92)}[role="button"]:focus-visible{outline:2px solid #2563eb;outline-offset:2px}.edge path{pointer-events:stroke}.edge text{paint-order:stroke;stroke:white;stroke-width:3px}'
+            '[role="button"]{cursor:pointer}.edge path{pointer-events:stroke}.edge text{paint-order:stroke;stroke:white;stroke-width:3px}'
             'h1{font-size:18px}</style>'
             '<div class="diagram" id="workflow">' + graph_svg(diagram, 'workflow_graph') + '</div>'
             '<h1>' + escape(controller.SOP_NAME) + '</h1><pre id="detail" aria-live="polite">'

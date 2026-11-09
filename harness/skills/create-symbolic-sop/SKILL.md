@@ -209,6 +209,8 @@ the HTML. Use Graphviz's native attributes for simple styling and horizontal `ra
 let `dot` place nodes and route edges. Avoid custom ranking, label wrapping or SVG minification.
 Use native edge `xlabel` for labels near arrow centers and `fixedsize=shape` for slim
 diamonds whose text may extend beyond the border. Keep borders plain.
+Limit CSS to readable text, arrow-label contrast and viewport scrolling; retain
+browser focus indicators and omit decorative effects.
 Embed each local SVG once in an HTML template, referenced by state and option selections,
 using small local JavaScript; opening or
 clicking the artifact must require no external scripts, fonts, network or browser-side
