@@ -105,8 +105,8 @@ func findRemoteSOP(roots []string, name string) (string, []string) {
 		entries, _ := os.ReadDir(root)
 		for _, entry := range entries {
 			dir := filepath.Join(root, entry.Name())
-			debug, err := os.Stat(filepath.Join(dir, "DEBUG.md"))
-			if err != nil || debug.IsDir() {
+			controller, err := os.Stat(filepath.Join(dir, "controller.py"))
+			if err != nil || controller.IsDir() {
 				continue
 			}
 			script := filepath.Join(dir, "wrapper.py")

@@ -20,7 +20,7 @@ Describe each template or idea in one paragraph. The script tests a missing
 baseline before variant work begins. Review each variant result in one paragraph.
 During test, inspect the returned log excerpt and choose `continue` or `exception`
 immediately; the full logs remain at the printed paths. Test completion or
-exception advances to review. See [DEBUG.md](DEBUG.md) for the states.
+exception advances to review.
 
 In every state, follow returned error guidance and finish unmet prerequisites
 before retrying. Reconcile writes first. For assertion failures, use the returned

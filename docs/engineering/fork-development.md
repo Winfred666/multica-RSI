@@ -83,7 +83,7 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   daemon takes these notes for its runtime, moves them into execution logs,
   and runs `python3 <skill>/wrapper.py` directly with task ID `0`.
   Bound skill files and workspace `.agents/` folders supply SOPs containing
-  `DEBUG.md` and `wrapper.py`. Argument boundaries, combined stdout/stderr and
+  `controller.py` and `wrapper.py`. Argument boundaries, combined stdout/stderr and
   exit codes are preserved; missing names return the available SOP list.
   Calls never use agent task admission, steering, provider startup or agent
   environment preparation. Completed execution records hold only the request
@@ -92,8 +92,9 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 - **Symbolic SoP protocol changes.** Update `harness/skills/create-symbolic-sop`
   and its template first; require human approval before mechanically propagating
   the approved protocol to other symbolic SoPs and distributions. The pending
-  template puts its interactive graph first, shows agent JSON on selection and
-  puts issue/task metadata last. CLI `--help` replays a recorded decision or shows
+  template derives its graph from `controller.workflow` without `DEBUG.md`, shows
+  agent JSON on selection and option handler code before the final issue/task
+  metadata. CLI `--help` replays a recorded decision or shows
   the skill body without starting a task.
 
 - **Workspace packages.** `workspace package`, `workspace export` and

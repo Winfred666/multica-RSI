@@ -70,7 +70,7 @@ def callback(instruction, args=None):
 
 
 def validate_package():
-    required = ('SKILL.md', 'DEBUG.md', 'config.json', 'wrapper.py', 'controller.py', 'sop.py', 'monitor.py')
+    required = ('SKILL.md', 'config.json', 'wrapper.py', 'controller.py', 'sop.py', 'monitor.py')
     for name in required:
         path = ROOT / name
         if not path.is_file() or not path.read_text().strip():
@@ -527,7 +527,12 @@ def state_artifact(context, controller, result):
     links = [next((option for option in nodes[source]['next_step']
                    if shlex.split(option['command'])[2] == name), None)
              for source, name in edges]
-    payload = json.dumps(redact({'nodes': nodes, 'edges': links, 'decision': nodes[phase]})).replace('<', '\\u003c')
+    code = dict(context.get('state', {}).get('option_code', {}))
+    for state in states.values():
+        if not callable(state.options):
+            code.setdefault(state.name, {option.name: option.source() for option in state.options})
+    payload = json.dumps(redact({'nodes': nodes, 'edges': links, 'decision': nodes[phase],
+                                'code': [code.get(source, {}).get(name, '') for source, name in edges]})).replace('<', '\\u003c')
     return ('<!doctype html><html lang="en"><meta charset="utf-8"><title>' + escape(controller.SOP_NAME) + '</title>'
             '<style>body{font:15px system-ui;margin:8px;color:#172033}pre{white-space:pre;overflow-x:auto}'
             '.mermaid{margin:0}.mermaid svg{display:block;max-width:100%;max-height:65vh;margin:auto}'
@@ -536,19 +541,20 @@ def state_artifact(context, controller, result):
             '<pre class="mermaid">' + escape(diagram) + '</pre>'
             '<h1>' + escape(controller.SOP_NAME) + '</h1><pre id="detail" aria-live="polite">'
             + escape(json.dumps(redact(nodes[phase]), indent=2)) + '</pre>'
+            '<pre id="code" hidden></pre>'
             '<pre id="metadata">' + escape(json.dumps(redact(details), indent=2)) + '</pre>'
             '<script id="sop-data" type="application/json">' + payload + '</script>'
             '<script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";'
-            'const data=JSON.parse(document.getElementById("sop-data").textContent),detail=document.getElementById("detail");'
-            'const show=value=>{detail.textContent=JSON.stringify(value,null,2)};'
+            'const data=JSON.parse(document.getElementById("sop-data").textContent),detail=document.getElementById("detail"),code=document.getElementById("code");'
+            'const show=(value,source="")=>{detail.textContent=JSON.stringify(value,null,2);code.textContent=source;code.hidden=!source};'
             'mermaid.initialize({startOnLoad:false,securityLevel:"strict"});await mermaid.run({querySelector:".mermaid"});'
-            'const bind=(element,value)=>{element.setAttribute("tabindex","0");element.setAttribute("role","button");'
-            'element.onclick=()=>show(value);element.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){'
-            'event.preventDefault();show(value)}}};'
+            'const bind=(element,value,source="")=>{element.setAttribute("tabindex","0");element.setAttribute("role","button");'
+            'element.onclick=()=>show(value,source);element.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){'
+            'event.preventDefault();show(value,source)}}};'
             'for(const [name,value] of Object.entries(data.nodes)){'
             'const node=document.querySelector(`.node[id*="flowchart-${name}-"]`);if(node)bind(node,value)}'
-            'document.querySelectorAll(".edgePaths .flowchart-link").forEach((edge,i)=>bind(edge,data.edges[i]));'
-            'document.querySelectorAll(".edgeLabels > .edgeLabel").forEach((label,i)=>bind(label,data.edges[i]));'
+            'document.querySelectorAll(".edgePaths .flowchart-link").forEach((edge,i)=>bind(edge,data.edges[i],data.code[i]));'
+            'document.querySelectorAll(".edgeLabels > .edgeLabel").forEach((label,i)=>bind(label,data.edges[i],data.code[i]));'
             '</script></html>')
 
 
@@ -619,6 +625,7 @@ def main(argv=None):
         state = context['state']
         state['output'] = output
         state.setdefault('decisions', {})[output['status']] = output
+        state.setdefault('option_code', {}).update(context.get('option_code', {}))
         if state_path(context).exists():
             save_state(context, state)
     context['output'] = output

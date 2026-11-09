@@ -1,5 +1,6 @@
 """The portable package validates and runs the synchronized Symbolic protocol."""
 import importlib.util
+import inspect
 import json
 import os
 from pathlib import Path
@@ -63,15 +64,14 @@ workflow = Workflow(
         self.assertEqual(self.run_sop('--help', json_output=False), body)
         self.assertFalse(path.exists())
 
-    def test_required_debug_and_configuration_in_every_package(self):
+    def test_package_configuration_and_template_without_debug_document(self):
         for source in PACKAGES:
             with self.subTest(package=source):
                 shutil.rmtree(self.package)
                 shutil.copytree(source, self.package)
                 self.assertEqual(self.run_sop('--validate')['status'], 'valid')
-                (self.package / 'DEBUG.md').unlink()
-                self.assertIn('DEBUG.md', self.run_sop('--validate', valid=False)['error'])
-                shutil.copyfile(source / 'DEBUG.md', self.package / 'DEBUG.md')
+                if source == TEMPLATE:
+                    self.assertFalse((self.package / 'DEBUG.md').exists())
                 (self.package / 'config.json').write_text('{"DEBUG": "false"}')
                 self.assertIn('boolean DEBUG', self.run_sop('--validate', valid=False)['error'])
 
@@ -160,7 +160,9 @@ workflow = Workflow(
         self.assertEqual(data['nodes']['initialize'], initial)
         self.assertEqual(data['nodes']['variant'], current)
         self.assertEqual(data['edges'][0], initial['next_step'][0])
-        self.assertLess(html.index('id="detail"'), html.index('id="metadata"'))
+        self.assertEqual(data['code'][0], inspect.getsource(controller.configure))
+        self.assertLess(html.index('id="detail"'), html.index('id="code"'))
+        self.assertLess(html.index('id="code"'), html.index('id="metadata"'))
         self.assertNotIn('<button', html)
         self.assertNotIn('help', data)
         for name in controller.workflow.states:

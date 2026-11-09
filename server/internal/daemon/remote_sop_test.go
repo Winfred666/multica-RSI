@@ -16,7 +16,7 @@ import (
 func TestRemoteSOPHeartbeatRunsOnlyPython(t *testing.T) {
 	for _, argv := range []string{`["--help","two words","","$(literal)","--large"]`, `["--fail"]`, `[]`, `bad-json`} {
 		t.Run(argv, func(t *testing.T) {
-			skills, _ := json.Marshal([]SkillData{{Name: "inspect", Content: "---\nname: inspect\n---", Files: []SkillFileData{{Path: "DEBUG.md", Content: "Fixture"}, {Path: "wrapper.py", Content: "import json,os,sys\nprint(json.dumps({'args':sys.argv[1:],'task_id':os.environ['MULTICA_TASK_ID'],'token':os.environ['MULTICA_TOKEN']}))\nprint('stderr text',file=sys.stderr)\nif '--fail' in sys.argv: sys.exit(7)\nif '--large' in sys.argv: print('x'*70000)\n"}}}})
+			skills, _ := json.Marshal([]SkillData{{Name: "inspect", Content: "---\nname: inspect\n---", Files: []SkillFileData{{Path: "controller.py", Content: "# Fixture controller"}, {Path: "wrapper.py", Content: "import json,os,sys\nprint(json.dumps({'args':sys.argv[1:],'task_id':os.environ['MULTICA_TASK_ID'],'token':os.environ['MULTICA_TOKEN']}))\nprint('stderr text',file=sys.stderr)\nif '--fail' in sys.argv: sys.exit(7)\nif '--large' in sys.argv: print('x'*70000)\n"}}}})
 			name := "inspect"
 			if argv == `[]` {
 				name = "missing"

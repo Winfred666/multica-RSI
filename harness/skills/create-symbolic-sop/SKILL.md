@@ -20,7 +20,7 @@ the concrete changes for human review. Only after explicit human approval,
 mechanically copy the approved protocol to all symbolic SoPs in `harness/` and
 distributions such as `dist/AIDE^2-harness`, preserving controllers and live state.
 
-The standalone package contains `SKILL.md`, `DEBUG.md`, `config.json`, `controller.py`, `sop.py`, `wrapper.py`, `monitor.py`
+The standalone package contains `SKILL.md`, `config.json`, `controller.py`, `sop.py`, `wrapper.py`, `monitor.py`
 and procedure dependencies. The wrapper creates `.state/<task_id>.json` at runtime.
 Preserve live state when revising an installed skill. Customize `controller.py`;
 `sop.py` defines the objects and `wrapper.py` drives them.
@@ -148,11 +148,9 @@ paths. Keep repository tests in `tests/`. For conservative refinement, define st
 initial and final boundaries from these declarations. Live Multica execution
 establishes effectiveness.
 
-Write `DEBUG.md` with a first chart of the interaction states. A scripted branch
-between interaction states may use a diamond; branches need not be agent options.
-Put state internals in secondary charts. Immediately precede each with
-`State: <declared status>`. Show its entry, checks, recalls and exit states so the
-chart stands alone; prefer chart labels to prose.
+Use `controller.workflow` as the graph's source; do not maintain a duplicate
+`DEBUG.md`. Generate the HTML from the declared states and option targets, and
+read Python handler source with the standard library's `inspect` module.
 
 Set `"DEBUG": true` in the skill's `config.json` to publish `<skill-name>-state.html`
 on every state shift. The wrapper renders `controller.workflow` states, declared
@@ -161,7 +159,10 @@ IDs and assertion failures. Put the graph before headings and metadata so it is
 visible in thumbnails. Selecting a state shows formatted agent JSON; visited states
 replay their emitted decision, while unvisited states show declared guidance and
 static options without executing workflow code. Selecting an edge shows the agent's
-option JSON. Put issue/task metadata last; omit handler source and HTML help controls.
+option JSON followed by its Python action source, before issue/task metadata.
+Cache source for dynamic options when the workflow resolves them; do not rerun
+option factories to render a preview. Node selection clears the option code.
+Omit HTML help controls.
 Dynamic routes appear when selected. DEBUG defaults
 to `false`. For an existing HTML view, export read-only `artifacts(context)` from
 `controller.py` returning `{stable_filename: html_string}`; the wrapper updates
@@ -173,7 +174,7 @@ the background job keeps logging while the SOP returns `continue`/`exception`.
 The launch option must return the monitor state immediately; only its `continue`
 recall may block.
 The task JSON keeps checkpoint and log positions; the next recall shows only new
-output. Follow the recall in the same turn. See the template's [state chart](assets/template/DEBUG.md).
+output. Follow the recall in the same turn.
 Default to passive native delivery/block steering for Multica sub-issues;
 proactive escalation there is reserved for unstable DEV SOPs. A `done` option must
 check that every sub-issue, including descendants, is `done`. Otherwise raise a
