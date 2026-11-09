@@ -21,4 +21,8 @@ description: Follow the textual workflow for assigned Multica issues, delivery a
 Use `multica-surface-block` for external blockers and
 `multica-subissue-distribute` for child creation.
 
+Before delivery or child review, read the textual
+[acceptance policy](references/acceptance.md). Its parent-acceptance and bounded
+benchmark rules replace the human-only completion default where applicable.
+
 Based on official Multica's [textual issue workflow](https://github.com/multica-ai/multica/blob/73975653323750d04c27047ea9c986ef06bdf6a1/server/internal/daemon/execenv/runtime_config_sections.go#L614-L653).
