@@ -177,6 +177,7 @@ func TestRunTaskReusesPriorWorkdirForFreshSession(t *testing.T) {
 
 	run := func(task Task) TaskResult {
 		t.Helper()
+		task.IssueID, task.ChatSessionID = "", "chat-leader"
 		task.IsLeaderTask = false
 		result, err := d.runTask(context.Background(), task, "claude", 0, d.logger)
 		if err != nil {
@@ -788,6 +789,7 @@ func TestRunTaskCancelledWaitingForThePriorWorkdirStopsInsteadOfPreparing(t *tes
 	defer cleanup()
 
 	first := leaderReuseTestTask("task-first")
+	first.IssueID, first.ChatSessionID = "", "chat-leader"
 	firstResult, err := d.runTask(context.Background(), first, "claude", 0, d.logger)
 	if err != nil {
 		t.Fatalf("first runTask: %v", err)
@@ -796,6 +798,7 @@ func TestRunTaskCancelledWaitingForThePriorWorkdirStopsInsteadOfPreparing(t *tes
 	// The predecessor, still holding its env root when the successor starts.
 	d.envRootBusyWait = time.Hour
 	second := leaderReuseTestTask("task-second")
+	second.IssueID, second.ChatSessionID = "", "chat-leader"
 	second.PriorSessionID = firstResult.SessionID
 	second.PriorWorkDir = firstResult.WorkDir
 	held, _, _, ok, err := d.lockReusablePriorEnvRoot(context.Background(), second, nil, "")
@@ -1081,6 +1084,7 @@ func TestRunTaskDeclinesReuseWhenTheClaimedDirectoryIsSwappedBeforeUse(t *testin
 	_ = argsFile
 
 	first := leaderReuseTestTask("task-first")
+	first.IssueID, first.ChatSessionID = "", "chat-leader"
 	firstResult, err := d.runTask(context.Background(), first, "claude", 0, d.logger)
 	if err != nil {
 		t.Fatalf("first runTask: %v", err)
@@ -1100,8 +1104,8 @@ func TestRunTaskDeclinesReuseWhenTheClaimedDirectoryIsSwappedBeforeUse(t *testin
 		// the identity check caught the substitution.
 		replacement := envRoot + "-replacement"
 		replacementWorkDir := filepath.Join(replacement, "workdir")
-		writeLeaderTaskMarker(t, replacementWorkDir, "agent-leader", "issue-leader")
-		writeLeaderManagedEnvProvenance(t, replacementWorkDir, "ws-leader", "issue-leader", "agent-leader")
+		writeChatTaskMarker(t, replacementWorkDir, "agent-leader", "chat-leader")
+		writeChatManagedEnvProvenance(t, replacementWorkDir, "ws-leader", "chat-leader", "agent-leader")
 		if err := os.Rename(envRoot, envRoot+"-moved"); err != nil {
 			t.Fatalf("move claimed dir aside: %v", err)
 		}
@@ -1112,6 +1116,7 @@ func TestRunTaskDeclinesReuseWhenTheClaimedDirectoryIsSwappedBeforeUse(t *testin
 	t.Cleanup(func() { reuseBeforeUseTestHook = nil })
 
 	second := leaderReuseTestTask("task-second")
+	second.IssueID, second.ChatSessionID = "", "chat-leader"
 	second.PriorSessionID = firstResult.SessionID
 	second.PriorWorkDir = firstResult.WorkDir
 	secondResult, err := d.runTask(context.Background(), second, "claude", 0, d.logger)

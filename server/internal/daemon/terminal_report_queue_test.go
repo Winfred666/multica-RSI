@@ -527,9 +527,9 @@ func TestRunBatchPollerReleasesSlotAfterTerminalRetryExhaustion(t *testing.T) {
 		case strings.HasSuffix(req.URL.Path, "/api/daemon/tasks/claim"):
 			switch {
 			case completeAttempts.Load() == 0:
-				_, _ = w.Write([]byte(`{"tasks":[{"id":"t1","runtime_id":"rt-1","issue_id":"i1"}]}`))
+				_, _ = w.Write([]byte(`{"tasks":[{"id":"t1","runtime_id":"rt-1","workspace_id":"ws-1","issue_id":"i1"}]}`))
 			case secondServed.CompareAndSwap(false, true):
-				_, _ = w.Write([]byte(`{"tasks":[{"id":"t2","runtime_id":"rt-1","issue_id":"i2"}]}`))
+				_, _ = w.Write([]byte(`{"tasks":[{"id":"t2","runtime_id":"rt-1","workspace_id":"ws-1","issue_id":"i2"}]}`))
 			default:
 				_, _ = w.Write([]byte(`{"tasks":[]}`))
 			}

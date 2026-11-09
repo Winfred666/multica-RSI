@@ -78,6 +78,12 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## CLI and daemon
 
+- **Issue folders.** Default runs share
+  `WorkspacesRoot/.issues/<workspace-id>/<issue-id>` on each daemon, using the
+  existing in-place lock, context injection and cleanup. Different issues stay
+  separate. Explicit local-directory settings still apply. Folders start without
+  Git, are retained by task GC, and do not migrate earlier task folders.
+
 - **Agent workspace creation.** Any active agent can run `multica workspace create`
   through its local daemon. The daemon validates the task credential and uses its
   private member PAT; the created workspace belongs to that PAT's owner. The

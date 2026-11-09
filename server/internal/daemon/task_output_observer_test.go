@@ -181,6 +181,8 @@ func TestHandleTask_CancelAckCarriesRetiredSession(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	d := &Daemon{
+		cfg:                Config{WorkspacesRoot: t.TempDir()},
+		localPathLocks:     NewLocalPathLocker(),
 		client:             NewClient(srv.URL),
 		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 		workspaces:         make(map[string]*workspaceState),
@@ -193,10 +195,11 @@ func TestHandleTask_CancelAckCarriesRetiredSession(t *testing.T) {
 	})
 
 	d.handleTask(context.Background(), Task{
-		ID:        "task-retire-ack",
-		RuntimeID: "rt-1",
-		IssueID:   "issue-retire-ack",
-		Agent:     &AgentData{Name: "test-agent"},
+		ID:          "task-retire-ack",
+		RuntimeID:   "rt-1",
+		WorkspaceID: "ws-test",
+		IssueID:     "issue-retire-ack",
+		Agent:       &AgentData{Name: "test-agent"},
 	}, 0)
 
 	mu.Lock()

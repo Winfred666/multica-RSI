@@ -45,9 +45,10 @@ type localDirectoryRef struct {
 // absolute path; the path mutex keys on it so two different routes to the
 // same directory are serialised.
 type localDirectoryAssignment struct {
-	Ref      localDirectoryRef
-	AbsPath  string // user-provided path, cleaned but not symlink-resolved
-	RealPath string // canonical key for the path mutex
+	Ref            localDirectoryRef
+	AbsPath        string // user-provided path, cleaned but not symlink-resolved
+	RealPath       string // canonical key for the path mutex
+	IssueWorkspace bool
 }
 
 // UsesWorktree reports whether this assignment runs each task in its own git
@@ -123,6 +124,38 @@ func localDirectoryAssignmentForTask(task Task, daemonID string) (*localDirector
 		return nil, nil
 	}
 	return findLocalDirectoryAssignment(task.ProjectResources, daemonID)
+}
+
+// taskDirectoryAssignment reuses in-place execution for the default issue folder.
+func (d *Daemon) taskDirectoryAssignment(task Task) (*localDirectoryAssignment, error) {
+	assignment, err := localDirectoryAssignmentForTask(task, d.cfg.DaemonID)
+	if err != nil || assignment != nil || task.IssueID == "" {
+		return assignment, err
+	}
+	for _, id := range []string{task.WorkspaceID, task.IssueID} {
+		if id == "." || !filepath.IsLocal(id) || filepath.Base(id) != id {
+			return nil, fmt.Errorf("invalid issue workspace identity %q", id)
+		}
+	}
+	root, err := normalizeLocalPath(d.cfg.WorkspacesRoot)
+	if err != nil {
+		return nil, err
+	}
+	// shortcut: shared issue content has in-place retention; add issue GC when bounded retention is required.
+	path := filepath.Join(root, ".issues", task.WorkspaceID, task.IssueID)
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return nil, fmt.Errorf("create issue workspace: %w", err)
+	}
+	realPath, err := resolveRealPath(path)
+	if err != nil {
+		return nil, err
+	}
+	return &localDirectoryAssignment{
+		Ref:            localDirectoryRef{Label: task.IssueIdentifier},
+		AbsPath:        path,
+		RealPath:       realPath,
+		IssueWorkspace: true,
+	}, nil
 }
 
 // localDirectoryLockExempt reports whether a task may run inside an in_place

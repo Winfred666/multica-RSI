@@ -49,6 +49,8 @@ func TestHandleTask_DoesNotCallStartTaskItself(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	d := &Daemon{
+		cfg:                Config{WorkspacesRoot: t.TempDir()},
+		localPathLocks:     NewLocalPathLocker(),
 		client:             NewClient(srv.URL),
 		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 		workspaces:         make(map[string]*workspaceState),
@@ -95,7 +97,7 @@ func TestRunTask_StartTaskCalledAfterWorkdirOnDisk(t *testing.T) {
 	workspaceID := "ws-runtask"
 	taskID := "task-runtask-after-mkdir"
 	expectedEnvRoot := execenv.PredictRootDir(execenv.RootDirParams{WorkspacesRoot: workspacesRoot, WorkspaceID: workspaceID, TaskID: taskID})
-	expectedWorkDir := filepath.Join(expectedEnvRoot, "workdir")
+	expectedWorkDir := filepath.Join(workspacesRoot, ".issues", workspaceID, "issue-runtask")
 
 	var (
 		startCalled   atomic.Bool
@@ -819,6 +821,7 @@ func TestHandleTask_KeepsEnvRootActiveAcrossCompletion(t *testing.T) {
 	)
 
 	d := &Daemon{
+		localPathLocks:     NewLocalPathLocker(),
 		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 		workspaces:         make(map[string]*workspaceState),
 		runtimeIndex:       map[string]Runtime{"rt-1": {ID: "rt-1", Provider: "claude"}},

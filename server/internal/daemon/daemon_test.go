@@ -5862,6 +5862,8 @@ func TestHandleTask_ReportsUsageBeforeCancel(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	d := &Daemon{
+		localPathLocks:     NewLocalPathLocker(),
+		cfg:                Config{WorkspacesRoot: t.TempDir()},
 		client:             NewClient(srv.URL),
 		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 		workspaces:         make(map[string]*workspaceState),
@@ -5881,10 +5883,11 @@ func TestHandleTask_ReportsUsageBeforeCancel(t *testing.T) {
 	})
 
 	task := Task{
-		ID:        "task-abc",
-		RuntimeID: "rt-1",
-		IssueID:   "issue-xyz",
-		Agent:     &AgentData{Name: "test-agent"},
+		ID:          "task-abc",
+		RuntimeID:   "rt-1",
+		WorkspaceID: "ws-test",
+		IssueID:     "issue-xyz",
+		Agent:       &AgentData{Name: "test-agent"},
 	}
 
 	d.handleTask(context.Background(), task, 0)
@@ -5964,6 +5967,8 @@ func TestHandleTask_ReportsUsageWhenCancelledByPoll(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	d := &Daemon{
+		localPathLocks:     NewLocalPathLocker(),
+		cfg:                Config{WorkspacesRoot: t.TempDir()},
 		client:             NewClient(srv.URL),
 		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 		workspaces:         make(map[string]*workspaceState),
@@ -5984,10 +5989,11 @@ func TestHandleTask_ReportsUsageWhenCancelledByPoll(t *testing.T) {
 	})
 
 	task := Task{
-		ID:        "task-poll",
-		RuntimeID: "rt-1",
-		IssueID:   "issue-poll",
-		Agent:     &AgentData{Name: "test-agent"},
+		ID:          "task-poll",
+		RuntimeID:   "rt-1",
+		WorkspaceID: "ws-test",
+		IssueID:     "issue-poll",
+		Agent:       &AgentData{Name: "test-agent"},
 	}
 
 	d.handleTask(context.Background(), task, 0)
@@ -6629,6 +6635,8 @@ func TestHandleTask_AcksCancelAfterPollCancelled(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	d := &Daemon{
+		localPathLocks:     NewLocalPathLocker(),
+		cfg:                Config{WorkspacesRoot: t.TempDir()},
 		client:             NewClient(srv.URL),
 		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 		workspaces:         make(map[string]*workspaceState),
@@ -6642,10 +6650,11 @@ func TestHandleTask_AcksCancelAfterPollCancelled(t *testing.T) {
 	})
 
 	task := Task{
-		ID:        "task-ack-poll",
-		RuntimeID: "rt-1",
-		IssueID:   "issue-ack-poll",
-		Agent:     &AgentData{Name: "test-agent"},
+		ID:          "task-ack-poll",
+		RuntimeID:   "rt-1",
+		WorkspaceID: "ws-test",
+		IssueID:     "issue-ack-poll",
+		Agent:       &AgentData{Name: "test-agent"},
 	}
 
 	d.handleTask(context.Background(), task, 0)
@@ -6699,6 +6708,8 @@ func TestHandleTask_AcksCancelOnPostRunStatusCheck(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	d := &Daemon{
+		localPathLocks:     NewLocalPathLocker(),
+		cfg:                Config{WorkspacesRoot: t.TempDir()},
 		client:             NewClient(srv.URL),
 		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 		workspaces:         make(map[string]*workspaceState),
@@ -6711,10 +6722,11 @@ func TestHandleTask_AcksCancelOnPostRunStatusCheck(t *testing.T) {
 	})
 
 	task := Task{
-		ID:        "task-ack-postrun",
-		RuntimeID: "rt-1",
-		IssueID:   "issue-ack-postrun",
-		Agent:     &AgentData{Name: "test-agent"},
+		ID:          "task-ack-postrun",
+		RuntimeID:   "rt-1",
+		WorkspaceID: "ws-test",
+		IssueID:     "issue-ack-postrun",
+		Agent:       &AgentData{Name: "test-agent"},
 	}
 
 	d.handleTask(context.Background(), task, 0)

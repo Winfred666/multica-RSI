@@ -145,8 +145,8 @@ func TestRunBatchPollerClaimsAcrossRuntimes(t *testing.T) {
 		if strings.HasSuffix(r.URL.Path, "/api/daemon/tasks/claim") {
 			if claimCalls.Add(1) == 1 {
 				w.Write([]byte(`{"tasks":[
-					{"id":"t1","runtime_id":"rt-1","issue_id":"i1","agent":{"name":"a"}},
-					{"id":"t2","runtime_id":"rt-2","issue_id":"i2","agent":{"name":"b"}}
+					{"id":"t1","runtime_id":"rt-1","workspace_id":"ws-1","issue_id":"i1","agent":{"name":"a"}},
+					{"id":"t2","runtime_id":"rt-2","workspace_id":"ws-1","issue_id":"i2","agent":{"name":"b"}}
 				]}`))
 				return
 			}
@@ -158,6 +158,7 @@ func TestRunBatchPollerClaimsAcrossRuntimes(t *testing.T) {
 	defer srv.Close()
 
 	d := New(Config{
+		WorkspacesRoot:     t.TempDir(),
 		ServerBaseURL:      srv.URL,
 		HeartbeatInterval:  time.Hour,
 		PollInterval:       20 * time.Millisecond,
@@ -250,9 +251,9 @@ func TestRunBatchPollerDrainsPartialBatchesBeforeSleeping(t *testing.T) {
 		if strings.HasSuffix(r.URL.Path, "/api/daemon/tasks/claim") {
 			switch claims.Add(1) {
 			case 1:
-				w.Write([]byte(`{"tasks":[{"id":"t1","runtime_id":"rt-1","issue_id":"i1"}]}`))
+				w.Write([]byte(`{"tasks":[{"id":"t1","runtime_id":"rt-1","workspace_id":"ws-1","issue_id":"i1"}]}`))
 			case 2:
-				w.Write([]byte(`{"tasks":[{"id":"t2","runtime_id":"rt-1","issue_id":"i2"}]}`))
+				w.Write([]byte(`{"tasks":[{"id":"t2","runtime_id":"rt-1","workspace_id":"ws-1","issue_id":"i2"}]}`))
 			default:
 				w.Write([]byte(`{"tasks":[]}`))
 				if claims.Load() == 3 {
@@ -264,7 +265,7 @@ func TestRunBatchPollerDrainsPartialBatchesBeforeSleeping(t *testing.T) {
 		w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()
-	d := New(Config{ServerBaseURL: srv.URL, PollInterval: time.Hour, MaxConcurrentTasks: 3}, slog.New(slog.NewTextHandler(noopWriter{}, nil)))
+	d := New(Config{WorkspacesRoot: t.TempDir(), ServerBaseURL: srv.URL, PollInterval: time.Hour, MaxConcurrentTasks: 3}, slog.New(slog.NewTextHandler(noopWriter{}, nil)))
 	d.workspaces["ws-1"] = &workspaceState{workspaceID: "ws-1", runtimeIDs: []string{"rt-1"}}
 	d.runtimeIndex["rt-1"] = Runtime{ID: "rt-1"}
 	d.cancelPollInterval = time.Hour
@@ -337,9 +338,9 @@ func testRunBatchPollerTaskExitWakeup(t *testing.T, maxConcurrent int, releaseDe
 			claimCalls.Add(1)
 			switch {
 			case firstServed.CompareAndSwap(false, true):
-				w.Write([]byte(`{"tasks":[{"id":"t1","runtime_id":"rt-1","issue_id":"i1","agent":{"name":"a"}}]}`))
+				w.Write([]byte(`{"tasks":[{"id":"t1","runtime_id":"rt-1","workspace_id":"ws-1","issue_id":"i1","agent":{"name":"a"}}]}`))
 			case firstCompleted.Load() && secondServed.CompareAndSwap(false, true):
-				w.Write([]byte(`{"tasks":[{"id":"t2","runtime_id":"rt-1","issue_id":"i1","agent":{"name":"a"}}]}`))
+				w.Write([]byte(`{"tasks":[{"id":"t2","runtime_id":"rt-1","workspace_id":"ws-1","issue_id":"i1","agent":{"name":"a"}}]}`))
 			default:
 				w.Write([]byte(`{"tasks":[]}`))
 			}
@@ -353,6 +354,7 @@ func testRunBatchPollerTaskExitWakeup(t *testing.T, maxConcurrent int, releaseDe
 	defer srv.Close()
 
 	d := New(Config{
+		WorkspacesRoot:     t.TempDir(),
 		ServerBaseURL:      srv.URL,
 		HeartbeatInterval:  time.Hour,
 		PollInterval:       time.Hour,
@@ -453,6 +455,7 @@ func TestRunBatchPollerSkipsClaimWhenAtCapacity(t *testing.T) {
 	defer srv.Close()
 
 	d := New(Config{
+		WorkspacesRoot:     t.TempDir(),
 		ServerBaseURL:      srv.URL,
 		HeartbeatInterval:  time.Hour,
 		PollInterval:       20 * time.Millisecond,
@@ -483,7 +486,7 @@ func TestPollLoopBatchShutdown(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.HasSuffix(r.URL.Path, "/api/daemon/tasks/claim") {
-			w.Write([]byte(`{"tasks":[{"id":"t1","runtime_id":"rt-1","issue_id":"i1","agent":{"name":"a"}}]}`))
+			w.Write([]byte(`{"tasks":[{"id":"t1","runtime_id":"rt-1","workspace_id":"ws-1","issue_id":"i1","agent":{"name":"a"}}]}`))
 			return
 		}
 		w.Write([]byte(`{}`))
@@ -492,6 +495,7 @@ func TestPollLoopBatchShutdown(t *testing.T) {
 	defer close(releaseRun)
 
 	d := New(Config{
+		WorkspacesRoot:     t.TempDir(),
 		ServerBaseURL:      srv.URL,
 		HeartbeatInterval:  time.Hour,
 		PollInterval:       20 * time.Millisecond,

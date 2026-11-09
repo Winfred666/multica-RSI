@@ -6092,12 +6092,11 @@ func withoutWorktreePreserved(err error) error {
 	return errors.Join(rest...)
 }
 
-// acquireLocalDirectoryLockIfNeeded inspects the task's project resources for
-// a local_directory pinned to this daemon, validates the path, and takes the
-// path mutex. Returns a release callback (nil when no local_directory
-// resource applies) and abort=true when the caller must bail without
-// starting the task (the helper has already reported the failure to the
-// server).
+// acquireLocalDirectoryLockIfNeeded resolves the configured or default issue
+// directory, validates the path, and takes the path mutex. Returns a release
+// callback (nil when no directory assignment applies) and abort=true when
+// the caller must bail without starting the task (the helper has already
+// reported the failure to the server).
 //
 // The helper covers four distinct failure modes:
 //
@@ -6110,10 +6109,7 @@ func withoutWorktreePreserved(err error) error {
 //  4. The blocking wait is cancelled (daemon shutdown, server-side cancel)
 //     — fail the task with the ctx error.
 func (d *Daemon) acquireLocalDirectoryLockIfNeeded(ctx context.Context, task Task, taskLog *slog.Logger) (release func(), abort bool) {
-	if len(task.ProjectResources) == 0 || d.cfg.DaemonID == "" {
-		return nil, false
-	}
-	assignment, err := localDirectoryAssignmentForTask(task, d.cfg.DaemonID)
+	assignment, err := d.taskDirectoryAssignment(task)
 	if err != nil {
 		taskLog.Error("local_directory: resolve resource failed", "error", err)
 		if failErr := d.reportTerminalTask(ctx, terminalTaskReport{
@@ -6176,7 +6172,7 @@ func (d *Daemon) acquireLocalDirectoryLockIfNeeded(ctx context.Context, task Tas
 	// behind a 20-minute build with nothing to contribute to it (issue #7344).
 	// See localDirectoryLockExempt for why the mutex does not owe this task a
 	// slot.
-	if localDirectoryLockExempt(task) {
+	if !assignment.IssueWorkspace && localDirectoryLockExempt(task) {
 		taskLog.Info("local_directory: chat task, skipping path mutex")
 		return nil, false
 	}
@@ -8081,18 +8077,15 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	if provider == "openclaw" {
 		openclawBin = entry.Path
 	}
-	// Resolve any local_directory assignment again here so runTask can plumb
-	// LocalWorkDir into execenv. handleTask already validated + locked the
-	// path for worker tasks; leader tasks intentionally skip the assignment.
-	localAssignment, _ := localDirectoryAssignmentForTask(task, d.cfg.DaemonID)
+	// Resolve the same directory handleTask validated and locked before preparation.
+	localAssignment, assignmentErr := d.taskDirectoryAssignment(task)
+	if assignmentErr != nil {
+		return TaskResult{}, assignmentErr
+	}
 	// Reuse intentionally skipped for local_directory tasks: the prior
 	// WorkDir is the user's own path (always present) but the reuse path
 	// loses the envRoot association the GC loop needs, and re-running
 	// Prepare against a stable user path is cheap (no clone, no copy).
-	// Leader tasks have no localAssignment; shouldReusePriorWorkdir separately
-	// requires Prepare-time managed-env provenance and a daemon-owned marker
-	// before allowing reuse, so a pre-fix leader session recorded against
-	// local_directory still fails closed.
 	var agentMcpConfig json.RawMessage
 	var effectiveMcpConfig json.RawMessage
 	var cursorMcpAuthSource string

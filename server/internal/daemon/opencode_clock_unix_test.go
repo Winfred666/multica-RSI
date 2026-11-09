@@ -67,7 +67,8 @@ exit 1
 			defer srv.Close()
 			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 			d := &Daemon{
-				client: NewClient(srv.URL), logger: logger,
+				localPathLocks: NewLocalPathLocker(),
+				client:         NewClient(srv.URL), logger: logger,
 				workspaces:     make(map[string]*workspaceState),
 				runtimeIndex:   map[string]Runtime{"rt-clock": {ID: "rt-clock", Provider: "opencode"}},
 				activeEnvRoots: make(map[string]int),
