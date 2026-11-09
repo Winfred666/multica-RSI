@@ -69,6 +69,9 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   New workspaces defer the startup kit to the shared import checklist before runtime
   setup. Import selects all resources; export selects none. Startup import can unselect
   all resources and warns in red when the system prompt, skills or plugins are omitted.
+  Both startup and Danger Zone imports use the default kit or an uploaded export.
+  Hosted plugin activation reuses a client member PAT (on for startup, off for existing
+  workspaces); session users manage credentials in Settings → Plugins.
 
 ## CLI and daemon
 
@@ -92,6 +95,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 - **Workspace packages.** `workspace package`, `workspace export` and
   `workspace import` expose the native package API with paged summaries, JSON
   selection files and inactive imported agents. See [usage and defaults](workspace-packages.md#cli).
+  Import can activate hosted plugins with the current member PAT using
+  `--activate-plugins` (default false); stderr reports the setting.
 
 - **Plugin commands.** You can inspect execution credentials, enable or disable
   hosted execution, and configure installed plugins:

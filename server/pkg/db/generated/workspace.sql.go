@@ -384,17 +384,17 @@ func (q *Queries) ListDaemonWorkspaces(ctx context.Context, userID pgtype.UUID) 
 }
 
 const listWorkspacePackageSummaries = `-- name: ListWorkspacePackageSummaries :many
-SELECT resources.id, resources.name, resources.is_system_skill FROM (
-    SELECT s.id, s.name, s.is_system_skill FROM skill s
+SELECT resources.id, resources.name, resources.is_system_skill, resources.key FROM (
+    SELECT s.id, s.name, s.is_system_skill, ''::text AS key FROM skill s
     WHERE s.workspace_id = $1 AND $2::text = 'skills'
     UNION ALL
-    SELECT a.id, a.name, false AS is_system_skill FROM agent a
+    SELECT a.id, a.name, false AS is_system_skill, ''::text AS key FROM agent a
     WHERE a.workspace_id = $1 AND $2::text = 'agents' AND a.kind = 'user' AND a.archived_at IS NULL
     UNION ALL
-    SELECT m.id, m.name, false AS is_system_skill FROM workspace_mcp_server m
+    SELECT m.id, m.name, false AS is_system_skill, ''::text AS key FROM workspace_mcp_server m
     WHERE m.workspace_id = $1 AND $2::text = 'mcps'
     UNION ALL
-    SELECT pi.id, pi.manifest->>'name' AS name, false AS is_system_skill FROM plugin_installation pi
+    SELECT pi.id, pi.manifest->>'name' AS name, false AS is_system_skill, pi.plugin_key AS key FROM plugin_installation pi
     WHERE pi.workspace_id = $1 AND $2::text = 'plugins'
 ) AS resources
 ORDER BY resources.name, resources.id
@@ -412,6 +412,7 @@ type ListWorkspacePackageSummariesRow struct {
 	ID            pgtype.UUID `json:"id"`
 	Name          string      `json:"name"`
 	IsSystemSkill bool        `json:"is_system_skill"`
+	Key           string      `json:"key"`
 }
 
 // Only expandable categories. Projects/issues stay a single count selection.
@@ -429,7 +430,12 @@ func (q *Queries) ListWorkspacePackageSummaries(ctx context.Context, arg ListWor
 	items := []ListWorkspacePackageSummariesRow{}
 	for rows.Next() {
 		var i ListWorkspacePackageSummariesRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.IsSystemSkill); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.IsSystemSkill,
+			&i.Key,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -71,8 +71,9 @@ This hook fragment requires `"scopes": ["host:exec"]` in its manifest:
 
 ## Workspace credentials
 
-Hosted execution is disabled in each workspace until an owner/admin explicitly
-supplies a PAT in **Settings → Plugins → Hosted execution**. The PAT determines
+Hosted execution is disabled in each workspace until an owner/admin supplies a
+PAT during [workspace import](workspace-packages.md), or in
+**Settings → Plugins → Hosted execution**. The PAT determines
 the execution account, displayed as **Run as**. Its owner must be a member of
 that workspace; they can be an ordinary member. Supply a token its owner has
 authorized for this purpose. Multica never creates a PAT automatically.

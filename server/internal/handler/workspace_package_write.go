@@ -25,23 +25,12 @@ func packageJSON(raw json.RawMessage, fallback string) []byte {
 	}
 	return raw
 }
-func (h *Handler) importWorkspacePackage(ctx context.Context, tx pgx.Tx, ws, user pgtype.UUID, p WorkspacePackage, replaceExisting bool) (PackageImportResult, error) {
+func (h *Handler) importWorkspacePackage(ctx context.Context, tx pgx.Tx, ws, user pgtype.UUID, p WorkspacePackage) (PackageImportResult, error) {
 	result := PackageImportResult{Projects: map[string]string{}, Issues: map[string]string{}, Agents: map[string]string{}, Skills: map[string]string{}, MCPs: map[string]string{}, Plugins: map[string]string{}}
 	if err := validateWorkspacePackage(p); err != nil {
 		return result, fmt.Errorf("%w: %v", errWorkspacePackageInvalid, err)
 	}
 	q := h.Queries.WithTx(tx)
-	allowReplace := false
-	if replaceExisting {
-		member, err := q.GetMemberByUserAndWorkspace(ctx, db.GetMemberByUserAndWorkspaceParams{UserID: user, WorkspaceID: ws})
-		if err != nil {
-			return result, err
-		}
-		allowReplace = roleAllowed(member.Role, "owner", "admin")
-	}
-	collision := func(kind, name string) error {
-		return fmt.Errorf("%w: %s %s already exists; replacing named resources requires replace_existing", errWorkspacePackageConflict, kind, name)
-	}
 	var issuePolicy service.IssueCountPolicy
 	if len(p.Issues) > 0 {
 		issuePolicy = service.ResolveIssueCountPolicy(ctx, h.Entitlements, ws)
@@ -59,13 +48,10 @@ func (h *Handler) importWorkspacePackage(ctx context.Context, tx pgx.Tx, ws, use
 		if errors.Is(err, pgx.ErrNoRows) {
 			saved, err = createSkillWithFilesInTx(ctx, q, skillCreateInput{WorkspaceID: ws, CreatorID: user, Name: s.Name, Description: s.Description, Content: s.Content, Config: s.Config, Files: s.Files, IsSystemSkill: s.IsSystemSkill})
 		} else if err == nil {
-			if !allowReplace {
-				return result, collision("skill", s.Name)
-			}
 			if previous.IsSystemSkill != s.IsSystemSkill {
 				return result, fmt.Errorf("%w: skill %s cannot change system-skill classification on import", errWorkspacePackageConflict, s.Name)
 			}
-			saved, err = writer.overwriteSkillWithFiles(ctx, skillOverwriteInput{WorkspaceID: ws, TargetSkillID: previous.ID, UserID: uuidToString(user), ExpectedName: s.Name, AllowOverwrite: func(_ string, skill db.Skill) bool { return allowReplace && skill.IsSystemSkill == s.IsSystemSkill }, Description: s.Description, Content: s.Content, Config: s.Config, Files: s.Files})
+			saved, err = writer.overwriteSkillWithFiles(ctx, skillOverwriteInput{WorkspaceID: ws, TargetSkillID: previous.ID, UserID: uuidToString(user), ExpectedName: s.Name, AllowOverwrite: func(_ string, skill db.Skill) bool { return skill.IsSystemSkill == s.IsSystemSkill }, Description: s.Description, Content: s.Content, Config: s.Config, Files: s.Files})
 		}
 
 		if err != nil {
@@ -88,9 +74,6 @@ func (h *Handler) importWorkspacePackage(ctx context.Context, tx pgx.Tx, ws, use
 			}
 			var saved db.WorkspaceMcpServer
 			if previous.Valid {
-				if !allowReplace {
-					return result, collision("MCP", m.Name)
-				}
 				saved, err = q.UpdateWorkspaceMcpServer(ctx, db.UpdateWorkspaceMcpServerParams{ID: previous, WorkspaceID: ws, Config: m.Config})
 			} else {
 				saved, err = q.CreateWorkspaceMcpServer(ctx, db.CreateWorkspaceMcpServerParams{WorkspaceID: ws, Name: m.Name, Config: m.Config, CreatedBy: user})
@@ -236,13 +219,6 @@ func (h *Handler) importWorkspacePackage(ctx context.Context, tx pgx.Tx, ws, use
 		for _, plugin := range p.Plugins {
 			bundle, err := plugincontract.ParseBundle(plugin.Bundle)
 			if err != nil {
-				return result, err
-			}
-			_, err = q.GetWorkspacePluginInstallationByKey(ctx, db.GetWorkspacePluginInstallationByKeyParams{WorkspaceID: ws, PluginKey: plugin.Key})
-			if err == nil && !allowReplace {
-				return result, collision("plugin", plugin.Key)
-			}
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return result, err
 			}
 			key := bundle.Manifest.Key + "/" + bundle.Manifest.Version
