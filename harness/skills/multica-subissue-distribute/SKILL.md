@@ -18,7 +18,6 @@ while awaiting acceptance. Use `multica-surface-block` for an external blocker.
 Follow returned error guidance, reconcile writes before retrying, and use `repaired`
 once for assertion failures; report a repeated failure through `multica-surface-block`.
 
-See [DEBUG.md](DEBUG.md) for this procedure’s states. In every state, follow
-returned error guidance and finish unmet prerequisites before retrying. Reconcile
-writes first. For assertion failures, use the returned `repaired` callback once;
-report a repeated failure through native Multica block.
+`python3 <this-skill-directory>/wrapper.py --help` replays the last decision for
+the native task, or shows this skill body for a new or completed task, without
+running the procedure or creating a task record.

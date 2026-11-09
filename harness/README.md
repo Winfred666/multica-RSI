@@ -49,7 +49,7 @@ cd harness
 go test ./...
 ```
 
-Symbolic SOP authoring and runtime follow AIDE²'s pinned protocol
+Symbolic SOP authoring and runtime build on AIDE²'s pinned protocol
 [`05ccf153`](https://github.com/WinfredClaw/multica-AIDE/tree/05ccf1530a46339af62daa7cf434d777037ff9db/.agents/skills/create-symbolic-sop).
 The complete template includes the background experiment monitor, persistent task
 facts, scripted routes and separate callback options. The authoring template
@@ -57,7 +57,8 @@ generates its graph from `controller.workflow` and needs no `DEBUG.md`.
 `--validate` checks package files and the boolean `config.json` DEBUG value.
 Run `python3 harness/skills/create-symbolic-sop/scripts/check.py <skill-directory>`
 to validate a new SOP and check its shared runtime in temporary template fixtures.
-Existing system SOPs retain their prior protocol until approved propagation.
+The two executable system SOPs share the approved template runtime, including
+read-only help replay and Workflow-based HTML with horizontally scrollable graphs.
 RSI keeps its native single-task lifecycle procedures. The authoring reference
 points to RSI's bundled platform guidance.
 
