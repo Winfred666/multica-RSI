@@ -1,5 +1,6 @@
-"""Refine one bound workspace; parallel issues each own their task record."""
+"""Refine the current issue folder; each issue owns its SOP state."""
 import importlib.util
+import json
 import math
 from pathlib import Path
 import re
@@ -9,12 +10,9 @@ import monitor
 from sop import Branch, Option, Parameter, State, Workflow
 
 
-ROOT = Path(__file__).resolve().parent
-
-
 def save(context, **values):
     context['state'].update(values)
-    monitor.write(ROOT / '.state' / (context['task_id'] + '.json'), context['state'])
+    context['save_state']()
 
 
 def benchmark(context):
@@ -39,10 +37,10 @@ def configure(args, context):
     """```dot
     digraph configure {
         rankdir=LR; node [shape=box];
-        "Bind script and workspace" -> "Run delivery-format check" -> "Save baseline_pending and return phase";
+        "Bind test script" -> "Run delivery-format check" -> "Save baseline_pending and return phase";
     }
     ```"""
-    save(context, test_script=str(args.test_script.resolve()), workspace=str(Path.cwd()))
+    save(context, test_script=str(args.test_script.resolve()))
     baseline = valid(context)
     save(context, baseline_pending=not baseline)
     return {'phase': 'variant' if baseline else 'scaffold'}
@@ -50,17 +48,32 @@ def configure(args, context):
 
 def precheck(context):
     state = context['state']
-    if not Path(state['test_script']).is_file() or not Path(state['workspace']).is_dir():
-        raise AssertionError('The bound workspace and test script must exist.')
+    if not Path(state['test_script']).is_file():
+        raise AssertionError('The bound test script must exist.')
     phase = context.get('result', {}).get('phase', context['phase'])
     if phase in {'variant', 'finished'} and not valid(context):
         raise AssertionError('The baseline must pass the test script’s delivery-format gate.')
-    return {'test_script': state['test_script'], 'workspace': state['workspace']}
+    return {'test_script': state['test_script']}
 
 
 def view(context):
     state = context['state']
-    return {'data': {key: state.get(key) for key in ('test_script', 'description', 'test_result')}}
+    lines = [workflow.states[context['phase']].description]
+    if state.get('description'):
+        lines.append('Idea: ' + state['description'])
+    if state.get('job'):
+        lines.append('Logs: ' + ', '.join(str(Path(state['job']) / name) for name in monitor.LOGS))
+    report = state.get('test_result') or {}
+    if report:
+        lines.append(f"Test {report['state']}: {report['reason']}.")
+    if 'returncode' in report:
+        lines.append(f"Return code: {report['returncode']}.")
+    if report.get('error'):
+        lines.append('Test error: ' + report['error'])
+    if report.get('delivery') is not None:
+        lines.append('Result: ' + json.dumps(report['delivery']))
+    lines.extend(name + ':\n' + text for name, text in report.get('new_output', {}).items())
+    return {'instruction': '\n'.join(lines)}
 
 
 def test(args, context):
@@ -78,8 +91,8 @@ def test(args, context):
     if not valid(context):
         return {'accepted': False, 'instruction': 'Implement a template in the testable delivery format before testing.'}
     state = context['state']
-    job = monitor.start([sys.executable, state['test_script']], state['workspace'], Path(state['workspace']) / 'logs')
-    save(context, description=description, job=job)
+    job = monitor.start([sys.executable, state['test_script']], Path.cwd(), Path.cwd() / 'logs')
+    save(context, description=description, job=job, test_result=None)
     return {'phase': 'test', 'data': {'job': job}}
 
 
@@ -171,5 +184,5 @@ workflow = Workflow(
         Option('record', 'review_result', 'Record the review; the measured exit condition selects completion or another variant.', record,
                params=(Parameter('--review', 'One paragraph reviewing the result'),)),)),
     Branch('review_result', 'Review output', {'complete': 'finished', 'baseline pending': 'scaffold', 'refine': 'variant'}),
-    State('finished', 'The measured delivery meets the test script’s exit condition. Deliver the result.', final=True, precheck=precheck),
+    State('finished', 'The measured delivery meets the test script’s exit condition. Deliver the result.', final=True, precheck=precheck, view=view),
 )

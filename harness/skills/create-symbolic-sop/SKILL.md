@@ -8,7 +8,8 @@ Copy [assets/template/](assets/template/) into the new skill directory. Keep
 `controller.py` with the procedure. Keep the copied `config.json`; set `DEBUG`
 to `true` when you want the compiled HTML preview.
 
-Name Multica SoPs `multica-<name>` using lowercase letters, numbers and hyphens.
+Name Multica SoPs `multica-<name>` using lowercase letters, numbers and hyphens;
+keep names at most 60 characters.
 Write a short `SKILL.md`: when to use it, required inputs,
 `python3 <skill-directory>/wrapper.py`, and how to follow returned choices and
 error guidance. Follow recalls in the same turn; reconcile writes before retrying
@@ -43,7 +44,8 @@ prerequisites and `view(context)` for decision evidence. `context['issue_id']`
 identifies the current issue; `context['cli'](*words, write=False)` runs
 `multica issue <words> --output json`. Pass separate arguments and mark writes
 with `write=True`; use native Multica SoPs for platform workflows.
-Let the runtime manage status and recovery. Store only small procedure-specific
+The runtime stores status and recovery in `issue.metadata["sop.<skill-name>"]`.
+Keep controller `data` internal; expose needed facts through instructions/options. Store only small procedure-specific
 settings in issue metadata when needed; keep delivery/review records in comments.
 When revising a procedure, preserve its checks, side effects, completion rules
 and live state.

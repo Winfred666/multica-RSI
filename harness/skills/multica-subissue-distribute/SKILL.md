@@ -19,5 +19,5 @@ Follow returned error guidance, reconcile writes before retrying, and use `repai
 once for assertion failures; report a repeated failure through `multica-surface-block`.
 
 `python3 <this-skill-directory>/wrapper.py --help` replays the last decision for
-the native task, or shows this skill body for a new or completed task, without
-running the procedure or creating a task record.
+this issue, or shows this skill body when no SoP record exists, without running
+the procedure or creating state.

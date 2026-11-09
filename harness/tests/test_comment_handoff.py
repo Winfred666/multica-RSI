@@ -73,7 +73,7 @@ class CommentHandoff(unittest.TestCase):
                         return
                     return self.cli(*words, **kwargs)
 
-                context = {'initial': self.issue, 'cli': cli, 'issue_id': 'child', 'task_id': 'r206-regression',
+                context = {'initial': self.issue, 'cli': cli, 'issue_id': 'child', 'state': {}, 'save_state': lambda: None,
                            'error': lambda code, message: ValueError(message)}
                 with patch.object(block.Path, 'cwd', return_value=Path(directory)):
                     if dispatch in ('blocked', None):
