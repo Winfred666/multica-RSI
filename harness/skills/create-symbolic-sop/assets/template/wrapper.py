@@ -153,7 +153,9 @@ def help_output(context):
     path = state_path(context)
     if path.exists():
         state = json.loads(path.read_text(encoding='utf-8'))
-        return json.dumps(redact(state.get('output', state)), allow_nan=False)
+        output = dict(state.get('output', {'status': state.get('status')}))
+        output.pop('data', None)
+        return json.dumps(redact(output), allow_nan=False)
     return (ROOT / 'SKILL.md').read_text(encoding='utf-8').split('---', 2)[2].strip()
 
 
@@ -453,7 +455,7 @@ def response(result):
     output = {'status': result['status'], 'instruction': instruction, 'next_step': options}
     if result.get('error'):
         output['error'] = {key: result['error'][key] for key in ('code', 'message')}
-    for key in ('data', 'evidence', 'usage'):
+    for key in ('evidence', 'usage'):
         value = result.get(key)
         if isinstance(value, dict):
             value = {k: v for k, v in value.items() if v not in (None, '', [], {})}
@@ -521,7 +523,8 @@ def state_artifact(context, controller, result):
     details = {'issue_id': os.environ['MULTICA_ISSUE_ID'], 'task_id': context['task_id'], 'status': status}
     if result.get('error'):
         details.update(failed_state=phase, boundary=assertion.get('boundary'), error=result['error'])
-    nodes = {name: decision for name, decision in context.get('state', {}).get('decisions', {}).items()
+    nodes = {name: {key: value for key, value in decision.items() if key != 'data'}
+             for name, decision in context.get('state', {}).get('decisions', {}).items()
              if name in states}
     for state in states.values():
         if state.name in nodes:

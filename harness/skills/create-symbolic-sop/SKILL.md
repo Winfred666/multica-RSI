@@ -99,8 +99,13 @@ help in the terminal, since `cli` expects JSON. Inspect relevant read-only JSON
 output for response fields. Other command groups such as `multica agent` are
 outside this helper's `issue` prefix; read their help before writing a helper.
 
-Return optional `data`, an `instruction`, or `accepted: False` to stay in the current
-state. For scripted state selection, target a declared `Branch` and return `phase`
+Return optional internal `data`, an `instruction`, or `accepted: False` to stay in the current
+state. `data` never appears in agent-facing decisions, `--help` replay or HTML
+decision previews. Keep it available to checks and recovery. Export only facts
+needed for the next decision through the state's `view(context)['instruction']`,
+an action's `instruction`, or an option's prompt. Do not dump internal records
+into guidance.
+For scripted state selection, target a declared `Branch` and return `phase`
 to select one of its routes; the target state's precheck still runs. Agent JSON has `status`, a common state
 `instruction`, and `next_step`: a list of options, each with its own `instruction`
 and executable `command`. Keep state guidance separate from option prompts.
@@ -115,7 +120,7 @@ body after YAML frontmatter without creating a task record. Cache each emitted
 decision in the existing task record, including callbacks that stay in one state,
 and retain the latest emitted decision per state for the HTML preview.
 
-Use `view(context)` for decision evidence and `options(context)` for choices bound
+Use `view(context)` to describe selected decision evidence and `options(context)` for choices bound
 to actual IDs. Keep both read-only; reuse observations in the current context.
 Option factories can run before selection, so option-specific arguments may not
 exist yet. Return JSON-compatible precheck observations and action results so the
