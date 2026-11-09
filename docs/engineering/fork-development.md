@@ -113,8 +113,10 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   JSON in one `sop.<skill-name>` issue metadata key, with no local task state file.
   It resumes across tasks/agents, rebinds replayed commands to the current checkout,
   and deletes only its own key on completion or quit. Required identity is issue
-  and workspace; task ID is optional. Other installed SoPs await human approval
-  before adopting this template. The existing scalar API and 8 KB issue metadata
+  and workspace. Each key keeps only the current status, latest guidance and necessary
+  procedure facts, with no decision history, diagram cache or local error outbox.
+  Other installed SoPs await human approval before adopting this template.
+  The existing scalar API and 8 KB issue metadata
   limit apply; overlapping callbacks on the same SoP require coordination.
 
 - **Workspace packages.** `workspace package`, `workspace export` and

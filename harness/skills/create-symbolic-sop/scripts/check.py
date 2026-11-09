@@ -24,7 +24,7 @@ class SymbolicProtocol(unittest.TestCase):
         shutil.copytree(TEMPLATE, self.package)
         for name in ('sop.py', 'wrapper.py', 'monitor.py'):
             shutil.copy2(PACKAGE / name, self.package / name)
-        self.metadata = self.root / 'metadata.json'
+        self.metadata = self.root / 'metadata'
         binary = self.root / 'bin'
         binary.mkdir()
         cli = binary / 'multica'
@@ -56,8 +56,7 @@ else:
     print(json.dumps({'metadata': metadata}))
 ''')
         cli.chmod(0o755)
-        self.env = {**os.environ, 'MULTICA_TASK_ID': 'protocol-fixture',
-                    'MULTICA_ISSUE_ID': 'fixture-issue', 'MULTICA_WORKSPACE_ID': 'fixture-workspace',
+        self.env = {**os.environ, 'MULTICA_ISSUE_ID': 'fixture-issue', 'MULTICA_WORKSPACE_ID': 'fixture-workspace',
                     'SOP_TEST_METADATA': str(self.metadata), 'PATH': str(binary) + os.pathsep + os.environ['PATH'],
                     'PYTHONDONTWRITEBYTECODE': '1'}
         self.env.pop('MULTICA_TOKEN', None)
@@ -89,6 +88,7 @@ workflow = Workflow(
     State('finished', 'Done', final=True))
 ''')
         initial = self.run_sop()
+        self.assertEqual(set(self.state()), {'status', 'output', 'runtime'})
         updated = self.run_sop('refresh')
         self.assertNotEqual(initial['data'], updated['data'])
         path = self.metadata
@@ -96,6 +96,15 @@ workflow = Workflow(
         self.assertEqual(self.run_sop('--help'), updated)
         self.assertEqual((self.root / 'observations').read_text(), 'xx')
         self.assertEqual(path.read_bytes(), saved)
+        # A remote edit must be read on the next recall, without a local cache.
+        store = json.loads(saved)
+        state = self.state()
+        state['output']['instruction'] = 'Updated directly in issue metadata'
+        store['fixture-issue']['sop.multica-parallel-refinement'] = json.dumps(state)
+        path.write_text(json.dumps(store))
+        self.assertEqual(self.run_sop('--help'), state['output'])
+        self.assertEqual((self.root / 'observations').read_text(), 'xx')
+        self.assertEqual(set(self.state()), {'status', 'output', 'runtime'})
         self.run_sop('done')
         self.assertFalse(self.state())
         self.assertEqual(self.run_sop('--help', json_output=False), body)
@@ -158,8 +167,9 @@ workflow = Workflow(
         self.run_sop()
         failed = self.run_sop('write', valid=False)
         self.assertEqual(failed['status'], 'error')
+        self.assertNotIn('task_id', json.dumps(self.state()))
+        self.assertFalse((self.package / '.errors').exists())
         self.assertEqual(self.run_sop('--help'), failed)
-        self.env['MULTICA_TASK_ID'] = 'repair-on-another-task'
         self.env['MULTICA_AGENT_ID'] = 'another-agent'
         (self.root / 'ready').touch()
         self.assertEqual(self.run_sop('repaired')['status'], 'finished')
@@ -179,7 +189,6 @@ workflow = Workflow(
         other = self.root / 'other-machine' / 'skill'
         shutil.copytree(self.package, other)
         self.package = other
-        self.env.pop('MULTICA_TASK_ID')
         self.env['MULTICA_AGENT_ID'] = 'receiving-agent'
         replay = self.run_sop('--help')
         self.assertEqual(replay['status'], initial['status'])
@@ -215,6 +224,7 @@ workflow = Workflow(
         self.assertIn('sop.multica-other-sop', metadata)
         self.assertNotIn('sop.multica-parallel-refinement', metadata)
         self.assertFalse(list(self.root.rglob('.state')))
+        self.assertFalse(list(self.root.rglob('.errors')))
 
     def test_metadata_failures_preserve_saved_state(self):
         self.run_sop()
@@ -269,7 +279,7 @@ workflow = Workflow(
         context = {'issue_id': 'fixture-issue', 'skill': 'multica-parallel-refinement', 'state': state, 'argv': ['configure'],
                    'prior_status': 'initialize', 'output': current}
         result = {'status': 'variant', 'state_changed': True, 'accepted': True}
-        with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue', MULTICA_TASK_ID='protocol-fixture',
+        with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue',
                         MULTICA_WORKSPACE_ID='fixture-workspace', MULTICA_TOKEN='fixture-token',
                         MULTICA_SERVER_URL='http://fixture.invalid'), patch.object(wrapper, 'upload_artifact') as upload:
             wrapper.publish_artifacts(context, controller, result)

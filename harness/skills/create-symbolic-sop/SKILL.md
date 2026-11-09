@@ -62,7 +62,6 @@ context construction and `cli` implementation in [wrapper.py](assets/template/wr
 
 | Context key | Value and availability |
 | --- | --- |
-| `task_id` | Optional native run ID for diagnostics; never identifies or gates SOP state. |
 | `issue_id`, `workspace_id` | Required native issue/workspace IDs. A declared `--issue` input can override the issue; `--workspace` must match the native workspace. |
 | `agent_id` | Native `MULTICA_AGENT_ID`, or `None` when absent. |
 | `phase` | State name used for option selection or guidance. In a target precheck, use `result['phase']` for the target. |
@@ -114,8 +113,11 @@ without changing state. Bare calls run no action. Completion or initial-state `q
 deletes only this SoP's metadata key; another call can start again on the same issue.
 `--help` is read-only: replay the last emitted decision JSON for this issue and SoP,
 including its output and options; for a new or completed SoP, print the `SKILL.md`
-body after YAML frontmatter without writing metadata. Cache each emitted decision,
-including callbacks that stay in one state, and the latest decision per state for HTML.
+body after YAML frontmatter without writing metadata. Keep one current status record
+per SoP, including only its latest decision and required procedure facts. Replace that
+record on each recall; do not accumulate decision history or persist diagram caches.
+Status and recovery use only this issue metadata record. Do not read, write or
+fall back to local status files, and do not include native run identifiers.
 On another checkout, replayed commands use the receiving Python and wrapper path;
 help imports no controller and runs no checks or actions. State access errors must
 fail visibly, never start a new local run. Metadata writes replace only this key,
@@ -202,14 +204,14 @@ targets and symbolic branches, with state meanings, the issue ID and SoP name an
 visible in thumbnails. Use a CSS orientation media query: in landscape, fit SVGs
 to the available width without horizontal scrolling; in portrait, keep their natural
 size and allow horizontal scrolling. This follows the HTML viewport and updates
-automatically on resize or rotation. Selecting a state shows formatted agent JSON; visited states
-replay their emitted decision, while unvisited states show declared guidance and
-static options without executing workflow code. Selecting an edge shows the agent's
+automatically on resize or rotation. Selecting the current state shows its latest
+agent JSON; other states show declared guidance and static options without
+executing workflow code. Selecting an edge shows the agent's
 option JSON followed by its rendered DOT logic, before issue/SoP metadata.
 State selection shows the diagrams for its available options. Read docstrings with
-`inspect.getdoc`; omit function definitions from the preview. Cache diagrams for
-dynamic options when the workflow resolves them; do not rerun option factories
-to render a preview.
+`inspect.getdoc`; omit function definitions from the preview. Keep diagrams for
+dynamic options only in the current invocation when the workflow resolves them;
+do not rerun option factories to render a preview.
 Install Graphviz on the CLI/daemon host and expose `dot` on PATH (on Debian/Ubuntu:
 `sudo apt-get install --no-install-recommends graphviz`). Like the sandbox helper's
 external `bwrap` lookup, the renderer finds the system executable and calls it directly.
@@ -223,7 +225,7 @@ clicking the artifact must require no external scripts, fonts, network or browse
 layout engine. Keep missing-tool and invalid-DOT errors actionable; artifact failures
 must leave workflow results intact.
 Omit HTML help controls.
-Cache dynamic option targets when resolving choices so previews never repeat
+Keep dynamic option targets in the current invocation so previews never repeat
 option factories. DEBUG defaults
 to `false`. For an existing HTML view, export read-only `artifacts(context)` from
 `controller.py` returning `{stable_filename: html_string}`; the wrapper updates

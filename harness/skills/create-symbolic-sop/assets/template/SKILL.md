@@ -11,7 +11,7 @@ script and job logs available before continuing.
 Use `--help` to replay the saved decision without running checks or actions.
 Before starting or after completion, it shows these instructions without starting
 a run. Required inputs are native `MULTICA_ISSUE_ID` and
-`MULTICA_WORKSPACE_ID`; a task ID is optional.
+`MULTICA_WORKSPACE_ID`.
 
 Supply the Python test script at configuration. It is bound to this workspace:
 `validate() -> bool` checks the delivery format, `score(delivery) -> number` ranks

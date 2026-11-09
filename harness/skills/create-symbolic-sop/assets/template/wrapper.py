@@ -2,8 +2,6 @@
 """Reusable SOP runtime. Customize controller.py; run this file for JSON guidance."""
 
 import argparse
-from datetime import datetime, timezone
-import hashlib
 from html import escape
 import importlib.util
 import json
@@ -14,16 +12,13 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tempfile
 import textwrap
-import traceback
 import uuid
 from types import SimpleNamespace
 from urllib.request import Request, urlopen
 
 
 ROOT = Path(__file__).resolve().parent
-ERROR_REPO = ""
 RULES = {
     "identity": "MULTICA_ISSUE_ID and MULTICA_WORKSPACE_ID identify the shared issue state.",
     "state": "Each SOP owns one issue metadata key, sop.<skill-name>, containing serialized JSON.",
@@ -115,19 +110,6 @@ def multica(*args):
     return json.loads(result.stdout)
 
 
-def atomic_write(path, content):
-    fd, temporary = tempfile.mkstemp(prefix="." + path.name + ".", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as output:
-            output.write(content)
-            output.flush()
-            os.fsync(output.fileno())
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-
-
 def state_key(context):
     key = 'sop.' + context['skill']
     if len(key) > 64:
@@ -147,22 +129,12 @@ def read_state(context, phases=None):
     if (not isinstance(state, dict) or not isinstance(state.get('status'), str) or
             phases is not None and state['status'] not in phases):
         raise SOPError('invalid_state', 'SOP metadata must contain a declared status')
-    # Saved decisions follow the receiving checkout when another machine resumes.
-    runtime = state.get('runtime')
-
-    def rebind(value):
-        if isinstance(value, dict):
-            for key, part in value.items():
-                if key == 'command' and isinstance(part, str) and runtime:
-                    words = shlex.split(part)
-                    if words[:2] == runtime:
-                        value[key] = shlex.join([sys.executable, str(ROOT / 'wrapper.py'), *words[2:]])
-                else:
-                    rebind(part)
-        elif isinstance(value, list):
-            for part in value:
-                rebind(part)
-    rebind(state)
+    # Replayed choices use the receiving checkout after an issue handoff.
+    for choice in state.get('output', {}).get('next_step', []):
+        if choice.get('command'):
+            words = shlex.split(choice['command'])
+            if words[:2] == state.get('runtime'):
+                choice['command'] = shlex.join([sys.executable, str(ROOT / 'wrapper.py'), *words[2:]])
     return state
 
 
@@ -258,8 +230,8 @@ def transition(args, context, controller):
     receipt = None
     if phase in {'error', 'blocked'}:
         receipt = state['recovery']
-        if any(receipt[key] != context[key] for key in ('workspace_id', 'issue_id')):
-            raise SOPError('wrong_recovery', 'Assertion receipt belongs to another issue or workspace')
+        if receipt['issue_id'] != context['issue_id']:
+            raise SOPError('wrong_recovery', 'Assertion receipt belongs to another issue')
         if phase == 'blocked' or args.event == 'init':
             return recovery_result(receipt, before, context)
         if args.event != 'repaired':
@@ -269,7 +241,6 @@ def transition(args, context, controller):
         args = arguments(receipt['argv'], controller)
     if args.error is not None or args.error_file is not None:
         message = args.error if args.error is not None else args.error_file.read_text(encoding='utf-8')
-        context['reported_error'] = message
         hint = next((hint for pattern, hint in PATTERNS if re.search(pattern, message)), None)
         raise SOPError('action_error', message or 'Agent reported an empty error', hint)
     if args.event == 'quit' and phase == workflow.initial and not args.extra:
@@ -327,10 +298,10 @@ def transition(args, context, controller):
     except AssertionError as error:
         if 'assertion' not in context:
             raise
-        clean_context = json.loads(json.dumps({k: v for k, v in context.items() if k not in {'cli', 'error', 'args', 'save_state', 'state'}}, default=str))
-        failure = exception_result(error, clean_context)
+        failure = exception_result(error, context)
         status = 'blocked' if receipt else 'error'
-        saved = {**clean_context, 'phase': phase, 'args': vars(args),
+        saved = {'issue_id': context['issue_id'], 'phase': phase, 'argv': context['argv'],
+                 'assertion': context['assertion'],
                  'error': failure['error'], 'external_write_attempted': failure['external_write_attempted']}
         state.update(status=status, recovery=saved)
         result = recovery_result(saved, status, context)
@@ -383,50 +354,6 @@ def redact(value):
     return clean(value)
 
 
-def github(*argv, payload=None):
-    result = subprocess.run(["gh", "api", "--hostname", "github.com", *argv],
-                            input=json.dumps(payload) if payload is not None else None,
-                            capture_output=True, text=True, timeout=10,
-                            env={**os.environ, "GH_PROMPT_DISABLED": "1"})
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or f"gh exited {result.returncode}")
-    return json.loads(result.stdout)
-
-
-def deliver_pending():
-    destination = os.environ.get("SYMBOLIC_SOP_ERROR_REPO", "").strip()
-    if not destination:
-        return {"status": "local", "reason": "external reporting is not configured"}
-    outbox = ROOT / ".errors"
-    if not outbox.exists():
-        return {"status": "none"}
-    try:
-        pending = sorted(outbox.glob("*.json"))
-        if not pending:
-            return {"status": "none"}
-        path = pending[0]
-        incident = json.loads(path.read_text(encoding="utf-8"))
-        repo = destination
-        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
-            raise ValueError("Configure SYMBOLIC_SOP_ERROR_REPO as owner/repo")
-        metadata = github("repos/" + repo)
-        if metadata.get("private") is not True or metadata.get("full_name", "").lower() != repo.lower():
-            raise ValueError("Error destination must be the configured private repository")
-        details = json.dumps(redact(incident), indent=2, ensure_ascii=True)
-        chunks = [details[start:start + 18000] for start in range(0, len(details), 18000)]
-        issue = github("--method", "POST", f"repos/{repo}/issues", "--input", "-", payload={
-            "title": f"[symbolic-sop] {incident['code']} ({incident['incident_id']})",
-            "body": "Error report (JSON; continuation in comments if needed):\n\n" + chunks[0],
-        })
-        for chunk in chunks[1:]:
-            github("--method", "POST", f"repos/{repo}/issues/{issue['number']}/comments", "--input", "-",
-                   payload={"body": "Error report continued:\n\n" + chunk})
-        path.unlink()
-        return {"status": "sent", "incident_id": incident["incident_id"], "issue_url": issue["html_url"], "remaining": len(pending) - 1}
-    except Exception as error:
-        return redact({"status": "queued", "error": f"{type(error).__name__}: {error}", "outbox": str(outbox)})
-
-
 def exception_result(error, context):
     assertion_failure = isinstance(error, AssertionError) and bool(context.get('assertion'))
     hint = error.hint if isinstance(error, SOPError) else None
@@ -440,17 +367,6 @@ def exception_result(error, context):
         detail["rules"] = RULES
         detail["workflow_rules"] = context.get("controller_rules", "Read controller.py; preserve the workflow contract.")
         detail["fixture_request"] = "Preserve the failing argv, relevant Multica IDs, and prior SOP metadata; add a failing local fixture before changing the script."
-    detail["incident_id"] = uuid.uuid4().hex
-    incident = {**context, "incident_id": detail["incident_id"], "timestamp": datetime.now(timezone.utc).isoformat(),
-                "repository": os.environ.get("SYMBOLIC_SOP_ERROR_REPO", ERROR_REPO),
-                "code": code, "error": detail, "traceback": traceback.format_exc()}
-    try:
-        incident["script_sha256"] = hashlib.sha256((ROOT / "controller.py").read_bytes()).hexdigest()
-        incident["wrapper_sha256"] = hashlib.sha256((ROOT / "wrapper.py").read_bytes()).hexdigest()
-        incident["cwd"] = str(Path.cwd())
-    except OSError:
-        pass
-    incident = redact(incident)
     writes = [command for command in context.get("commands", []) if command["write"]]
     write_attempted = bool(writes) or context.get('external_write_attempted', False)
     retry = context["argv"] if not isinstance(error, SOPError) and not write_attempted else []
@@ -460,24 +376,11 @@ def exception_result(error, context):
     result = {"ok": False, "status": context.get("prior_status"), "accepted": False, "finished": False,
               "state_changed": False, "error": redact(detail),
               "next_step": recovery, "external_write_attempted": write_attempted}
-    if "native_result" in context:
-        result.update(data={key: value for key, value in context['native_result'].items()
-                            if key not in {'ok', 'error', 'instruction'}},
-                      returncode=context["native_returncode"])
-    try:
-        outbox = ROOT / ".errors"
-        outbox.mkdir(mode=0o700, exist_ok=True)
-        path = outbox / (incident["timestamp"].replace(":", "-") + "-" + incident["incident_id"] + ".json")
-        atomic_write(path, json.dumps(incident, indent=2))
-        result["reporting"] = deliver_pending()
-        result["reporting"]["current_incident_queued"] = path.exists()
-    except Exception as reporting_error:
-        result["reporting"] = redact({"status": "failed", "error": str(reporting_error), "incident": incident})
     return result
 
 
 def response(result):
-    """Agent guidance; diagnostics remain in the saved incident."""
+    """Agent guidance for the current issue state."""
     step = result['next_step']
     instruction = step['instruction']
     if result['status'] is not None:
@@ -561,16 +464,15 @@ def state_artifact(context, controller, result):
                                      for label, target in branch.routes.items())
     edges = {(state.name, option.name): option.target for state in states.values()
              if not callable(state.options) for option in state.options}
-    for source, targets in context.get('state', {}).get('option_targets', {}).items():
+    for source, targets in context.get('option_targets', {}).items():
         edges.update({(source, name): target for name, target in targets.items()})
-    logic = dict(context.get('state', {}).get('option_diagrams', {}))
+    logic = dict(context.get('option_diagrams', {}))
     for state in states.values():
         if not callable(state.options):
             logic[state.name] = {option.name: option.diagram() for option in state.options}
-    # Cached diagrams from the previous syntax are display data, not workflow state.
     logic = {state: {name: graph_svg(source, f'logic_{state}_{name}')
                      for name, source in charts.items()
-                     if re.match(r'\s*(?:strict\s+)?(?:di)?graph\b', source)}
+                     if source}
              for state, charts in logic.items()}
     # Keep declared forward flow ranked; return arrows must not stretch the main path.
     diagram += '\n' + '\n'.join(f'{quote(source)} -> {quote(target)} [id="option_{index}", label={quote(option)}, constraint={str(order[target] > order[source]).lower()}];'
@@ -588,12 +490,9 @@ def state_artifact(context, controller, result):
     details = {'issue_id': context['issue_id'], 'sop': controller.SOP_NAME, 'status': status}
     if result.get('error'):
         details.update(failed_state=phase, boundary=assertion.get('boundary'), error=result['error'])
-    nodes = {name: decision for name, decision in context.get('state', {}).get('decisions', {}).items()
-             if name in states}
+    nodes = {}
     for state in states.values():
-        if state.name in nodes:
-            continue
-        # Unvisited states have declared guidance only; never run their views or option factories for a preview.
+        # Other states show declared guidance; previews never run views or option factories.
         choices = [callback(option.prompt, option.callback()) for option in state.options] if not callable(state.options) else []
         if state.initial:
             choices.append(callback('Stop this SOP.', ['quit']))
@@ -673,12 +572,10 @@ def main(argv=None):
         except Exception as error:
             print(json.dumps({'status': 'error', 'error': str(error)}))
             return 1
-    task_id = os.environ.get("MULTICA_TASK_ID")
-    context = {"task_id": task_id, "agent_id": os.environ.get("MULTICA_AGENT_ID"),
+    context = {"agent_id": os.environ.get("MULTICA_AGENT_ID"),
                "issue_id": os.environ.get("MULTICA_ISSUE_ID"),
                "workspace_id": os.environ.get("MULTICA_WORKSPACE_ID"),
-               "argv": argv, "script": str(ROOT / "controller.py"),
-               "wrapper": str(ROOT / "wrapper.py")}
+               "argv": argv}
     controller = None
     try:
         for key in ('issue_id', 'workspace_id'):
@@ -701,7 +598,6 @@ def main(argv=None):
             print(help_output(context))
             return 0
         result = transition(args, context, controller)
-        result["reporting"] = deliver_pending()
     except Exception as error:
         result = exception_result(error, context)
         if context.get('quitted'):
@@ -710,9 +606,6 @@ def main(argv=None):
     if controller and context.get('state'):
         state = context['state']
         state['output'] = output
-        state.setdefault('decisions', {})[output['status']] = output
-        state.setdefault('option_diagrams', {}).update(context.get('option_diagrams', {}))
-        state.setdefault('option_targets', {}).update(context.get('option_targets', {}))
         if not context.get('state_deleted') and not context.get('state_write_failed'):
             try:
                 save_state(context, state)
