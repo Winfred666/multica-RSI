@@ -189,7 +189,7 @@ def help_output(context):
     path = state_path(context)
     if path.exists():
         state = json.loads(path.read_text(encoding='utf-8'))
-        return json.dumps(redact(state.get('output', state)), allow_nan=False)
+        return json.dumps(redact(agent_decision(state.get('output', state))), allow_nan=False)
     return (ROOT / 'SKILL.md').read_text(encoding='utf-8').split('---', 2)[2].strip()
 
 
@@ -475,6 +475,10 @@ def exception_result(error, context):
     return result
 
 
+def agent_decision(output):
+    return {key: output[key] for key in ('status', 'instruction', 'next_step', 'error', 'evidence', 'usage') if key in output}
+
+
 def response(result):
     """Agent guidance; diagnostics remain in the saved incident."""
     step = result['next_step']
@@ -489,13 +493,13 @@ def response(result):
     output = {'status': result['status'], 'instruction': instruction, 'next_step': options}
     if result.get('error'):
         output['error'] = {key: result['error'][key] for key in ('code', 'message')}
-    for key in ('data', 'evidence', 'usage'):
+    for key in ('evidence', 'usage'):
         value = result.get(key)
         if isinstance(value, dict):
             value = {k: v for k, v in value.items() if v not in (None, '', [], {})}
         if value not in (None, '', [], {}):
             output[key] = value
-    return output
+    return agent_decision(output)
 
 
 def upload_artifact(filename, content):
@@ -578,7 +582,8 @@ def state_artifact(context, controller, result):
     details = {'issue_id': os.environ['MULTICA_ISSUE_ID'], 'task_id': context['task_id'], 'status': status}
     if result.get('error'):
         details.update(failed_state=phase, boundary=assertion.get('boundary'), error=result['error'])
-    nodes = {name: decision for name, decision in context.get('state', {}).get('decisions', {}).items()
+    nodes = {name: agent_decision(decision)
+             for name, decision in context.get('state', {}).get('decisions', {}).items()
              if name in states}
     for state in states.values():
         if state.name in nodes:
@@ -590,7 +595,7 @@ def state_artifact(context, controller, result):
         nodes[state.name] = response({'status': state.name,
                                      'next_step': {**callback(state.description), 'alternatives': choices}})
     if context.get('output'):
-        nodes[phase] = context['output']
+        nodes[phase] = agent_decision(context['output'])
     links = {f'option_{index}': {
         'decision': next((option for option in nodes[source]['next_step']
                           if shlex.split(option['command'])[2] == name), None),

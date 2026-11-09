@@ -111,7 +111,9 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   Native small-circle start and double-circle stop markers have non-clickable boundary links. The creator's
   `scripts/check.py` validates a selected package and checks its shared runtime in
   temporary template fixtures. CLI `--help` replays a recorded decision or shows
-  the skill body without starting a task.
+  the skill body without starting a task. The creator/template keeps `data`
+  internal for checks and recovery; agent decisions, help replay and HTML decision
+  previews expose selected facts through state instructions or option descriptions.
 
 - **Workspace packages.** `workspace package`, `workspace export` and
   `workspace import` expose the native package API with paged summaries, JSON

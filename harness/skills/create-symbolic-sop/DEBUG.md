@@ -70,7 +70,9 @@ help in the terminal, since `cli` expects JSON. Inspect relevant read-only JSON
 output for response fields. Other command groups such as `multica agent` are
 outside this helper's `issue` prefix; read their help before writing a helper.
 
-Return optional `data`, an `instruction`, or `accepted: False` to stay in the current
+Keep `data` internal. Export only facts needed for the next choice through state
+instructions or option prompts. CLI, help and HTML share the same filtered decision
+schema. Return optional `data`, an `instruction`, or `accepted: False` to stay in the current
 state. For scripted state selection, target a declared `Branch` and return `phase`
 to select one of its routes; the target state's precheck still runs. Agent JSON has `status`, a common state
 `instruction`, and `next_step`: a list of options, each with its own `instruction`

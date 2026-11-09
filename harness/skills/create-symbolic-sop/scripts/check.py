@@ -44,7 +44,7 @@ from sop import Option, State, Workflow
 def observe(context):
     p = Path('observations')
     p.write_text(p.read_text() + 'x' if p.exists() else 'x')
-    return {'data': {'output': p.read_text()}}
+    return {'instruction': 'Output: ' + p.read_text(), 'data': {'internal': 'private-view-data'}}
 workflow = Workflow(
     State('start', 'Start', initial=True, view=observe, options=(
         Option('refresh', 'start', 'Refresh output'), Option('done', 'finished', 'Finish'))),
@@ -52,13 +52,24 @@ workflow = Workflow(
 ''')
         initial = self.run_sop()
         updated = self.run_sop('refresh')
-        self.assertNotEqual(initial['data'], updated['data'])
+        self.assertNotEqual(initial['instruction'], updated['instruction'])
+        self.assertNotIn('data', initial)
+        self.assertNotIn('data', updated)
         path = self.package / '.state/protocol-fixture.json'
+        state = json.loads(path.read_text())
+        state['output']['data'] = {'internal': 'private-legacy-data'}
+        state['output']['workspace'] = 'private-workspace'
+        path.write_text(json.dumps(state))
         saved, modified = path.read_bytes(), path.stat().st_mtime_ns
         self.assertEqual(self.run_sop('--help'), updated)
         self.assertEqual((self.root / 'observations').read_text(), 'xx')
         self.assertEqual(path.read_bytes(), saved)
         self.assertEqual(path.stat().st_mtime_ns, modified)
+        state.pop('output')
+        path.write_text(json.dumps(state))
+        saved = path.read_bytes()
+        self.assertEqual(self.run_sop('--help'), {'status': 'start'})
+        self.assertEqual(path.read_bytes(), saved)
         self.run_sop('done')
         self.assertFalse(path.exists())
         self.assertEqual(self.run_sop('--help', json_output=False), body)
@@ -142,15 +153,26 @@ workflow = Workflow(
         self.assertTrue(all(set(option) == {'instruction', 'command'} for option in initial['next_step']))
         configured = self.run_sop('configure', '--test-script', str(script))
         self.assertEqual(configured['status'], 'variant')
-        self.assertNotIn('workspace', configured['data'])
+        self.assertNotIn('data', configured)
+        self.assertNotIn(str(self.root), configured['instruction'])
         started = self.run_sop('test', '--description', 'Measure this solution.', cwd=elsewhere)
         self.assertEqual(started['status'], 'test')
-        job = Path(started['data']['job'])
+        state = json.loads((self.package / '.state/protocol-fixture.json').read_text())
+        job = Path(state['job'])
+        self.assertNotIn('data', started)
+        self.assertIn(str(job / 'stderr.log'), started['instruction'])
         self.assertEqual(json.loads((job / 'job.json').read_text())['cwd'], str(self.root))
         result = self.run_sop('continue')
         self.assertEqual(result['status'], 'review')
-        self.assertEqual(result['data']['delivery'], {'score': 1})
-        self.assertEqual(self.run_sop('record', '--review', 'The measured result meets the exit condition.')['status'], 'finished')
+        self.assertNotIn('data', result)
+        self.assertIn('Result: {"score": 1}', result['instruction'])
+        self.assertIn('stdout.log:\n', result['instruction'])
+        state = json.loads((self.package / '.state/protocol-fixture.json').read_text())
+        self.assertEqual(state['test_result']['delivery'], {'score': 1})
+        completed = self.run_sop('record', '--review', 'The measured result meets the exit condition.')
+        self.assertEqual(completed['status'], 'finished')
+        self.assertNotIn('data', completed)
+        self.assertIn('Result: {"score": 1}', completed['instruction'])
         self.assertFalse((self.package / '.state/protocol-fixture.json').exists())
         script.write_text(script.read_text().replace('def validate(): return True', 'def validate(): return False'))
         self.run_sop()
@@ -167,7 +189,9 @@ workflow = Workflow(
 from sop import Option, State, Workflow
 def write(args, context):
     p = Path('writes'); p.write_text(p.read_text() + 'x' if p.exists() else 'x')
+    return {'data': {'internal': 'private-action-data'}}
 def check(context):
+    if context['result']['data'] != {'internal': 'private-action-data'}: raise AssertionError('Lost internal result')
     if not Path('ready').exists(): raise AssertionError('Create ready')
 workflow = Workflow(
     State('start', 'Start', initial=True, options=(Option('write', 'finished', 'Write once', write),)),
@@ -176,9 +200,15 @@ workflow = Workflow(
         self.run_sop()
         failed = self.run_sop('write', valid=False)
         self.assertEqual(failed['status'], 'error')
+        self.assertNotIn('data', failed)
+        self.assertNotIn('private-action-data', json.dumps(failed))
+        saved = json.loads((self.package / '.state/protocol-fixture.json').read_text())
+        self.assertEqual(saved['recovery']['assertion']['result']['data'], {'internal': 'private-action-data'})
         self.assertEqual(self.run_sop('--help'), failed)
         (self.root / 'ready').touch()
-        self.assertEqual(self.run_sop('repaired')['status'], 'finished')
+        completed = self.run_sop('repaired')
+        self.assertEqual(completed['status'], 'finished')
+        self.assertNotIn('data', completed)
         self.assertEqual((self.root / 'writes').read_text(), 'x')
 
     def test_monitor_returns_only_appended_output(self):
@@ -213,8 +243,10 @@ workflow = Workflow(
             sys.modules.pop('monitor', None)
             controller = wrapper.load_controller()
         state = json.loads((self.package / '.state/protocol-fixture.json').read_text())
+        state['decisions']['initialize']['data'] = {'internal': 'private-legacy-data'}
+        state['decisions']['initialize']['workspace'] = 'private-workspace'
         context = {'task_id': 'protocol-fixture', 'state': state, 'argv': ['configure'],
-                   'prior_status': 'initialize', 'output': current}
+                   'prior_status': 'initialize', 'output': {**current, 'workspace': 'private-workspace'}}
         result = {'status': 'variant', 'state_changed': True, 'accepted': True}
         with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue', MULTICA_TASK_ID='protocol-fixture',
                         MULTICA_WORKSPACE_ID='fixture-workspace', MULTICA_TOKEN='fixture-token',
@@ -232,6 +264,9 @@ workflow = Workflow(
         data = json.loads(html.split('<script id="sop-data" type="application/json">', 1)[1].split('</script>', 1)[0])
         self.assertEqual(data['nodes']['initialize'], initial)
         self.assertEqual(data['nodes']['variant'], current)
+        self.assertTrue(all('data' not in decision for decision in data['nodes'].values()))
+        self.assertNotIn('private-legacy-data', html)
+        self.assertNotIn('private-workspace', html)
         self.assertEqual(data['edges']['option_0']['decision'], initial['next_step'][0])
         self.assertEqual(data['edges']['option_0']['source'], 'initialize')
         self.assertEqual(data['edges']['option_0']['option'], 'configure')
