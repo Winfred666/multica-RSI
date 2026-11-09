@@ -309,7 +309,7 @@ export function WorkspaceTab() {
   return (
     <SettingsTab title={t(($) => $.page.tabs.general)} scope="workspace">
       {readOnly ? <SettingsReadOnlyNotice wsId={workspace.id} /> : null}
-      {canManageWorkspace && <SettingsSection title={t(($) => $.workspace.transfer)}><WorkspaceTransfer wsId={workspace.id} /></SettingsSection>}
+      {canManageWorkspace && <SettingsSection title={t(($) => $.workspace.transfer)}><WorkspaceTransfer wsId={workspace.id} action="export_action" /></SettingsSection>}
       <SettingsSection
         title={t(($) => $.workspace.section_general)}
         action={
@@ -486,6 +486,9 @@ export function WorkspaceTab() {
       {membersFetched && (
         <SettingsSection title={t(($) => $.workspace.danger_zone)}>
           <SettingsCard>
+            {canManageWorkspace && <SettingsRow anchor="import" label={t(($) => $.workspace.restore_harness)}>
+              <WorkspaceTransfer wsId={workspace.id} action="import_action" />
+            </SettingsRow>}
             <SettingsRow
               anchor="leave"
               label={t(($) => $.workspace.leave_title)}

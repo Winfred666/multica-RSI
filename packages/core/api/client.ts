@@ -3185,9 +3185,9 @@ export class ApiClient {
     return parseWithFallback(raw, WorkspacePackageSchema, null as WorkspacePackage | null, { endpoint: "POST /api/workspaces/{id}/export" });
   }
 
-  async importWorkspacePackage(id: string, pkg: WorkspacePackage, selection: WorkspacePackageSelection, replaceExisting: boolean) {
+  async importWorkspacePackage(id: string, pkg: WorkspacePackage, selection: WorkspacePackageSelection, pluginExecutionToken?: string) {
     const raw = await this.fetch<unknown>(`/api/workspaces/${id}/import`, {
-      method: "POST", body: JSON.stringify({ package: pkg, selection, replace_existing: replaceExisting }), headers: workspaceHeader({ workspaceId: id }),
+      method: "POST", body: JSON.stringify({ package: pkg, selection, plugin_execution_token: pluginExecutionToken }), headers: workspaceHeader({ workspaceId: id }),
     });
     return parseWithFallback(raw, WorkspacePackageCountsSchema, null as WorkspacePackageCounts | null, { endpoint: "POST /api/workspaces/{id}/import" });
   }

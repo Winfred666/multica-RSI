@@ -38,15 +38,14 @@ function WorkspaceExport({ wsId }: { wsId: string }) {
   </div>;
 }
 
-export function WorkspaceTransfer({ wsId }: { wsId: string }) {
+export function WorkspaceTransfer({ wsId, action }: { wsId: string; action: "import_action" | "export_action" }) {
   const { t } = useT("workspace");
-  return <div className="flex flex-wrap gap-2">
-    {(["import_action", "export_action"] as const).map((action) => <Dialog key={action}>
-      <DialogTrigger render={<Button variant="outline" />}>{t(($) => $.package[action])}</DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg" showCloseButton>
-        <DialogHeader><DialogTitle>{t(($) => $.package[action])}</DialogTitle></DialogHeader>
-        {action === "import_action" ? <WorkspaceImport wsId={wsId} /> : <WorkspaceExport wsId={wsId} />}
-      </DialogContent>
-    </Dialog>)}
-  </div>;
+  const [busy, setBusy] = useState(false);
+  return <Dialog onOpenChange={(_, event) => { if (busy) event.cancel(); }}>
+    <DialogTrigger render={<Button variant="outline" />}>{t(($) => $.package[action])}</DialogTrigger>
+    <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg" showCloseButton>
+      <DialogHeader><DialogTitle>{t(($) => $.package[action])}</DialogTitle></DialogHeader>
+      {action === "import_action" ? <WorkspaceImport wsId={wsId} onBusyChange={setBusy} /> : <WorkspaceExport wsId={wsId} />}
+    </DialogContent>
+  </Dialog>;
 }

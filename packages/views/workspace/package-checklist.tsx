@@ -2,7 +2,7 @@
 
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { packageItemsOptions } from "@multica/core/workspace";
+import { packageInventoryOptions, packageItemsOptions } from "@multica/core/workspace";
 import type { WorkspacePackage, WorkspacePackageCategory, WorkspacePackageCounts, WorkspacePackageItem, WorkspacePackageSelection } from "@multica/core/api/schemas";
 import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
@@ -10,22 +10,24 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@multica/ui
 import { ChevronRight } from "@multica/ui/icons";
 import { useT } from "../i18n";
 
-function CheckRow({ label, checked, indeterminate, disabled, onChange, children }: {
-  label: string; checked: boolean; indeterminate?: boolean; disabled?: boolean;
+function CheckRow({ label, checked, indeterminate, disabled, replacing, onChange, children }: {
+  label: string; checked: boolean; indeterminate?: boolean; disabled?: boolean; replacing?: boolean;
   onChange: (checked: boolean) => void; children?: React.ReactNode;
 }) {
+  const { t } = useT("workspace");
   return <div className="flex min-w-0 items-center gap-2 py-2">
     {children}
     <label className="flex min-w-0 flex-1 items-center gap-2 text-body">
       <Checkbox checked={checked} indeterminate={indeterminate} disabled={disabled} onCheckedChange={onChange} />
       <span className="break-words">{label}</span>
+      {replacing && <span className="shrink-0 rounded bg-muted px-1.5 text-caption text-muted-foreground">{t(($) => $.package.replaces_existing)}</span>}
     </label>
   </div>;
 }
 
-function ItemGroup({ label, items, selected, onChange, disabled }: {
+function ItemGroup({ label, items, selected, onChange, disabled, replacing }: {
   label: string; items: WorkspacePackageItem[]; selected: string[];
-  onChange: (ids: string[]) => void; disabled: boolean;
+  onChange: (ids: string[]) => void; disabled: boolean; replacing: Set<string>;
 }) {
   const count = items.filter((item) => selected.includes(item.id)).length;
   return <Collapsible>
@@ -37,7 +39,7 @@ function ItemGroup({ label, items, selected, onChange, disabled }: {
       </CollapsibleTrigger>
     </CheckRow>
     <CollapsibleContent className="ml-7 border-l pl-3">{items.map((item) => <CheckRow key={item.id}
-      label={item.name} checked={selected.includes(item.id)} disabled={disabled}
+      label={item.name} checked={selected.includes(item.id)} disabled={disabled} replacing={replacing.has(item.id)}
       onChange={(checked) => onChange(checked ? [...selected, item.id] : selected.filter((id) => id !== item.id))} />)}</CollapsibleContent>
   </Collapsible>;
 }
@@ -51,8 +53,9 @@ function Category({ category, wsId, count, pkg, selected, onChange, disabled }: 
   const [expanded, setExpanded] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [error, setError] = useState(false);
-  const query = useQuery({ ...packageItemsOptions(wsId, category), enabled: expanded && !pkg });
+  const query = useQuery({ ...packageItemsOptions(wsId, category), enabled: expanded && (!pkg || category !== "agents") });
   const items = pkg?.[category] ?? query.data ?? [];
+  const replacing = new Set(pkg ? items.filter((item) => query.data?.some((existing) => category === "plugins" ? !!item.key && existing.key === item.key : existing.name === item.name)).map((item) => item.id) : []);
   const label = t(($) => $.package[category]);
   const toggleAll = async (checked: boolean) => {
     if (!checked) { onChange([]); return; }
@@ -73,9 +76,9 @@ function Category({ category, wsId, count, pkg, selected, onChange, disabled }: 
     {(error || query.isError) && <p role="alert" className="text-caption text-destructive">{t(($) => $.package.failed)}</p>}
     <CollapsibleContent className="ml-7 max-h-64 overflow-y-auto border-l pl-3">
       {!pkg && query.isPending ? <p role="status" className="py-2 text-caption">{t(($) => $.package.loading)}</p> : category === "skills" ? <>
-        <ItemGroup label={t(($) => $.package.system_skills)} items={items.filter((item) => item.is_system_skill === true)} selected={selected} onChange={onChange} disabled={disabled} />
-        <ItemGroup label={t(($) => $.package.normal_skills)} items={items.filter((item) => item.is_system_skill !== true)} selected={selected} onChange={onChange} disabled={disabled} />
-      </> : items.map((item) => <CheckRow key={item.id} label={item.name} checked={selected.includes(item.id)} disabled={disabled}
+        <ItemGroup label={t(($) => $.package.system_skills)} items={items.filter((item) => item.is_system_skill === true)} selected={selected} onChange={onChange} disabled={disabled} replacing={replacing} />
+        <ItemGroup label={t(($) => $.package.normal_skills)} items={items.filter((item) => item.is_system_skill !== true)} selected={selected} onChange={onChange} disabled={disabled} replacing={replacing} />
+      </> : items.map((item) => <CheckRow key={item.id} label={item.name} checked={selected.includes(item.id)} disabled={disabled} replacing={replacing.has(item.id)}
         onChange={(checked) => onChange(checked ? [...selected, item.id] : selected.filter((id) => id !== item.id))} />)}
     </CollapsibleContent>
   </Collapsible>;
@@ -86,6 +89,7 @@ export function PackageChecklist({ wsId, counts, pkg, selection, onChange, disab
   selection: WorkspacePackageSelection; onChange: Dispatch<SetStateAction<WorkspacePackageSelection>>; disabled?: boolean;
 }) {
   const { t } = useT("workspace");
+  const inventory = useQuery({ ...packageInventoryOptions(wsId), enabled: !!pkg && counts.system_prompt });
   return <fieldset disabled={disabled} className="min-w-0 space-y-1">
     <div className="pl-7">
       <CheckRow label={`${t(($) => $.package.projects_issues)} (${counts.projects} / ${counts.issues})`} checked={selection.projects_issues}
@@ -94,7 +98,7 @@ export function PackageChecklist({ wsId, counts, pkg, selection, onChange, disab
     </div>
     {(["agents", "skills", "mcps", "plugins"] as const).map((category) => <Category key={category} category={category} wsId={wsId} count={counts[category]} pkg={pkg}
       selected={selection[category]} onChange={(ids) => onChange((current) => ({ ...current, [category]: ids }))} disabled={disabled} />)}
-    <div className="pl-7"><CheckRow label={t(($) => $.package.system_prompt)} checked={selection.system_prompt}
+    <div className="pl-7"><CheckRow label={t(($) => $.package.system_prompt)} checked={selection.system_prompt} replacing={!!pkg && inventory.data?.counts.system_prompt}
       disabled={disabled || !counts.system_prompt} onChange={(checked) => onChange((current) => ({ ...current, system_prompt: checked }))} /></div>
   </fieldset>;
 }
