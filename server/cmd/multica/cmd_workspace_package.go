@@ -35,7 +35,7 @@ func newWorkspacePackageCommands() []*cobra.Command {
 	importCmd.Flags().String("file", "", "Package JSON file to import")
 	_ = importCmd.MarkFlagRequired("file")
 	importCmd.Flags().Bool("inspect", false, "Validate and inspect the package without importing")
-	importCmd.Flags().Bool("activate-plugins", false, "Activate hosted plugins using the current member personal access token")
+	addWorkspaceImportFlags(importCmd)
 	importCmd.MarkFlagsMutuallyExclusive("inspect", "activate-plugins")
 	for _, cmd := range []*cobra.Command{inventory, importCmd} {
 		cmd.Flags().String("category", "", "Summary category: agents, skills, mcps or plugins (import requires --inspect)")
@@ -45,13 +45,16 @@ func newWorkspacePackageCommands() []*cobra.Command {
 	for _, flag := range []string{"category", "limit", "offset"} {
 		inventory.MarkFlagsMutuallyExclusive("default", flag)
 	}
-	for _, cmd := range []*cobra.Command{export, importCmd} {
-		cmd.Flags().String("selection-file", "", "JSON file with the backend resource selection")
-	}
+	export.Flags().String("selection-file", "", "JSON file with the backend resource selection")
 	for _, cmd := range []*cobra.Command{inventory, export, importCmd} {
 		cmd.Flags().String("output", "json", "Output format: json")
 	}
 	return []*cobra.Command{inventory, export, importCmd}
+}
+
+func addWorkspaceImportFlags(cmd *cobra.Command) {
+	cmd.Flags().String("selection-file", "", "JSON file with the backend resource selection")
+	cmd.Flags().Bool("activate-plugins", false, "Activate hosted plugins using the member PAT (agent tasks use the runtime's private PAT)")
 }
 
 func readWorkspacePackageJSON(path string) (json.RawMessage, error) {
@@ -70,37 +73,25 @@ func runWorkspacePackage(cmd *cobra.Command, args []string) error {
 	if output, _ := cmd.Flags().GetString("output"); output != "json" {
 		return fmt.Errorf("--output must be json")
 	}
-	body := map[string]any{}
-	var pluginExecutionToken string
-	var selection json.RawMessage = []byte(`{}`)
-	if file, _ := cmd.Flags().GetString("selection-file"); file != "" {
-		raw, err := readWorkspacePackageJSON(file)
-		if err != nil {
-			return err
-		}
-		selection = raw
-		body["selection"] = selection
-	}
+	var body map[string]any
+	var selection json.RawMessage
+	var err error
 	suffix := "/" + cmd.Name()
 	inspect, _ := cmd.Flags().GetBool("inspect")
 	if cmd.Name() == "import" {
 		file, _ := cmd.Flags().GetString("file")
-		pkg, err := readWorkspacePackageJSON(file)
-		if err != nil {
-			return err
-		}
-		body["package"] = pkg
+		body, err = buildWorkspaceImportBody(cmd, file)
 		if inspect {
 			suffix += "/inspect"
-		} else {
-			if activate, _ := cmd.Flags().GetBool("activate-plugins"); activate {
-				pluginExecutionToken = resolveToken(cmd)
-				if len(pluginExecutionToken) > 256 || !strings.HasPrefix(pluginExecutionToken, "mul_") {
-					return fmt.Errorf("--activate-plugins requires a member personal access token (mul_...)")
-				}
-				body["plugin_execution_token"] = pluginExecutionToken
-			}
 		}
+	} else if cmd.Name() == "export" {
+		selection, err = readWorkspaceSelection(cmd)
+		if selection == nil {
+			selection = json.RawMessage(`{}`)
+		}
+	}
+	if err != nil {
+		return err
 	}
 	if cmd.Name() == "package" || inspect {
 		category, _ := cmd.Flags().GetString("category")
@@ -132,14 +123,17 @@ func runWorkspacePackage(cmd *cobra.Command, args []string) error {
 	if wsID == "" {
 		return fmt.Errorf("workspace ID is required")
 	}
-	client, err := newAPIClient(cmd)
+	client, err := newWorkspaceAPIClient(cmd)
 	if err != nil {
 		return err
 	}
 	client.WorkspaceID = wsID
 	if cmd.Name() == "import" && !inspect {
-		fmt.Fprintln(cmd.ErrOrStderr(), "Replaces matching skill/MCP names and plugin keys in this workspace.")
-		fmt.Fprintf(cmd.ErrOrStderr(), "Plugin activation: --activate-plugins=%t (default: false). Opt in with --activate-plugins.\n", pluginExecutionToken != "")
+		response, err := importWorkspacePackage(cmd, client, wsID, body)
+		if err != nil {
+			return err
+		}
+		return cli.PrintJSON(cmd.OutOrStdout(), response)
 	}
 	ctx, cancel := cli.APIContext(cmd.Context())
 	defer cancel()
@@ -155,10 +149,6 @@ func runWorkspacePackage(cmd *cobra.Command, args []string) error {
 		err = client.PostJSON(ctx, path, request, &response)
 	}
 	if err != nil {
-		if pluginExecutionToken != "" {
-			// A proxy may echo the import request, including its credential.
-			return fmt.Errorf("workspace import: %s", strings.ReplaceAll(err.Error(), pluginExecutionToken, "[REDACTED]"))
-		}
 		return err
 	}
 	if file, _ := cmd.Flags().GetString("file"); cmd.Name() == "export" && file != "" {
@@ -173,4 +163,57 @@ func runWorkspacePackage(cmd *cobra.Command, args []string) error {
 		return out.Close()
 	}
 	return cli.PrintJSON(cmd.OutOrStdout(), response)
+}
+
+func readWorkspaceSelection(cmd *cobra.Command) (json.RawMessage, error) {
+	if file, _ := cmd.Flags().GetString("selection-file"); file != "" {
+		return readWorkspacePackageJSON(file)
+	}
+	return nil, nil
+}
+
+func buildWorkspaceImportBody(cmd *cobra.Command, file string) (map[string]any, error) {
+	pkg, err := readWorkspacePackageJSON(file)
+	if err != nil {
+		return nil, err
+	}
+	selection, err := readWorkspaceSelection(cmd)
+	if err != nil {
+		return nil, err
+	}
+	body := map[string]any{"package": pkg}
+	if selection != nil {
+		body["selection"] = selection
+	}
+	if activate, _ := cmd.Flags().GetBool("activate-plugins"); activate {
+		if inDaemonManagedExecutionContext() {
+			body["activate_plugins"] = true
+		} else {
+			token := resolveToken(cmd)
+			if len(token) > 256 || !strings.HasPrefix(token, "mul_") {
+				return nil, fmt.Errorf("--activate-plugins requires a member personal access token (mul_...)")
+			}
+			body["plugin_execution_token"] = token
+		}
+	}
+	return body, nil
+}
+
+func importWorkspacePackage(cmd *cobra.Command, client *cli.APIClient, wsID string, body map[string]any) (json.RawMessage, error) {
+	activate, _ := cmd.Flags().GetBool("activate-plugins")
+	fmt.Fprintln(cmd.ErrOrStderr(), "Replaces matching skill/MCP names and plugin keys in this workspace.")
+	fmt.Fprintf(cmd.ErrOrStderr(), "Plugin activation: --activate-plugins=%t (default: false). Opt in with --activate-plugins.\n", activate)
+	client.WorkspaceID = wsID
+	ctx, cancel := cli.APIContext(cmd.Context())
+	defer cancel()
+	var response json.RawMessage
+	err := client.PostJSON(ctx, "/api/workspaces/"+url.PathEscape(wsID)+"/import", body, &response)
+	if err != nil {
+		if token, _ := body["plugin_execution_token"].(string); token != "" {
+			// A proxy may echo the import request, including its credential.
+			return nil, fmt.Errorf("workspace import: %s", strings.ReplaceAll(err.Error(), token, "[REDACTED]"))
+		}
+		return nil, err
+	}
+	return response, nil
 }

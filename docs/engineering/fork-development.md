@@ -80,10 +80,13 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## CLI and daemon
 
-- **Agent workspace creation.** Any active agent can run `multica workspace create`
-  through its local daemon. The daemon validates the task credential and uses its
-  private member PAT; the created workspace belongs to that PAT's owner. The
-  originating task stays bound to its original workspace.
+- **Agent workspace operations.** Active tasks use the local daemon for workspace
+  create, list/get, package/default, export and import/inspect. The daemon validates
+  the task credential and forwards only these operations with its private member
+  PAT. Backend membership and owner/admin checks still apply; new workspaces belong
+  to the PAT's owner. The originating task stays bound to its original workspace.
+  `workspace create --import-file package.json` reuses import and `--selection-file`;
+  it prints the created workspace even if import fails, so import can be retried.
 
 - **Remote SOPs.** `multica remote-sop ISSUE SOP [args...]` posts
   `/note !sop <name> <JSON argv>`. Try `--help` as the first SOP argument.
@@ -129,8 +132,9 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 - **Workspace packages.** `workspace package`, `workspace export` and
   `workspace import` expose the native package API with paged summaries, JSON
   selection files and inactive imported agents. See [usage and defaults](workspace-packages.md#cli).
-  Import can activate hosted plugins with the current member PAT using
-  `--activate-plugins` (default false); stderr reports the setting.
+  Import and create-with-import can activate hosted plugins with `--activate-plugins`
+  (default false); stderr reports the setting. Human commands use the current member
+  PAT; for agent tasks the daemon injects its PAT without returning it to the CLI.
 
 - **Plugin commands.** You can inspect execution credentials, enable or disable
   hosted execution, and configure installed plugins:

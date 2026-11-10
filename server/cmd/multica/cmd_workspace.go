@@ -181,6 +181,8 @@ func init() {
 	workspaceCreateCmd.Flags().Bool("context-stdin", false, "Read context from stdin (preserves multi-line content verbatim)")
 	workspaceCreateCmd.Flags().String("issue-prefix", "", "Issue prefix (uppercased server-side)")
 	workspaceCreateCmd.Flags().String("output", "json", "Output format: table or json")
+	workspaceCreateCmd.Flags().String("import-file", "", "Import a workspace package after creation")
+	addWorkspaceImportFlags(workspaceCreateCmd)
 	workspaceGetCmd.Flags().String("output", "json", "Output format: table or json")
 	workspaceMemberListCmd.Flags().String("output", "table", "Output format: table or json")
 	workspaceMemberInviteCmd.Flags().String("role", "member", "Member role to grant: member or admin (owner is not allowed)")
@@ -223,13 +225,14 @@ type workspaceSummary struct {
 // is shared by `list` and `switch` so both see the same access-controlled view
 // of workspaces.
 func fetchWorkspaces(ctx context.Context, cmd *cobra.Command) ([]workspaceSummary, error) {
-	serverURL := resolveServerURL(cmd)
-	token := resolveToken(cmd)
-	if token == "" {
+	client, err := newWorkspaceAPIClient(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if client.Token == "" {
 		return nil, fmt.Errorf("not authenticated: run 'multica login' first%s", daemonPortOnlyContextHint())
 	}
-
-	client := cli.NewAPIClient(serverURL, "", token)
+	client.WorkspaceID = ""
 	var workspaces []workspaceSummary
 	if err := client.GetJSON(ctx, "/api/workspaces", &workspaces); err != nil {
 		return nil, fmt.Errorf("list workspaces: %w", err)
@@ -333,29 +336,55 @@ func runWorkspaceCreate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	client, err := newAPIClient(cmd)
+	file, _ := cmd.Flags().GetString("import-file")
+	var importBody map[string]any
+	if file != "" {
+		importBody, err = buildWorkspaceImportBody(cmd, file)
+		if err != nil {
+			return err
+		}
+	} else if cmd.Flags().Changed("selection-file") || cmd.Flags().Changed("activate-plugins") {
+		return fmt.Errorf("--selection-file and --activate-plugins require --import-file")
+	}
+
+	client, err := newWorkspaceAPIClient(cmd)
 	if err != nil {
 		return err
 	}
 	client.WorkspaceID = ""
-	path := "/api/workspaces"
-	if inDaemonManagedExecutionContext() {
-		port := os.Getenv("MULTICA_DAEMON_PORT")
-		if port == "" {
-			return fmt.Errorf("workspace creation by an agent requires its runtime's MULTICA_DAEMON_PORT")
-		}
-		client.BaseURL = "http://127.0.0.1:" + port
-		path = "/workspace/create"
-	}
 
 	ctx, cancel := cli.APIContext(context.Background())
 	defer cancel()
 
 	var ws map[string]any
-	if err := client.PostJSON(ctx, path, body, &ws); err != nil {
+	if err := client.PostJSON(ctx, "/api/workspaces", body, &ws); err != nil {
 		return fmt.Errorf("create workspace: %w", err)
 	}
-	return printWorkspace(cmd, ws)
+	if err := printWorkspace(cmd, ws); err != nil {
+		return err
+	}
+	if importBody != nil {
+		wsID := strVal(ws, "id")
+		if _, err := importWorkspacePackage(cmd, client, wsID, importBody); err != nil {
+			return cli.WithUserMessage(fmt.Sprintf("workspace %s created, but import failed: %s\nRetry with 'multica workspace import %s --file <package>'.", wsID, cli.FormatError(err, false), wsID), err)
+		}
+	}
+	return nil
+}
+
+func newWorkspaceAPIClient(cmd *cobra.Command) (*cli.APIClient, error) {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if inDaemonManagedExecutionContext() {
+		port := os.Getenv("MULTICA_DAEMON_PORT")
+		if port == "" {
+			return nil, fmt.Errorf("workspace operations by an agent require its runtime's MULTICA_DAEMON_PORT")
+		}
+		client.BaseURL = "http://127.0.0.1:" + port
+	}
+	return client, nil
 }
 
 // resolveWorkspaceByIDOrSlug looks up a workspace in the caller's accessible
@@ -497,7 +526,7 @@ func runWorkspaceGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("workspace ID is required: pass an id/slug/prefix as argument or set MULTICA_WORKSPACE_ID")
 	}
 
-	client, err := newAPIClient(cmd)
+	client, err := newWorkspaceAPIClient(cmd)
 	if err != nil {
 		return err
 	}
