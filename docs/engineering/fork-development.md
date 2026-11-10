@@ -58,9 +58,6 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## Frontend
 
-- **Mobile inputs.** Manual issue creation scrolls as one form on phones, with
-  space reserved for the description. Focused touch annotation notes stay visible
-  when the keyboard covers their source quote; desktop layout and positioning stay unchanged.
 - **Issue tree.** You can inspect parent/child issues, expand collapsed stacks,
   and preview collaborators' messages and runs, with context-usage rings,
   compression counts and saved pan/zoom. Issue-owned sub-workspaces appear as
