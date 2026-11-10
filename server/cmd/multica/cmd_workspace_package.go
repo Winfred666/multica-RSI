@@ -54,7 +54,7 @@ func newWorkspacePackageCommands() []*cobra.Command {
 
 func addWorkspaceImportFlags(cmd *cobra.Command) {
 	cmd.Flags().String("selection-file", "", "JSON file with the backend resource selection")
-	cmd.Flags().Bool("activate-plugins", false, "Activate hosted plugins using the member PAT (agent tasks use the runtime's private PAT)")
+	cmd.Flags().Bool("activate-plugins", false, "Activate hosted plugins using the member PAT")
 }
 
 func readWorkspacePackageJSON(path string) (json.RawMessage, error) {
@@ -123,7 +123,7 @@ func runWorkspacePackage(cmd *cobra.Command, args []string) error {
 	if wsID == "" {
 		return fmt.Errorf("workspace ID is required")
 	}
-	client, err := newWorkspaceAPIClient(cmd)
+	client, err := newAPIClient(cmd)
 	if err != nil {
 		return err
 	}
@@ -186,15 +186,11 @@ func buildWorkspaceImportBody(cmd *cobra.Command, file string) (map[string]any, 
 		body["selection"] = selection
 	}
 	if activate, _ := cmd.Flags().GetBool("activate-plugins"); activate {
-		if inDaemonManagedExecutionContext() {
-			body["activate_plugins"] = true
-		} else {
-			token := resolveToken(cmd)
-			if len(token) > 256 || !strings.HasPrefix(token, "mul_") {
-				return nil, fmt.Errorf("--activate-plugins requires a member personal access token (mul_...)")
-			}
-			body["plugin_execution_token"] = token
+		token := resolveToken(cmd)
+		if len(token) > 256 || !strings.HasPrefix(token, "mul_") {
+			return nil, fmt.Errorf("--activate-plugins requires a member personal access token (mul_...)")
 		}
+		body["plugin_execution_token"] = token
 	}
 	return body, nil
 }

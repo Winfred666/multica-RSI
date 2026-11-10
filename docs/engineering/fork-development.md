@@ -85,11 +85,12 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## CLI and daemon
 
-- **Agent workspace operations.** Active tasks use the local daemon for workspace
-  create, list/get, package/default, export and import/inspect. The daemon validates
-  the task credential and forwards only these operations with its private member
-  PAT. Backend membership and owner/admin checks still apply; new workspaces belong
-  to the PAT's owner. The originating task stays bound to its original workspace.
+- **Workspace operations.** Workspace commands require a member context. Ordinary
+  daemon tasks and task tokens are refused with a pointer to the explicit
+  `multica-workspace-manipulation` skill. The local daemon has no workspace PAT
+  proxy. Task credentials stay bound to their original workspace; backend APIs
+  and membership checks are unchanged. Member plugin activation is opt-in and
+  uses only the member PAT authenticating the CLI.
   `workspace create --import-file package.json` reuses import and `--selection-file`;
   it prints the created workspace even if import fails, so import can be retried.
 
