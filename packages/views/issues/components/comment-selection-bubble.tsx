@@ -27,6 +27,9 @@ export function CommentSelectionBubble({ range, source, children, owner, markerR
     let revision = 0;
     const update = () => {
       const currentRevision = ++revision;
+      // A mobile keyboard can cover the quote without ending note editing.
+      const touchEditing = !marker && window.matchMedia("(pointer: coarse)").matches &&
+        element.contains(document.activeElement);
       // Keep visibility tied to the real quote, not a zero-width point outside
       // the scroll container. Markers move horizontally but never clamp/flip
       // vertically: doing so piles unrelated annotations at the viewport edge.
@@ -48,12 +51,12 @@ export function CommentSelectionBubble({ range, source, children, owner, markerR
             };
           }),
           shift({ padding: 8, mainAxis: false, crossAxis: true }), hide(),
-        ] : [offset(8), flip({ padding: 8, altBoundary: true }), shift({ padding: 8, altBoundary: true }), hide()],
+        ] : [offset(8), flip({ padding: 8, altBoundary: true }), shift({ padding: 8, altBoundary: !touchEditing, crossAxis: touchEditing }), hide()],
       }).then(({ x, y, middlewareData }) => {
         if (!active || currentRevision !== revision || !element.isConnected) return;
         const rect = range.getBoundingClientRect();
         element.style.visibility = !source.isConnected || !range.startContainer.isConnected ||
-          (rect.width === 0 && rect.height === 0) || middlewareData.hide?.referenceHidden ? "hidden" : "visible";
+          (rect.width === 0 && rect.height === 0) || (!touchEditing && middlewareData.hide?.referenceHidden) ? "hidden" : "visible";
         element.style.left = `${x}px`;
         element.style.top = `${y}px`;
         if (element.style.visibility === "visible") onPositioned?.();

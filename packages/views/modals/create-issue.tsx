@@ -1039,8 +1039,8 @@ export function ManualCreatePanel({
               />
             </div>
 
-            {/* Description — takes remaining space */}
-            <div {...descDropZoneProps} className="relative flex flex-1 min-h-0 overflow-y-auto px-5">
+            {/* On phones the whole form scrolls, so the description cannot collapse. */}
+            <div {...descDropZoneProps} className="relative flex flex-1 min-h-0 overflow-y-auto px-5 max-sm:min-h-40 max-sm:flex-[1_0_auto] max-sm:overflow-visible">
               <ContentEditor
                 ref={descEditorRef}
                 defaultValue={draft.manual.description}
@@ -1548,18 +1548,18 @@ export function ManualCreatePanel({
  *  visual treatment without duplicating it. */
 export function manualDialogContentClass(isExpanded: boolean) {
   return cn(
-    "p-0 gap-0 flex flex-col overflow-hidden",
+    "p-0 gap-0 flex flex-col overflow-hidden max-sm:overflow-y-auto",
     "!top-1/2 !left-1/2 !-translate-x-1/2",
     "!transition-all !duration-300 !ease-out",
     // Phone gutter — see the matching note in create-issue-dialog.tsx: the
     // `!important` widths below also override DialogContent's
     // `max-w-[calc(100%-2rem)]`, leaving the card edge to edge on a phone
-    // (MUL-6236). `!h-96` stays a hard height; it already fits the shortest
-    // phone we support.
+    // (MUL-6236). Phones use the available viewport height instead of the
+    // desktop's fixed height.
     "!w-full !max-w-[calc(100vw-1.5rem)]",
     isExpanded
-      ? "!h-5/6 !-translate-y-1/2 sm:!max-w-4xl"
-      : "!h-96 !-translate-y-1/2 sm:!max-w-2xl",
+      ? "!h-5/6 !-translate-y-1/2 max-sm:!h-[calc(100dvh-2rem)] sm:!max-w-4xl"
+      : "!h-96 !-translate-y-1/2 max-sm:!h-[80dvh] sm:!max-w-2xl",
   );
 }
 
