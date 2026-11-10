@@ -64,7 +64,9 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   load and issue creation/deletion. Resizing preserves packing; restored cameras
   stay within tree bounds. Cards and artifact thumbnails can be selected
   separately; Delete removes all versions of selected artifacts. Uploaded HTML
-  deliverables render in tree cards and open in the artifact viewer.
+  deliverables use the same thumbnail in tree cards, issue delivery previews and
+  standalone comment attachment cards, and open in the artifact viewer. Body
+  file references keep their compact row and open the viewer on demand.
 - **Settings.** You can manage hosted plugin execution credentials and personal
   sub-issue following from workspace settings. Owners/admins can import and export
   workspace packages with selective checklists; resource names load in bounded pages.

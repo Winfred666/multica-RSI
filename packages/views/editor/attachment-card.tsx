@@ -192,6 +192,7 @@ export interface AttachmentFileCardProps {
   uploading?: boolean;
   /** Rendered after the filename, e.g. a version badge. */
   badge?: ReactNode;
+  thumbnail?: ReactNode;
   onPreview: () => void;
   onDownload: () => void | Promise<unknown>;
   onDelete?: () => void;
@@ -210,6 +211,7 @@ export function AttachmentFileCard({
   canDownload,
   uploading,
   badge,
+  thumbnail,
   onPreview,
   onDownload,
   onDelete,
@@ -223,7 +225,7 @@ export function AttachmentFileCard({
   const open = canPreview ? onPreview : canDownload ? handleDownload : undefined;
 
   return (
-    <div className="group/file-card relative flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:bg-muted/50">
+    <div className={cn("group/file-card relative flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:bg-muted/50", thumbnail && "flex-wrap")}>
       {/* The card's click target, under the content so text stays
           selectable-looking but every click lands here; the action buttons
           sit above it. */}
@@ -236,6 +238,11 @@ export function AttachmentFileCard({
           onClick={open}
           disabled={!canPreview && downloading}
         />
+      )}
+      {thumbnail && (
+        <div className="pointer-events-none aspect-[3/2] w-full overflow-hidden rounded-md">
+          {thumbnail}
+        </div>
       )}
       <span className="pointer-events-none flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
         {uploading ? (

@@ -17,7 +17,7 @@ import { VersionBadge } from "./version-badge";
 
 // The sidebar is a summary, not the list: the newest few of each, and the
 // overview for the rest.
-const RECENT_IMAGES = 3;
+const RECENT_PREVIEWS = 3;
 const RECENT_FILES = 4;
 
 /**
@@ -40,13 +40,13 @@ export function DeliverablesSection({
 
   if (files.length === 0) return null;
 
-  const images: DeliverableFile[] = [];
+  const previews: DeliverableFile[] = [];
   const others: DeliverableFile[] = [];
   for (const file of files) {
-    const isImage =
-      getPreviewKind(file.latest.content_type, file.latest.filename) === "image";
-    if (isImage && images.length < RECENT_IMAGES) images.push(file);
-    else if (!isImage && others.length < RECENT_FILES) others.push(file);
+    const kind = getPreviewKind(file.latest.content_type, file.latest.filename);
+    const hasThumbnail = kind === "image" || kind === "html";
+    if (hasThumbnail && previews.length < RECENT_PREVIEWS) previews.push(file);
+    else if (!hasThumbnail && others.length < RECENT_FILES) others.push(file);
   }
 
   return (
@@ -56,9 +56,9 @@ export function DeliverablesSection({
       } />
       {open && (
         <div className="px-2">
-          {images.length > 0 && (
+          {previews.length > 0 && (
             <div className="mx-2 mb-1.5 grid grid-cols-3 gap-1.5">
-              {images.map((file) => (
+              {previews.map((file) => (
                 <TooltipHint key={file.key} label={file.latest.filename}>
                   <button
                     type="button"

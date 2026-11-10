@@ -245,9 +245,8 @@ export function AttachmentList({
   };
 
   // Every image shows at its full size, one under another, so it reads
-  // without opening (MUL-7736). Every other file — HTML too: an uploaded file
-  // is a deliverable to open, not part of the text — is a card in a grid, not
-  // a full-width row each.
+  // without opening (MUL-7736). Other files are cards in a grid; HTML cards
+  // also show the shared deliverable thumbnail.
   return (
     <AttachmentDownloadProvider attachments={attachments}>
       <div className={cn("flex flex-col gap-2", className)}>

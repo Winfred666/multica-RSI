@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -173,10 +173,8 @@ describe("AttachmentList — layout (MUL-7649)", () => {
     expect(image.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  // Reverses the MUL-2330 pin. An uploaded HTML file is a deliverable, not
-  // part of the text: it is a card that opens the viewer, and its contents are
-  // not fetched to embed. HTML meant to be read in place is a ```html block.
-  it("shows a standalone HTML file as a card, not an embedded preview", () => {
+  it("shows the shared HTML thumbnail above the standalone file card", async () => {
+    getAttachmentTextContentMock.mockResolvedValue({ text: "<h1>HTML report</h1>" });
     renderList(
       <AttachmentList
         attachments={[file("h", "report.html", "text/html"), file("m", "notes.md", "text/markdown")]}
@@ -185,8 +183,8 @@ describe("AttachmentList — layout (MUL-7649)", () => {
     );
     expect(screen.getByRole("button", { name: "report.html" })).toBeTruthy();
     expect(screen.getByText("HTML · 2 KB")).toBeTruthy();
-    expect(document.querySelector("iframe")).toBeNull();
-    expect(getAttachmentTextContentMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.querySelector("iframe")).toHaveAttribute("srcdoc", "<h1>HTML report</h1>"));
+    expect(getAttachmentTextContentMock).toHaveBeenCalledWith("h");
   });
 
   it("marks a re-uploaded file with its version on the issue page", () => {

@@ -11,8 +11,8 @@
  *   - others → AttachmentCard (icon + filename + Eye/Download row), or
  *              AttachmentFileCard in the card layout
  *
- * An HTML file is a file like any other (MUL-7649): it shows as a card and
- * opens in the viewer. HTML meant to be read in place is written as a
+ * A standalone HTML attachment shows the shared deliverable thumbnail above
+ * its card. Body references open in the viewer. HTML read in place uses a
  * ```html block in the body, which renders as a dynamic block.
  *
  * Call sites:
@@ -56,6 +56,7 @@ import { AttachmentCard, AttachmentFileCard } from "./attachment-card";
 import { useAttachmentDownloadState } from "./hooks/use-attachment-download-state";
 import { canOpenPreview, getPreviewKind, type PreviewKind } from "./utils/preview";
 import { imageDimensions } from "./utils/image-metadata";
+import { DeliverableThumbnail } from "../issues/components/deliverables/deliverable-thumbnail";
 import "./styles/attachment.css";
 
 // Public API
@@ -412,6 +413,9 @@ export function Attachment({
           canDownload={!!shareUrl || !!state.attachmentId}
           uploading={state.uploading}
           badge={badge}
+          thumbnail={kind === "html" && state.record && !state.uploading ? (
+            <DeliverableThumbnail attachment={state.record} className="size-full" />
+          ) : undefined}
           onPreview={openPreview}
           onDownload={handleDownload}
           onDelete={editable ? onDelete : undefined}
