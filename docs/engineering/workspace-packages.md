@@ -38,6 +38,9 @@ Source records are unchanged. Omitted import selection selects everything; `{}` 
 nothing. Unknown IDs fail with 400. Inspect and import accept one JSON request
 up to 64 MiB, including base64 data.
 
+Issue export uses one ID-filtered issue read and one status read. Project export
+uses one project read and one resource batch. Relationship pruning adds no queries.
+
 There is one package format: `schema_version: 1`, `projects`, `issues`,
 `issue_statuses`, `agents`, `skills`, `mcps`, `plugins`, `system_prompt: string|null`.
 IDs inside a package link its resources; imports allocate destination identities.

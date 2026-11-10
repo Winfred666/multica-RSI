@@ -110,32 +110,26 @@ func (h *Handler) exportWorkspacePackage(ctx context.Context, ws pgtype.UUID, se
 	}
 	if len(selection.Issues) > 0 {
 		ids := packageUUIDs(selection.Issues)
-		// Use the existing paginated query without truncating large workspaces.
-		for offset := int32(0); ; offset += 500 {
-			issues, err := h.Queries.ListIssues(ctx, db.ListIssuesParams{WorkspaceID: ws, Ids: ids, Limit: 500, Offset: offset})
-			if err != nil {
-				return p, err
+		issues, err := h.Queries.ListIssues(ctx, db.ListIssuesParams{WorkspaceID: ws, Ids: ids, Limit: int32(len(ids))})
+		if err != nil {
+			return p, err
+		}
+		for _, issue := range issues {
+			entry := PackageIssue{ID: uuidToString(issue.ID), Title: issue.Title, Description: textToPtr(issue.Description), Status: issue.Status, Priority: issue.Priority, Position: issue.Position, StartDate: issue.StartDate, DueDate: issue.DueDate, Properties: issue.Properties, Metadata: issue.Metadata}
+			if issue.ProjectID.Valid {
+				entry.ProjectID = uuidToString(issue.ProjectID)
 			}
-			for _, issue := range issues {
-				entry := PackageIssue{ID: uuidToString(issue.ID), Title: issue.Title, Description: textToPtr(issue.Description), Status: issue.Status, Priority: issue.Priority, Position: issue.Position, StartDate: issue.StartDate, DueDate: issue.DueDate, Properties: issue.Properties, Metadata: issue.Metadata}
-				if issue.ProjectID.Valid {
-					entry.ProjectID = uuidToString(issue.ProjectID)
-				}
-				if issue.ParentIssueID.Valid {
-					entry.ParentIssueID = uuidToString(issue.ParentIssueID)
-				}
-				if issue.AssigneeType.String == "agent" && issue.AssigneeID.Valid {
-					entry.AgentID = uuidToString(issue.AssigneeID)
-				}
-				if issue.Stage.Valid {
-					stage := issue.Stage.Int32
-					entry.Stage = &stage
-				}
-				p.Issues = append(p.Issues, entry)
+			if issue.ParentIssueID.Valid {
+				entry.ParentIssueID = uuidToString(issue.ParentIssueID)
 			}
-			if len(issues) < 500 {
-				break
+			if issue.AssigneeType.String == "agent" && issue.AssigneeID.Valid {
+				entry.AgentID = uuidToString(issue.AssigneeID)
 			}
+			if issue.Stage.Valid {
+				stage := issue.Stage.Int32
+				entry.Stage = &stage
+			}
+			p.Issues = append(p.Issues, entry)
 		}
 		statuses, err := h.Queries.ListIssueStatusEntries(ctx, db.ListIssueStatusEntriesParams{WorkspaceID: ws, IncludeArchived: true})
 		if err != nil {

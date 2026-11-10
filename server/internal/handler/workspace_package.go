@@ -162,94 +162,61 @@ func selectedPackage(p WorkspacePackage, selection *PackageSelection) (Workspace
 	if selection.SystemPrompt {
 		result.SystemPrompt = p.SystemPrompt
 	}
-	pick := func(ids []string, visit func(func(string) bool)) error {
-		wanted := map[string]bool{}
+	// Requested IDs become true when found; reuse these sets to prune links.
+	requested := func(ids []string) map[string]bool {
+		found := map[string]bool{}
 		for _, id := range ids {
-			wanted[id] = true
+			found[id] = false
 		}
-		visit(func(id string) bool {
-			if wanted[id] {
-				delete(wanted, id)
-				return true
-			}
+		return found
+	}
+	take := func(ids map[string]bool, id string) bool {
+		if found, wanted := ids[id]; !wanted || found {
 			return false
-		})
-		if len(wanted) > 0 {
-			return fmt.Errorf("selection contains an unknown resource ID")
 		}
-		return nil
+		ids[id] = true
+		return true
 	}
-	if err := pick(selection.Projects, func(has func(string) bool) {
-		for _, v := range p.Projects {
-			if has(v.ID) {
-				result.Projects = append(result.Projects, v)
+	projects, issues, agents := requested(selection.Projects), requested(selection.Issues), requested(selection.Agents)
+	skills, mcps, plugins := requested(selection.Skills), requested(selection.MCPs), requested(selection.Plugins)
+	statuses := map[string]bool{}
+	for _, v := range p.Projects {
+		if take(projects, v.ID) {
+			result.Projects = append(result.Projects, v)
+		}
+	}
+	for _, v := range p.Issues {
+		if take(issues, v.ID) {
+			result.Issues = append(result.Issues, v)
+			statuses[v.Status] = true
+		}
+	}
+	for _, v := range p.Agents {
+		if take(agents, v.ID) {
+			result.Agents = append(result.Agents, v)
+		}
+	}
+	for _, v := range p.Skills {
+		if take(skills, v.ID) {
+			result.Skills = append(result.Skills, v)
+		}
+	}
+	for _, v := range p.MCPs {
+		if take(mcps, v.ID) {
+			result.MCPs = append(result.MCPs, v)
+		}
+	}
+	for _, v := range p.Plugins {
+		if take(plugins, v.ID) {
+			result.Plugins = append(result.Plugins, v)
+		}
+	}
+	for _, ids := range []map[string]bool{projects, issues, agents, skills, mcps, plugins} {
+		for _, found := range ids {
+			if !found {
+				return result, fmt.Errorf("selection contains an unknown resource ID")
 			}
 		}
-	}); err != nil {
-		return result, err
-	}
-	if err := pick(selection.Issues, func(has func(string) bool) {
-		for _, v := range p.Issues {
-			if has(v.ID) {
-				result.Issues = append(result.Issues, v)
-			}
-		}
-	}); err != nil {
-		return result, err
-	}
-	if err := pick(selection.Agents, func(has func(string) bool) {
-		for _, v := range p.Agents {
-			if has(v.ID) {
-				result.Agents = append(result.Agents, v)
-			}
-		}
-	}); err != nil {
-		return result, err
-	}
-	if err := pick(selection.Skills, func(has func(string) bool) {
-		for _, v := range p.Skills {
-			if has(v.ID) {
-				result.Skills = append(result.Skills, v)
-			}
-		}
-	}); err != nil {
-		return result, err
-	}
-	if err := pick(selection.MCPs, func(has func(string) bool) {
-		for _, v := range p.MCPs {
-			if has(v.ID) {
-				result.MCPs = append(result.MCPs, v)
-			}
-		}
-	}); err != nil {
-		return result, err
-	}
-	if err := pick(selection.Plugins, func(has func(string) bool) {
-		for _, v := range p.Plugins {
-			if has(v.ID) {
-				result.Plugins = append(result.Plugins, v)
-			}
-		}
-	}); err != nil {
-		return result, err
-	}
-	projects, issues, agents := map[string]bool{}, map[string]bool{}, map[string]bool{}
-	skills, mcps, statuses := map[string]bool{}, map[string]bool{}, map[string]bool{}
-	for _, v := range result.Projects {
-		projects[v.ID] = true
-	}
-	for _, v := range result.Issues {
-		issues[v.ID] = true
-		statuses[v.Status] = true
-	}
-	for _, v := range result.Agents {
-		agents[v.ID] = true
-	}
-	for _, v := range result.Skills {
-		skills[v.ID] = true
-	}
-	for _, v := range result.MCPs {
-		mcps[v.ID] = true
 	}
 	for i := range result.Issues {
 		v := &result.Issues[i]
