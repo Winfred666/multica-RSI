@@ -34,8 +34,8 @@
   "package": {
     "import_action": "Import workspace",
     "export_action": "Export workspace",
-    "projects_issues": "Projects and issues",
-    "projects_hint": "An agent can selectively copy projects and issues into the new workspace.",
+    "projects": "Projects",
+    "issues": "Issues",
     "agents": "Agents",
     "agents_hint": "Copied agents are inactive and need setup on a new runtime machine.",
     "skills": "Skills",

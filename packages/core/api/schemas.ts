@@ -22,9 +22,10 @@ export type WorkspacePackage = z.infer<typeof WorkspacePackageSchema>;
 export type WorkspacePackageCounts = z.infer<typeof WorkspacePackageCountsSchema>;
 export type WorkspacePackageInventory = z.infer<typeof WorkspacePackageInventorySchema>;
 export type WorkspacePackageItem = z.infer<typeof PackageItemSchema>;
-export type WorkspacePackageCategory = "agents" | "skills" | "mcps" | "plugins";
+export type WorkspacePackageCategory = "projects" | "issues" | "agents" | "skills" | "mcps" | "plugins";
 export interface WorkspacePackageSelection {
-  projects_issues: boolean;
+  projects: string[];
+  issues: string[];
   agents: string[];
   skills: string[];
   mcps: string[];

@@ -34,8 +34,8 @@
   "package": {
     "import_action": "匯入工作區",
     "export_action": "匯出工作區",
-    "projects_issues": "專案與議題",
-    "projects_hint": "可讓智慧體為新工作區選擇性複製專案與議題。",
+    "projects": "專案",
+    "issues": "議題",
     "agents": "智慧體",
     "agents_hint": "複製的智慧體尚未啟用，需要在新的執行環境機器上完成設定。",
     "skills": "技能",
