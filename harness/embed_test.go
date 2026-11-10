@@ -2,6 +2,7 @@ package harness
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 )
 
@@ -17,6 +18,9 @@ func TestEmbeddedKit(t *testing.T) {
 	}
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		t.Fatal(err)
+	}
+	if !slices.Contains(manifest.Skills, "multica-workspace-manipulation") || slices.Contains(manifest.SystemSkills, "multica-workspace-manipulation") {
+		t.Fatal("workspace manipulation must be a default library skill, not a system skill")
 	}
 	for _, name := range append(manifest.SystemSkills, manifest.Skills...) {
 		if _, err := Files.ReadFile("skills/" + name + "/SKILL.md"); err != nil {
