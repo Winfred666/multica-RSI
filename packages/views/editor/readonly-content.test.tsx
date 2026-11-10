@@ -585,11 +585,11 @@ describe("ReadonlyContent Mermaid rendering", () => {
 
 describe("ReadonlyContent HTML block rendering", () => {
   // `language=html` fenced blocks should default to a preview iframe with
-  // sandbox="allow-scripts" (chart JS executes in an opaque origin) and
+  // sandbox="allow-scripts allow-downloads" (chart JS executes in an opaque origin) and
   // must NOT be wrapped by react-markdown's default <pre>, which would
   // clamp the iframe with monospace / overflow styles. The two-layer
   // code+pre unwrap mirror's Mermaid's pattern.
-  it("renders an iframe with sandbox='allow-scripts' for ```html and skips the outer <pre>", () => {
+  it("renders an iframe with sandbox='allow-scripts allow-downloads' for ```html and skips the outer <pre>", () => {
     const { container } = render(
       <ReadonlyContent
         content={["```html", '<h1 id="x">hi</h1>', "```"].join("\n")}
@@ -597,7 +597,7 @@ describe("ReadonlyContent HTML block rendering", () => {
     );
     const frame = container.querySelector<HTMLIFrameElement>("iframe");
     expect(frame).not.toBeNull();
-    expect(frame?.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame?.getAttribute("sandbox")).toBe("allow-scripts allow-downloads");
     expect(frame?.getAttribute("srcdoc")).toContain('<h1 id="x">hi</h1>');
     expect(container.querySelector("pre")).toBeNull();
   });

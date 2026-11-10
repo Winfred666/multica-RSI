@@ -75,11 +75,11 @@ describe("HtmlBlockPreview — frame", () => {
     expect(screen.getAllByText("HTML")).toHaveLength(1);
   });
 
-  it("renders the HTML in a scripts-only sandbox with the theme, bridge and fragment shim", () => {
+  it("renders the HTML in an opaque-origin sandbox with the theme, bridge and fragment shim", () => {
     render(<HtmlBlockPreview html="<p>hi</p>" />);
     const frame = inlineFrame();
     expect(frame.getAttribute("title")).toBe("HTML preview");
-    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-downloads");
     const srcdoc = frame.getAttribute("srcdoc") ?? "";
     expect(srcdoc.startsWith("<style>:root{")).toBe(true);
     expect(srcdoc).toContain(HTML_BLOCK_MESSAGE_KEY);
@@ -244,7 +244,7 @@ describe("HtmlBlockPreview — reload", () => {
     expect(first.isConnected).toBe(false);
     expect(second.isConnected).toBe(true);
     expect(fresh.getAttribute("srcdoc")).toBe(srcDoc);
-    expect(fresh.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(fresh.getAttribute("sandbox")).toBe("allow-scripts allow-downloads");
     expect(within(block).queryByRole("alert")).toBeNull();
     expect(within(block).getByText("Rendering...")).toBeTruthy();
     act(() => {
@@ -337,7 +337,7 @@ describe("HtmlBlockPreview — fullscreen", () => {
     const frames = document.querySelectorAll("iframe");
     expect(frames).toHaveLength(1);
     expect(screen.getByRole("dialog").querySelector("iframe")).toBe(original);
-    expect(original.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(original.getAttribute("sandbox")).toBe("allow-scripts allow-downloads");
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Fullscreen" }));

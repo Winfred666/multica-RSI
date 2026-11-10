@@ -74,7 +74,7 @@ describe("CodeBlockView — html language toggle", () => {
     restoreDialog();
   });
 
-  it("defaults to preview view: renders an iframe with sandbox='allow-scripts' and keeps the <pre> mounted (hidden)", () => {
+  it("defaults to preview view: renders an iframe with sandbox='allow-scripts allow-downloads' and keeps the <pre> mounted (hidden)", () => {
     render(<CodeBlockView {...makeProps("html", "<p>hello</p>")} />);
     act(() => {
       vi.advanceTimersByTime(250);
@@ -82,7 +82,7 @@ describe("CodeBlockView — html language toggle", () => {
     const frame = document.querySelector("iframe");
     expect(frame).toBeTruthy();
     expect(frame?.getAttribute("title")).toBe("Localized HTML preview");
-    expect(frame?.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame?.getAttribute("sandbox")).toBe("allow-scripts allow-downloads");
     // NodeViewContent (and its enclosing <pre>) MUST remain mounted —
     // unmounting would break Tiptap's bindings and prevent editing.
     const nvc = screen.getByTestId("nvc");
@@ -130,7 +130,7 @@ describe("CodeBlockView — html language toggle", () => {
     expect(frame).toBe(original);
     expect(document.querySelectorAll("iframe")).toHaveLength(1);
     expect(frame?.getAttribute("srcdoc")).toBe("<p>latest</p>");
-    expect(frame?.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame?.getAttribute("sandbox")).toBe("allow-scripts allow-downloads");
     expect(screen.getByTestId("nvc")).toBe(editorContent);
     expect(document.querySelector("iframe")).toBe(original);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -174,7 +174,7 @@ describe("CodeBlockView — html language toggle", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Reload" }));
     const enlarged = dialog.querySelector("iframe");
     expect(enlarged).not.toBe(inline);
-    expect(enlarged?.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(enlarged?.getAttribute("sandbox")).toBe("allow-scripts allow-downloads");
     expect(screen.getByRole("dialog")).toBe(dialog);
     expect(document.querySelectorAll("iframe")).toHaveLength(1);
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));

@@ -66,7 +66,9 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   Cards and artifact thumbnails share the bottom selection toolbar, with
   separate issue and deliverable counts and actions. Deleting deliverables
   removes all their versions without deleting comments. Uploaded HTML
-  deliverables render in tree cards and open in the artifact viewer.
+  deliverables render in tree cards and open in the artifact viewer. Shared HTML
+  previews allow scripts and file downloads, but keep an opaque origin; parent
+  access, forms, popups and top-level navigation remain sandboxed.
 - **Settings.** You can manage hosted plugin execution credentials and personal
   sub-issue following from workspace settings. Owners/admins can import and export
   workspace packages with selective checklists; resource names load in bounded pages.

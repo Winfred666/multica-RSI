@@ -10,8 +10,8 @@
  *     listens to the size/error bridge in utils/html-block-document.ts
  *
  * Sandbox semantics:
- *   sandbox="allow-scripts" (NOT "allow-same-origin")
- *   → iframe runs in an opaque origin: scripts execute (chart JS works),
+ *   sandbox="allow-scripts allow-downloads" (NOT "allow-same-origin")
+ *   → iframe runs in an opaque origin: scripts execute and files can download,
  *     but cookie / localStorage / parent access / top-nav / popups / forms
  *     remain blocked. This is the standard "preview untrusted HTML" model
  *     (HTML spec §iframe sandbox, MDN, Claude artifacts, v0.dev preview).
@@ -54,7 +54,7 @@ export function CodeBlockIframe({
       // `allow-scripts` with `allow-same-origin` — that pairing defeats the
       // sandbox per the HTML spec (notes on the sandbox attribute).
       srcDoc={html}
-      sandbox="allow-scripts"
+      sandbox="allow-scripts allow-downloads"
       title={title}
       className={cn(
         "w-full rounded-md border border-border bg-background",

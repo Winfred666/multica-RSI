@@ -6,7 +6,7 @@
  *
  * Owns the three things every HTML attachment preview needs:
  *
- *   - srcDoc + sandbox="allow-scripts" via CodeBlockIframe
+ *   - srcDoc + download-enabled, opaque-origin sandbox via CodeBlockIframe
  *   - withFragmentNavShim() so anchor links inside the iframe scroll instead
  *     of silently failing in the sandbox's opaque origin
  *   - the address bridge, so the document loads at the address bar's
