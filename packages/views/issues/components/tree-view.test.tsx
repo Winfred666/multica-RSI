@@ -88,7 +88,11 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("TreeView", () => {
-  it("repacks roots when the canvas becomes narrower", () => {
+  it("preserves packing on resize and repacks at the current width on issue creation or deletion", () => {
+    let canvasWidth = 1200;
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-tree-card") ? 300 : canvasWidth;
+    });
     const observers: (() => void)[] = [];
     vi.stubGlobal("ResizeObserver", class {
       constructor(callback: () => void) { observers.push(callback); }
@@ -97,12 +101,20 @@ describe("TreeView", () => {
       disconnect() {}
     });
     try {
-      const { container } = setup(Array.from({ length: 6 }, (_, index) => issue(`Root ${index}`)));
+      const { container, qc } = setup(Array.from({ length: 6 }, (_, index) => issue(`Root ${index}`)));
       const rootRows = () => new Set([...container.querySelectorAll("[data-tree-card]")].map((card) => (card.parentElement as HTMLElement).style.top)).size;
-      const wideRows = rootRows();
-      vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(300);
+      expect(rootRows()).toBe(2);
+      canvasWidth = 390;
       act(() => observers.forEach((resize) => resize()));
-      expect(rootRows()).toBeGreaterThan(wideRows);
+      expect(rootRows()).toBe(2);
+      act(() => wsHandlers.get("issue:created")?.forEach((handler) => handler({})));
+      expect(rootRows()).toBe(3);
+      canvasWidth = 1200;
+      act(() => observers.forEach((resize) => resize()));
+      expect(rootRows()).toBe(3);
+      act(() => wsHandlers.get("issue:deleted")?.forEach((handler) => handler({})));
+      expect(rootRows()).toBe(2);
+      qc.clear();
     } finally {
       vi.unstubAllGlobals();
     }
@@ -198,19 +210,28 @@ describe("TreeView", () => {
     vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) {
       return this.hasAttribute("data-tree-card") ? 300 : 6000;
     });
-    const { container, qc } = setup([issue("First"), issue("Second"), issue("Third"), issue("Hidden", null, "done"), issue("Hidden too", null, "done")], [], [], { scale: 0.5, x: 80, y: 35 });
+    const { container, qc, store } = setup([issue("First"), issue("Second"), issue("Third"), issue("Hidden", null, "done"), issue("Hidden too", null, "done")], [], [], { scale: 0.5, x: 80, y: 35 });
     const canvas = screen.getByRole("application", { name: "Tree" });
     const selected = () => [...container.querySelectorAll("[data-tree-card]:has([data-selected])")].map((card) => card.getAttribute("data-tree-card"));
     const content = container.querySelector(".zoom-canvas-content") as HTMLElement;
     const previous = content.style.transform;
-    // Client coordinates include both the saved camera offset and 50% zoom.
-    fireEvent.pointerDown(canvas, { button: 0, pointerId: 1, clientX: 430, clientY: 135 });
-    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 100, clientY: 55 });
+    const camera = store.getState().treeViewport!;
+    expect(camera.scale).toBe(0.5);
+    const clientPoint = (x: number, y: number) => ({ clientX: camera.x + x * camera.scale, clientY: camera.y + y * camera.scale });
+    // jsdom has no layout; selection reads the rendered bounds after camera restoration.
+    for (const element of container.querySelectorAll<HTMLElement>("[data-tree-issue]")) {
+      const card = element.closest<HTMLElement>("[data-tree-card]")!;
+      const { left, top } = card.parentElement!.style;
+      const point = clientPoint(parseFloat(left), parseFloat(top));
+      vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(point.clientX, point.clientY, card.offsetWidth * camera.scale, card.offsetHeight * camera.scale));
+    }
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 1, ...clientPoint(700, 200) });
+    fireEvent.pointerMove(canvas, { pointerId: 1, ...clientPoint(40, 40) });
     expect(selected()).toEqual(["First", "Second"]);
     expect(container.querySelector("[data-tree-selection]")).toHaveStyle({ left: "40px", top: "40px", width: "660px", height: "160px" });
-    expect(container.querySelector("[data-selected]")).toHaveClass("outline-1", "outline-brand");
+    expect(container.querySelector("[data-selected] > span[aria-hidden]")).toHaveClass("border", "border-brand", "pointer-events-none");
     expect(content.style.transform).toBe(previous);
-    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 280, clientY: 55 });
+    fireEvent.pointerMove(canvas, { pointerId: 1, ...clientPoint(400, 40) });
     expect(selected()).toEqual(["Second"]);
     fireEvent.pointerUp(canvas, { pointerId: 1 });
     expect(container.querySelector("[data-tree-selection]")).toBeNull();
@@ -219,8 +240,8 @@ describe("TreeView", () => {
 
     fireEvent.click(screen.getByRole("link", { name: /Third/ }));
     expect(selected()).toEqual(["Second", "Third"]);
-    fireEvent.pointerDown(canvas, { button: 0, pointerId: 2, clientX: 100, clientY: 55, shiftKey: true });
-    fireEvent.pointerMove(canvas, { pointerId: 2, clientX: 260, clientY: 135 });
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 2, ...clientPoint(40, 40), shiftKey: true });
+    fireEvent.pointerMove(canvas, { pointerId: 2, ...clientPoint(360, 200) });
     fireEvent.pointerUp(canvas, { pointerId: 2 });
     fireEvent.click(canvas);
     expect(selected()).toEqual(["First", "Second", "Third"]);

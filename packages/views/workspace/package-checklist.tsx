@@ -20,7 +20,7 @@ function CheckRow({ label, checked, indeterminate, disabled, replacing, onChange
     <label className="flex min-w-0 flex-1 items-center gap-2 text-body">
       <Checkbox checked={checked} indeterminate={indeterminate} disabled={disabled} onCheckedChange={onChange} />
       <span className="break-words">{label}</span>
-      {replacing && <span className="shrink-0 rounded bg-muted px-1.5 text-caption text-muted-foreground">{t(($) => $.package.replaces_existing)}</span>}
+      {replacing && <span className="shrink-0 rounded-sm bg-muted px-1.5 text-caption text-muted-foreground">{t(($) => $.package.replaces_existing)}</span>}
     </label>
   </div>;
 }

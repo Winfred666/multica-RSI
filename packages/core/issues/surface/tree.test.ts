@@ -66,14 +66,14 @@ describe("issue tree", () => {
     expect(layoutIssueTree(roots).height).toBeLessThan(layout.height);
   });
 
-  it("wraps root bounding boxes to the viewport ratio without overlapping their descendants", () => {
+  it("wraps root bounding boxes to the canvas width without overlapping their descendants", () => {
     const rows = Array.from({ length: 6 }, (_, i) => [issue(`root-${i}`), issue(`child-${i}`, `root-${i}`)]).flat();
     const roots = buildIssueTree(rows, new Set(), new Set());
-    const wide = layoutIssueTree(roots, new Map(), 3);
-    const narrow = layoutIssueTree(roots, new Map(), 0.5);
+    const wide = layoutIssueTree(roots, new Map(), 1200);
+    const narrow = layoutIssueTree(roots, new Map(), 390);
     const rootRows = (layout: typeof wide) => new Set(layout.nodes.filter(({ parentId }) => !parentId).map(({ y }) => y)).size;
-    expect(rootRows(wide)).toBeGreaterThan(1);
-    expect(rootRows(narrow)).toBeGreaterThan(rootRows(wide));
+    expect(rootRows(wide)).toBe(2);
+    expect(rootRows(narrow)).toBe(3);
     for (const layout of [wide, narrow]) {
       for (const [index, a] of layout.nodes.entries()) {
         expect(a.x - a.width / 2).toBeGreaterThanOrEqual(0);

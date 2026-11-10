@@ -468,7 +468,7 @@ describe("semantic parity beyond Mermaid", () => {
         expect(container.querySelector("iframe")).not.toBeNull();
       });
       expect(container.querySelector("iframe")?.getAttribute("sandbox")).toBe(
-        "allow-scripts",
+        "allow-scripts allow-downloads",
       );
       // Ordinary language -> lowlight static code
       expect(container.querySelector("code.hljs")).not.toBeNull();
