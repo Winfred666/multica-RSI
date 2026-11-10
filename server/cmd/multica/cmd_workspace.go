@@ -17,6 +17,12 @@ import (
 var workspaceCmd = &cobra.Command{
 	Use:   "workspace",
 	Short: "Work with workspaces",
+	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		if inDaemonManagedExecutionContext() || strings.HasPrefix(resolveToken(cmd), cli.TaskTokenPrefix) {
+			return fmt.Errorf("workspace commands require a member context; use the explicit multica-workspace-manipulation skill for authorized workspace operations%s", daemonPortOnlyContextHint())
+		}
+		return nil
+	},
 }
 
 var workspaceListCmd = &cobra.Command{
@@ -225,7 +231,7 @@ type workspaceSummary struct {
 // is shared by `list` and `switch` so both see the same access-controlled view
 // of workspaces.
 func fetchWorkspaces(ctx context.Context, cmd *cobra.Command) ([]workspaceSummary, error) {
-	client, err := newWorkspaceAPIClient(cmd)
+	client, err := newAPIClient(cmd)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +353,7 @@ func runWorkspaceCreate(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("--selection-file and --activate-plugins require --import-file")
 	}
 
-	client, err := newWorkspaceAPIClient(cmd)
+	client, err := newAPIClient(cmd)
 	if err != nil {
 		return err
 	}
@@ -370,21 +376,6 @@ func runWorkspaceCreate(cmd *cobra.Command, _ []string) error {
 		}
 	}
 	return nil
-}
-
-func newWorkspaceAPIClient(cmd *cobra.Command) (*cli.APIClient, error) {
-	client, err := newAPIClient(cmd)
-	if err != nil {
-		return nil, err
-	}
-	if inDaemonManagedExecutionContext() {
-		port := os.Getenv("MULTICA_DAEMON_PORT")
-		if port == "" {
-			return nil, fmt.Errorf("workspace operations by an agent require its runtime's MULTICA_DAEMON_PORT")
-		}
-		client.BaseURL = "http://127.0.0.1:" + port
-	}
-	return client, nil
 }
 
 // resolveWorkspaceByIDOrSlug looks up a workspace in the caller's accessible
@@ -526,7 +517,7 @@ func runWorkspaceGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("workspace ID is required: pass an id/slug/prefix as argument or set MULTICA_WORKSPACE_ID")
 	}
 
-	client, err := newWorkspaceAPIClient(cmd)
+	client, err := newAPIClient(cmd)
 	if err != nil {
 		return err
 	}

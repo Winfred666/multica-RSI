@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -359,6 +360,67 @@ func TestRunWorkspaceSwitchFailsClosedInTaskContext(t *testing.T) {
 	err := runWorkspaceSwitch(newWorkspaceSwitchTestCmd(), []string{"target"})
 	if err == nil || !strings.Contains(err.Error(), "not available inside a daemon-managed task") {
 		t.Fatalf("runWorkspaceSwitch error = %v, want task-context guard before API or profile access", err)
+	}
+}
+
+func TestWorkspaceCommandsRequireMemberContext(t *testing.T) {
+	t.Chdir(t.TempDir())
+	redirectTestHome(t, t.TempDir())
+	for _, env := range []map[string]string{
+		{"MULTICA_AGENT_ID": "agent-test", "MULTICA_TOKEN": "mat_task"},
+		{"MULTICA_TASK_ID": "task-test", "MULTICA_TOKEN": "mul_member"},
+		{"MULTICA_DAEMON_PORT": "20032", "MULTICA_TOKEN": "mat_task"},
+		{"MULTICA_TOKEN": "mat_task"},
+	} {
+		t.Run(fmt.Sprint(env), func(t *testing.T) {
+			for key, value := range env {
+				t.Setenv(key, value)
+			}
+			if workspaceCmd.PersistentPreRunE == nil {
+				t.Fatal("workspace commands have no member-context guard")
+			}
+			err := workspaceCmd.PersistentPreRunE(newWorkspaceSwitchTestCmd(), nil)
+			if err == nil || !strings.Contains(err.Error(), "multica-workspace-manipulation") {
+				t.Fatalf("guard error = %v, want explicit skill guidance", err)
+			}
+		})
+	}
+	t.Setenv("MULTICA_TOKEN", "mul_member")
+	if err := workspaceCmd.PersistentPreRunE(newWorkspaceSwitchTestCmd(), nil); err != nil {
+		t.Fatalf("member context refused: %v", err)
+	}
+	if err := os.Mkdir(".multica", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".multica/daemon_task_context.json", []byte(`{"managed_by":"multica-daemon-task"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := workspaceCmd.PersistentPreRunE(newWorkspaceSwitchTestCmd(), nil); err == nil {
+		t.Fatal("workdir marker must refuse member-profile fallback")
+	}
+}
+
+func TestWorkspaceImportActivationUsesOnlyOptedInMemberToken(t *testing.T) {
+	t.Chdir(t.TempDir())
+	file := filepath.Join(t.TempDir(), "package.json")
+	if err := os.WriteFile(file, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := &cobra.Command{}
+	addWorkspaceImportFlags(cmd)
+	t.Setenv("MULTICA_TOKEN", "mul_member")
+	body, err := buildWorkspaceImportBody(cmd, file)
+	if err != nil || body["plugin_execution_token"] != nil || body["activate_plugins"] != nil {
+		t.Fatalf("default import must not activate plugins: %v, %v", body, err)
+	}
+	_ = cmd.Flags().Set("activate-plugins", "true")
+	body, err = buildWorkspaceImportBody(cmd, file)
+	if err != nil || body["plugin_execution_token"] != "mul_member" || body["activate_plugins"] != nil {
+		t.Fatalf("opt-in must use member's own token: %v, %v", body, err)
+	}
+	t.Setenv("MULTICA_TOKEN", "mat_task")
+	if _, err := buildWorkspaceImportBody(cmd, file); err == nil {
+		t.Fatal("task tokens cannot activate plugins")
 	}
 }
 
