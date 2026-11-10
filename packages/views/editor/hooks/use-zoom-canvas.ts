@@ -51,7 +51,7 @@ interface UseZoomCanvasOptions {
   /** Natural (unscaled) size of the content, or null while it is unknown. */
   content: Size | null;
   initialTransform?: ZoomTransform | null;
-  /** Keep the camera fixed when live content or the viewport changes size. */
+  /** Start at actual size and keep the camera fixed through content/viewport resizing. */
   preserveTransform?: boolean;
   /** Reserve mouse dragging for selection unless Space is held. */
   panWithSpace?: boolean;
@@ -190,17 +190,15 @@ export function useZoomCanvas({
     return () => observer.disconnect();
   }, [viewportNode]);
 
-  // Fit once, on first open — a layout effect, so the first painted frame is
-  // already fitted. Later viewport changes never snap a zoom the user chose
-  // back to fit (that would lose their place); only a view still at fit
-  // follows a resize, below.
+  // Initialize once after measurement: fixed canvases start at actual size;
+  // viewers fit. Later updates never reset the user's camera.
   useLayoutEffect(() => {
     if (!ready || hasFittedRef.current) return;
     hasFittedRef.current = true;
     setTransform(initialTransformRef.current
       ? restoreTransform(initialTransformRef.current, contentSize, viewport)
-      : computeFitTransform(contentSize, viewport));
-  }, [ready, contentSize, viewport]);
+      : preserveTransform ? IDENTITY : computeFitTransform(contentSize, viewport));
+  }, [ready, contentSize, viewport, preserveTransform]);
 
   // Genuinely different content (new natural size) starts fresh. Also a
   // layout effect, and never eased: swapping to another image (sequence

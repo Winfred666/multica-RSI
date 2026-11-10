@@ -38,7 +38,7 @@ export function CollectionBatchBar({
         <div
           key="collection-batch-bar"
           className={cn(
-            "z-50",
+            "z-50 w-max max-w-[calc(100%-2rem)]",
             placement === "inline"
               ? "mb-2 w-fit"
               : "bottom-6 left-1/2 -translate-x-1/2 max-md:above-chat-launcher",
@@ -49,7 +49,7 @@ export function CollectionBatchBar({
           <motion.div
             role="toolbar"
             aria-label={t(($) => $.collection.selected, { count })}
-            className="flex items-center gap-1 rounded-lg border bg-background px-2 py-1.5 shadow-lg"
+            className="flex flex-wrap items-center gap-1 rounded-lg border bg-background px-2 py-1.5 shadow-lg"
             initial={{ opacity: 0, transform: offset }}
             animate={{
               opacity: 1,

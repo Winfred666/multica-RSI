@@ -60,10 +60,12 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   and preview collaborators' messages and runs, with context-usage rings,
   compression counts and saved pan/zoom. Issue-owned sub-workspaces appear as
   static snapshots with their collaborators and links. Branches use measured
-  card heights; root trees wrap at a captured canvas width, refreshed on uncached
-  load and issue creation/deletion. Resizing preserves packing; restored cameras
-  stay within tree bounds. Cards and artifact thumbnails can be selected
-  separately; Delete removes all versions of selected artifacts. Uploaded HTML
+  card heights; root trees wrap at the canvas width, captured on every load
+  and issue creation/deletion, never restored from cache. Resizing preserves
+  packing; new views start at 100%, and saved cameras stay within tree bounds.
+  Cards and artifact thumbnails share the bottom selection toolbar, with
+  separate issue and deliverable counts and actions. Deleting deliverables
+  removes all their versions without deleting comments. Uploaded HTML
   deliverables render in tree cards and open in the artifact viewer.
 - **Settings.** You can manage hosted plugin execution credentials and personal
   sub-issue following from workspace settings. Owners/admins can import and export

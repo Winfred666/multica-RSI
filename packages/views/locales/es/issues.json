@@ -857,6 +857,9 @@
     "confirm": "Detener ejecución"
   },
   "batch": {
+    "selected_items": "Seleccionados: {{items}}",
+    "delete_issues": "Eliminar tareas",
+    "delete_deliverables": "Eliminar entregables",
     "selected": "{{count}} seleccionadas",
     "status": "Estado",
     "priority": "Prioridad",

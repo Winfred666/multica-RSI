@@ -105,6 +105,7 @@ export function layoutIssueTree(roots: IssueTreeNode[], sizes: ReadonlyMap<strin
       childLeft += bounds.get(child.id)!.width + 40;
     }
   }
+  // TODO: only temp auto tree layout. Future draggable would store custom layout model, which might require backend change.
   // Pack whole trees in order; their bounding boxes keep descendants apart.
   const rowWidth = Math.max(TREE_NODE_WIDTH * 2 + 40, canvasWidth - 96);
   let left = 48, top = 48, rowHeight = 0, right = 48, bottom = 48;

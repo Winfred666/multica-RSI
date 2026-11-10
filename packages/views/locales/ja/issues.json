@@ -925,6 +925,9 @@
     "confirm": "実行を停止"
   },
   "batch": {
+    "selected_items": "{{items}}を選択中",
+    "delete_issues": "タスクを削除",
+    "delete_deliverables": "成果物を削除",
     "delete_restricted": "自分または所有するエージェントが作成したタスクを削除できます。ワークスペースの owner と admin はすべてのタスクを削除できます。",
     "selected": "{{count}} 件選択中",
     "status": "ステータス",

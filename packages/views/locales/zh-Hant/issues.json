@@ -903,6 +903,9 @@
     "confirm": "停止執行"
   },
   "batch": {
+    "selected_items": "已選擇 {{items}}",
+    "delete_issues": "刪除任務",
+    "delete_deliverables": "刪除交付物",
     "delete_restricted": "你可以刪除本人或本人擁有的智慧體建立的任務。工作區 owner 和 admin 可以刪除任意任務。",
     "selected": "已選擇 {{count}} 個",
     "status": "狀態",

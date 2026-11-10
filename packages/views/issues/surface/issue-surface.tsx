@@ -387,6 +387,7 @@ function IssueSurfaceContent({
             )}
             {controller.viewMode === "tree" && (
               <TreeView
+                showBatchToolbar={shouldShowBatchToolbar}
                 issues={issues}
                 childProgressMap={controller.childProgressMap}
                 projectMap={controller.projectMap}
@@ -411,7 +412,7 @@ function IssueSurfaceContent({
           </div>
         )}
         </IssuePeekHost>
-        {shouldShowBatchToolbar && (
+        {shouldShowBatchToolbar && controller.viewMode !== "tree" && (
           <BatchActionToolbar
             issues={
               controller.viewMode === "table" ? tableLoadedIssues : issues

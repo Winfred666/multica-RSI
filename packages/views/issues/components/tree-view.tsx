@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useDeleteAttachments } from "@multica/core/issues/mutations";
 import { useQuery } from "@tanstack/react-query";
 import { issueWorkspaceId, layoutWorkspaceTree, workspaceTreeOptions } from "@multica/core/workspace/tree";
-import { EyeOff, Layers, Plus, RotateCcw, Trash2 } from "@multica/ui/icons";
+import { EyeOff, Layers, Plus, RotateCcw } from "@multica/ui/icons";
 import type { AgentTask, Issue, Project } from "@multica/core/types";
 import { useWSEvent } from "@multica/core/realtime";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -38,6 +38,7 @@ import type { IssueCreateDefaults } from "../surface/types";
 import type { IssueStatusPagination } from "../surface/use-issue-status-branches";
 import { useIssueSurfaceSelection } from "../surface/selection-context";
 import { IssueHoverCard } from "./issue-hover-card";
+import { BatchActionToolbar } from "./batch-action-toolbar";
 import { BoardCardContent } from "./board-card";
 import type { ChildProgress } from "./list-row";
 import { IssueActionsContextMenu } from "../actions";
@@ -56,8 +57,9 @@ function isWorkspaceNode(node: IssueTreeNode) {
   return node.id.startsWith("workspace:");
 }
 
-export function TreeView({ issues, statusPagination, onCreateIssue, childProgressMap, projectMap }: {
+export function TreeView({ issues, statusPagination, onCreateIssue, childProgressMap, projectMap, showBatchToolbar = false }: {
   issues: Issue[];
+  showBatchToolbar?: boolean;
   statusPagination: IssueStatusPagination;
   onCreateIssue: (defaults?: IssueCreateDefaults) => void;
   childProgressMap?: Map<string, ChildProgress>;
@@ -77,7 +79,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   const setTreeViewport = useViewStore((s) => s.setTreeViewport);
   const { data: tasks = EMPTY_TASKS } = useQuery(agentTaskSnapshotOptions(wsId));
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [layoutWidth, setLayoutWidth] = useState(treeViewport?.layoutWidth ?? 0);
+  const [layoutWidth, setLayoutWidth] = useState(0);
   const [sizes, setSizes] = useState<ReadonlyMap<string, IssueTreeSize>>(new Map());
   const onSizeChange = useCallback((id: string, size: IssueTreeSize) => {
     if (size.height <= 0 || size.width <= 0) return;
@@ -168,7 +170,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
     canvas.handlePointerUp(event);
   }
   useEffect(() => {
-    if (layoutWidth > 0) setTreeViewport({ ...canvas.transform, layoutWidth });
+    if (layoutWidth > 0) setTreeViewport(canvas.transform);
   }, [canvas.transform, layoutWidth, setTreeViewport]);
   const byId = useMemo(() => new Map(layout.nodes.map((node) => [node.node.id, node])), [layout]);
   useEffect(() => {
@@ -225,9 +227,6 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
           {failed ? t(($) => $.tree.load_failed) : pending ? t(($) => $.tree.loading) : t(($) => $.tree.pan_hint)}
         </span>
         <div className="flex items-center gap-1">
-          {selectedArtifacts.length > 0 && <Button variant="ghost" size="sm" disabled={deleteAttachments.isPending} onClick={removeArtifacts} className="text-destructive hover:text-destructive">
-            <Trash2 />{t(($) => $.batch.delete)} ({selectedArtifacts.length})
-          </Button>}
           {failed && <Button variant="ghost" size="sm" onClick={() => pages.filter((page) => page.isError).forEach((page) => page.retry())}>{t(($) => $.status_catalog_error.retry)}</Button>}
           {expanded.size > 0 && <Button variant="ghost" size="icon-sm" aria-label={t(($) => $.tree.collapse)} onClick={() => setExpanded(new Set())}><RotateCcw /></Button>}
           <Popover>
@@ -311,6 +310,9 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
           </div>;
         })}
       </ZoomCanvas>
+      {showBatchToolbar && <BatchActionToolbar issues={issues} deliverables={{
+        count: selectedArtifacts.length, onDelete: removeArtifacts, isPending: deleteAttachments.isPending,
+      }} />}
       <ZoomControls canvas={canvas} className="absolute bottom-4 right-4 rounded-lg border bg-background p-1 shadow-sm" />
     </div>
   );

@@ -34,6 +34,7 @@ export function BatchActionToolbar({
   issues,
   placement = "fixed-bottom",
   clearSelectionOnApply = false,
+  deliverables,
 }: {
   /**
    * The universe of selectable issues at this call site (the same list the
@@ -42,6 +43,7 @@ export function BatchActionToolbar({
    * selected issues, mirroring how the skill list filters rows by `selectedIds`.
    */
   issues: Issue[];
+  deliverables?: { count: number; onDelete: () => void; isPending: boolean };
   /**
    * "fixed-bottom" — floats at the bottom of the viewport (default; used by
    * full-screen issue lists).
@@ -73,6 +75,13 @@ export function BatchActionToolbar({
     [issues, selectedIds],
   );
   const count = selectedIssues.length;
+  const deliverableCount = deliverables?.count ?? 0;
+  const selectedLabel = deliverables
+    ? t(($) => $.batch.selected_items, { items: [
+        count > 0 && t(($) => $.filters.issue_count, { count }),
+        deliverableCount > 0 && t(($) => $.deliverables.overview_summary, { count: deliverableCount }),
+      ].filter(Boolean).join(", ") })
+    : t(($) => $.batch.selected, { count });
 
   useRegisterCommandBarContext(
     useMemo(
@@ -191,7 +200,8 @@ export function BatchActionToolbar({
       } else {
         await batchDelete.mutateAsync(ids);
       }
-      clear();
+      if (deliverables) selection.deselect(ids);
+      else clear();
       toast.success(t(($) => $.batch.delete_success, { count }));
     } catch (err) {
       toast.error(
@@ -207,62 +217,74 @@ export function BatchActionToolbar({
   return (
     <>
       <CollectionBatchBar
-        count={count}
+        count={count + deliverableCount}
         onClear={clear}
         placement={placement === "fixed-bottom" ? "fixed" : "inline"}
-        label={t(($) => $.batch.selected, { count })}
+        label={selectedLabel}
       >
-        {/* Status */}
-        <StatusPicker
-          status={common.status}
-          // No shared project spans projects (or none): not the Default-only
-          // list of a single issue outside a project. (MUL-8121)
-          projectId={sharedProjectId ?? undefined}
-          allowedStatuses={allowedStatuses}
-          onUpdate={handleBatchStatus}
-          open={statusOpen}
-          onOpenChange={setStatusOpen}
-          triggerRender={<Button variant="ghost" size="sm" disabled={loading} />}
-          trigger={t(($) => $.batch.status)}
-          align="center"
-        />
+        {count > 0 && <>
+          {/* Status */}
+          <StatusPicker
+            status={common.status}
+            // No shared project spans projects (or none): not the Default-only
+            // list of a single issue outside a project. (MUL-8121)
+            projectId={sharedProjectId ?? undefined}
+            allowedStatuses={allowedStatuses}
+            onUpdate={handleBatchStatus}
+            open={statusOpen}
+            onOpenChange={setStatusOpen}
+            triggerRender={<Button variant="ghost" size="sm" disabled={loading} />}
+            trigger={t(($) => $.batch.status)}
+            align="center"
+          />
 
-        {/* Priority */}
-        <PriorityPicker
-          priority={common.priority}
-          onUpdate={handleBatchUpdate}
-          open={priorityOpen}
-          onOpenChange={setPriorityOpen}
-          triggerRender={<Button variant="ghost" size="sm" disabled={loading} />}
-          trigger={t(($) => $.batch.priority)}
-          align="center"
-        />
+          {/* Priority */}
+          <PriorityPicker
+            priority={common.priority}
+            onUpdate={handleBatchUpdate}
+            open={priorityOpen}
+            onOpenChange={setPriorityOpen}
+            triggerRender={<Button variant="ghost" size="sm" disabled={loading} />}
+            trigger={t(($) => $.batch.priority)}
+            align="center"
+          />
 
-        {/* Assignee */}
-        <AssigneePicker
-          assigneeType={common.assignee?.type ?? null}
-          assigneeId={common.assignee?.id ?? null}
-          mixed={common.assignee === null}
-          onUpdate={handleBatchAssignee}
-          open={assigneeOpen}
-          onOpenChange={setAssigneeOpen}
-          triggerRender={<Button variant="ghost" size="sm" disabled={loading} />}
-          trigger={t(($) => $.batch.assignee)}
-          align="center"
-        />
+          {/* Assignee */}
+          <AssigneePicker
+            assigneeType={common.assignee?.type ?? null}
+            assigneeId={common.assignee?.id ?? null}
+            mixed={common.assignee === null}
+            onUpdate={handleBatchAssignee}
+            open={assigneeOpen}
+            onOpenChange={setAssigneeOpen}
+            triggerRender={<Button variant="ghost" size="sm" disabled={loading} />}
+            trigger={t(($) => $.batch.assignee)}
+            align="center"
+          />
 
-        {/* Delete */}
-        <Button
+          {/* Delete */}
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={loading || !canDeleteSelection}
+            title={!canDeleteSelection ? t(($) => $.batch.delete_restricted) : undefined}
+            onClick={() => setDeleteOpen(true)}
+            className="text-destructive hover:text-destructive"
+          >
+            <Trash2 className="size-3.5 mr-1" />
+            {deliverables ? t(($) => $.batch.delete_issues) : t(($) => $.batch.delete)}
+          </Button>
+        </>}
+        {deliverables && deliverableCount > 0 && <Button
           variant="ghost"
           size="sm"
-          disabled={loading || !canDeleteSelection}
-          title={!canDeleteSelection ? t(($) => $.batch.delete_restricted) : undefined}
-          onClick={() => setDeleteOpen(true)}
+          disabled={deliverables.isPending}
+          onClick={deliverables.onDelete}
           className="text-destructive hover:text-destructive"
         >
           <Trash2 className="size-3.5 mr-1" />
-          {t(($) => $.batch.delete)}
-        </Button>
+          {t(($) => $.batch.delete_deliverables)}
+        </Button>}
       </CollectionBatchBar>
 
       {count > 0 && <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
