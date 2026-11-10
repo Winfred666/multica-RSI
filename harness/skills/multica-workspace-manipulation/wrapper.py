@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Run explicit workspace operations with a host-provisioned member descriptor."""
+"""Run explicit workspace operations with the host member CLI profile."""
 import argparse
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 from uuid import UUID
 
+from auth import load
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--member-config', help='Authorized member CLI config; defaults to ~/.multica/config.json')
     parser.add_argument('--target', help='Target workspace UUID, except for create')
     parser.add_argument('operation', choices=('create', 'import', 'inspect', 'export', 'run'))
     parser.add_argument('args', nargs=argparse.REMAINDER, help='Native multica arguments; use absolute file paths')
@@ -40,29 +44,19 @@ def main():
         if args.operation == 'inspect':
             words.append('--inspect')
     try:
-        fd = int(os.environ['MULTICA_WORKSPACE_MEMBER_FD'])
-        if fd < 3:
-            raise ValueError()
-        # Seekable host descriptors can be reused across commands in one authorized session.
-        try:
-            os.lseek(fd, 0, os.SEEK_SET)
-        except OSError:
-            pass
-        token = os.read(fd, 257).decode().strip()
-    except (KeyError, ValueError, OSError, UnicodeError):
-        parser.error('member_context_required: host must supply a member PAT through MULTICA_WORKSPACE_MEMBER_FD')
-    if not token.startswith(('mul_', 'mcn_')) or len(token) > 256 or any(c.isspace() for c in token):
-        parser.error('member_context_required: the descriptor must contain a member PAT, not a task token')
-    server = os.environ.get('MULTICA_SERVER_URL')
-    if not server:
-        parser.error('MULTICA_SERVER_URL is required')
+        server, token = load(args.member_config)
+    except (OSError, ValueError, KeyError, AttributeError, TypeError):
+        parser.error('member_context_required: authorize the host member CLI profile or supply --member-config / an inherited descriptor')
+    cli = shutil.which(os.environ.get('MULTICA_CLI_PATH', 'multica'))
+    if not cli:
+        parser.error('multica CLI not found on this runtime host')
     # Shared /tmp may have a task marker; never remove or bypass that marker.
     with tempfile.TemporaryDirectory(prefix='multica-member-', dir=Path.home()) as work:
-        env = {'PATH': os.environ.get('PATH', ''), 'HOME': work,
-               'MULTICA_TOKEN': token, 'MULTICA_SERVER_URL': server,
-               'MULTICA_WORKSPACE_ID': target}
+        env = {k: os.environ[k] for k in ('PATH', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'PATHEXT') if k in os.environ}
+        env.update(HOME=work, USERPROFILE=work, MULTICA_TOKEN=token,
+                   MULTICA_SERVER_URL=server, MULTICA_WORKSPACE_ID=target)
         try:
-            result = subprocess.run([os.environ.get('MULTICA_CLI_PATH', 'multica'), *words, '--output', 'json'],
+            result = subprocess.run([cli, *words, '--output', 'json'],
                                     cwd=work, env=env, capture_output=True, text=True, timeout=120)
         except (OSError, subprocess.TimeoutExpired):
             sys.exit('Member CLI failed or timed out. Reconcile target state before retrying.')

@@ -1,33 +1,25 @@
-#!/usr/bin/env python3
-"""Host launcher: read an explicitly authorized member profile, then pass a private FD."""
+"""Member authentication shared by the script entry point on every runtime host."""
 import json
 import os
 from pathlib import Path
-import subprocess
-import sys
 
 
-def main():
-    if len(sys.argv) < 3:
-        sys.exit('Usage: auth.py /authorized/member-config.json [--target UUID] create|import|inspect|export|run ...')
-    try:
-        profile = json.loads(Path(sys.argv[1]).expanduser().read_text())
-        token = profile['token'].strip()
-        server = profile['server_url']
-        if not token.startswith(('mul_', 'mcn_')) or len(token) > 256 or not server:
-            raise ValueError()
-    except (OSError, ValueError, KeyError, AttributeError, TypeError):
-        sys.exit('The explicitly selected host profile must contain a member PAT and server_url.')
-    read, write = os.pipe()
-    try:
-        os.write(write, token.encode())
-        os.close(write)
-        env = {**os.environ, 'MULTICA_WORKSPACE_MEMBER_FD': str(read), 'MULTICA_SERVER_URL': server}
-        return subprocess.run([sys.executable, str(Path(__file__).with_name('wrapper.py')), *sys.argv[2:]],
-                              env=env, pass_fds=(read,)).returncode
-    finally:
-        os.close(read)
-
-
-if __name__ == '__main__':
-    sys.exit(main())
+def load(config=None):
+    if config is None and 'MULTICA_WORKSPACE_MEMBER_FD' in os.environ:
+        fd = int(os.environ['MULTICA_WORKSPACE_MEMBER_FD'])
+        if fd < 3:
+            raise ValueError('Member descriptor must be 3 or higher.')
+        try:
+            os.lseek(fd, 0, os.SEEK_SET)
+        except OSError:
+            pass
+        token = os.read(fd, 257).decode().strip()
+        server = os.environ.get('MULTICA_SERVER_URL')
+    else:
+        path = Path(config).expanduser() if config else Path.home() / '.multica' / 'config.json'
+        profile = json.loads(path.read_text(encoding='utf-8'))
+        token, server = profile['token'].strip(), profile['server_url']
+    if (not token.startswith(('mul_', 'mcn_')) or len(token) > 256 or
+            any(c.isspace() for c in token) or not isinstance(server, str) or not server):
+        raise ValueError('A member PAT and server URL are required.')
+    return server, token

@@ -3,26 +3,20 @@ name: multica-workspace-manipulation
 description: Create, import, inspect, export and run member CLI commands in a chosen workspace.
 ---
 
-Use `python3 <this-skill-directory>/wrapper.py --help`. This optional library skill
-uses the native member CLI and package format. It has no SoP state or controller.
+Run `python3 <skill>/wrapper.py --help` (`python` on hosts using that name).
+This library skill is a small CLI appendix, not a SoP. The same Python-standard-
+library scripts work independently of the agent provider: `wrapper.py` executes
+native member CLI commands; `auth.py` loads the authorized host member profile.
+No Bash, Unix sockets, provider paths or inherited-subprocess FD support is needed.
 
-For automatic auth, an operator can authorize an existing member CLI profile once:
-`python3 <skill>/auth.py /authorized/member-config.json <wrapper arguments>`.
-The host launcher reads that selected profile for each action and privately hands
-the PAT to the wrapper on a fresh descriptor. Reuse the command or a shell alias
-for every action below. No PAT copy is saved, and ordinary CLI auth is unchanged.
-The profile source must be explicitly authorized; the skill does not discover one.
-
-The host must explicitly authorize a member PAT through the inherited descriptor
-named by `MULTICA_WORKSPACE_MEMBER_FD` (3 or higher). The script retrieves the PAT
-from that descriptor only. It never discovers the daemon profile or upgrades a
-task token. A host file descriptor can be reused throughout an authorized session;
-a pipe needs a fresh descriptor per invocation. Skill attachment and remote-sop's
-task credential alone do not grant this authority. Keep the PAT out of prompts,
-argv, packages, agent configs and logs. The child has an empty HOME and working
-directory, without task/agent/daemon environment variables. Normal task-token
-checks remain unchanged. Set `MULTICA_SERVER_URL`; `MULTICA_CLI_PATH` may select a
-trusted host CLI. The originating task environment is unchanged.
+The host owner must authorize use of its existing `~/.multica/config.json` member
+profile. Home resolution follows the host OS. Use `--member-config PATH` for a
+named/alternate profile (`~/.multica/profiles/NAME/config.json`). The script reads
+that source automatically for each action, without saving another PAT copy.
+An explicitly inherited `MULTICA_WORKSPACE_MEMBER_FD` is also supported; its server
+comes from `MULTICA_SERVER_URL`. `MULTICA_CLI_PATH` selects the trusted host CLI,
+otherwise PATH is used. A remote host needs its own authorized member profile or
+credential handoff; attaching this skill does not grant host credential access.
 
 ```sh
 python3 <skill>/wrapper.py create --name Trial --slug trial
@@ -36,11 +30,12 @@ python3 <skill>/wrapper.py --target WORKSPACE_UUID run issue create --title Tria
 python3 <skill>/wrapper.py --target WORKSPACE_UUID run issue runs ISSUE_ID
 ```
 
-Use absolute file paths. Export selections and import behavior are native CLI
-rules; packages may contain private instructions and MCP configuration. Use a new
-export path to preserve existing files. Imported agents need a destination runtime
-binding (`run agent update AGENT_ID --runtime-id RUNTIME_ID`). Runtime setup must
-already authorize the member/host. Confirm an actual run, not workspace creation
-alone. `run` accepts workspace resource commands without a shell; local/auth
-commands and server/workspace/profile overrides are rejected. Reconcile writes
-before retrying failures. Plugin activation remains native and opt-in.
+Use native absolute paths (including Windows paths) and a new export filename.
+Native package selections, membership checks and opt-in plugin activation apply.
+Imported agents need runtime binding: `run agent update AGENT_ID --runtime-id ID`.
+Confirm an actual run, not workspace creation alone. Reconcile writes before retrying.
+`run` accepts workspace resource commands without a shell; local/auth commands and
+server/workspace/profile overrides are rejected. The member child has temporary
+HOME/USERPROFILE and cwd, with no task/agent/daemon variables. Original task auth
+and ordinary CLI checks stay unchanged. Keep PATs out of prompts, argv, exports,
+agent configuration and logs. No backend or daemon change is required.
