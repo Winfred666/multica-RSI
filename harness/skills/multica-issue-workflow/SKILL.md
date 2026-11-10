@@ -11,6 +11,9 @@ description: Own issue workflow, delivery comments, review and acceptance.
    `in_review` unless explicitly returned for rework. Consultation changes no status.
    Complete the assignment within Agent Identity boundaries; reuse its checkout
    and verified evidence.
+   Keep routine build/test progress in run output, not issue comments. For
+   meaningful progress comments, reuse one continuing thread on the issue rather
+   than creating a new root for each update.
 4. Post final results through `multica issue comment add --content-file <path>`.
    Reply under this turn's trigger; assignments without a trigger use a top-level
    comment. Terminal output is not delivery.
