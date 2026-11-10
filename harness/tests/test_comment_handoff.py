@@ -1,4 +1,4 @@
-"""Child blocking publishes native replies and requests parent help."""
+"""Blocking requests parent help without a duplicate child note."""
 import importlib.util
 from pathlib import Path
 import sys
@@ -20,48 +20,35 @@ def load(name, folder, file):
 
 class CommentHandoff(unittest.TestCase):
     def setUp(self):
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.directory = Path(temporary.name)
         self.issue = {'id': 'child', 'workspace_id': 'workspace', 'parent_issue_id': 'parent', 'status': 'in_progress'}
-        self.comments = [{'id': 'thread', 'issue_id': 'child', 'parent_id': None, 'content': 'Task'}]
         self.writes = []
 
     def cli(self, *words, **kwargs):
         if words[0] == 'get':
             return self.issue
-        if words[:2] == ('comment', 'list'):
-            return self.comments
-        if words[:2] == ('comment', 'add'):
-            content = Path(words[words.index('--content-file') + 1]).read_text()
-            comment = {'id': 'reply', 'issue_id': 'child', 'parent_id': 'thread', 'content': content}
-            self.comments.append(comment)
-            self.writes.append(('reply', content))
-            return comment
-        if words[:2] == ('comment', 'resolve'):
-            self.comments[0]['resolved_at'] = 'now'
-            return
         if words[0] == 'status':
             self.writes.append(('status', words[2]))
             self.issue['status'] = words[2]
             return
         raise AssertionError(words)
 
-    def test_r206_blocker_finishes_only_after_parent_help_dispatch(self):
+    def test_blocker_finishes_only_after_parent_help_dispatch(self):
         block = load('native_block', 'multica-surface-block', 'controller.py')
         parent = {'id': 'parent', 'workspace_id': 'workspace', 'status': 'in_progress',
                   'assignee_type': 'agent', 'assignee_id': 'parent-agent'}
-        args = SimpleNamespace(reason='Frontend must hide /note while preserving routing.', parent_thread='parent-reply')
-        for dispatch in ('queued', 'steered', 'coalesced', 'deferred', 'blocked', None):
-            with self.subTest(dispatch=dispatch), tempfile.TemporaryDirectory() as directory:
+        args = SimpleNamespace(reason='Please approve the required workspace access.', parent_thread='parent-reply')
+        for parent_thread, dispatch in (('parent-reply', 'queued'), (None, 'queued'),
+                                        ('parent-reply', 'steered'), ('parent-reply', 'coalesced'),
+                                        ('parent-reply', 'deferred'), ('parent-reply', 'blocked'),
+                                        ('parent-reply', None)):
+            args.parent_thread = parent_thread
+            with self.subTest(parent_thread=parent_thread, dispatch=dispatch), tempfile.TemporaryDirectory() as directory:
                 self.issue['status'] = 'in_progress'
                 writes = []
 
                 def cli(*words, **kwargs):
                     if words == ('get', 'parent'):
                         return parent
-                    if words[:3] == ('comment', 'list', 'parent'):
-                        return [{'id': 'parent-root', 'issue_id': 'parent', 'parent_id': None}]
                     if words[:2] == ('comment', 'add'):
                         content = Path(words[words.index('--content-file') + 1]).read_text()
                         writes.append((words[2], content, words))
@@ -84,18 +71,27 @@ class CommentHandoff(unittest.TestCase):
                         with self.assertRaises(ValueError):
                             block.block(args, context)
                     else:
-                        result = block.block(args, context)
-                        self.assertEqual(result['data']['parent_comment_id'], 'parent-reply')
-                        self.assertEqual(result['data']['parent_dispatch'], dispatch)
+                        self.assertIsNone(block.block(args, context))
                         block.block(args, context)
-                self.assertEqual([row[0] for row in writes], ['child', 'status', 'parent'])
+                self.assertEqual([row[0] for row in writes], ['status', 'parent'])
                 request = writes[-1]
                 self.assertIn('mention://agent/parent-agent', request[1])
                 self.assertIn(args.reason, request[1])
                 self.assertIn('mention://issue/child', request[1])
-                self.assertIn('child-reply', request[1])
+                self.assertNotIn('/note', request[1])
                 self.assertIn('--steer-active', request[2])
-                self.assertEqual(request[2][-3:-1], ('--parent', 'parent-reply'))
+                if parent_thread:
+                    self.assertEqual(request[2][-3:-1], ('--parent', parent_thread))
+                else:
+                    self.assertNotIn('--parent', request[2])
+
+    def test_root_blocker_leaves_explanation_to_normal_reply(self):
+        block = load('native_block_root', 'multica-surface-block', 'controller.py')
+        self.issue['parent_issue_id'] = None
+        context = {'initial': self.issue, 'cli': self.cli, 'issue_id': 'child', 'state': {},
+                   'save_state': lambda: None, 'error': lambda code, message: ValueError(message)}
+        self.assertIsNone(block.block(SimpleNamespace(reason='Need owner approval.', parent_thread=None), context))
+        self.assertEqual(self.writes, [('status', 'blocked')])
 
 
 if __name__ == '__main__':

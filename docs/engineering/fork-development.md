@@ -130,6 +130,10 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   limit apply; overlapping callbacks on the same SoP require coordination.
   Controller `data` remains internal; state instructions and option descriptions
   expose only selected facts in CLI, help and HTML.
+  The blocker SoP marks the issue blocked and steers one concise help request
+  to its parent's original assignment thread, or a new parent thread if none
+  exists. It posts no separate blocker note or return receipt on the current
+  issue; the agent's normal reply explains the blocker.
 
 - **Workspace packages.** `workspace package`, `workspace export` and
   `workspace import` expose the native package API with paged summaries, JSON

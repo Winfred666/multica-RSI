@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 CONFIRM = "Confirm that the issue faces a barrier outside its scope and that there is no expert agent to mention who can solve this problem."
-DESCRIBE = "Describe the barrier and required help. For a child, include --parent-thread with the relevant parent request comment."
+DESCRIBE = "State the blocker and the exact help needed in a short sentence. For a child, use --parent-thread for the original assignment thread on its parent when one exists; otherwise request help in a new parent thread."
 
 
 def post(context, issue_id, content, *options):
@@ -19,11 +19,15 @@ def block(args, context):
     digraph block {
         rankdir=LR; node [shape=box];
         "Validate reason and parent owner" -> "Reconcile saved handoff"
-          -> "Publish blocker once" -> "Persist blocked status" -> "Has parent?";
+          -> "Persist blocked status" -> "Has parent?";
         "Has parent?" [shape=diamond];
-        "Has parent?" -> "Request help and verify dispatch" [label="yes"];
-        "Has parent?" -> "Return receipt" [label="no"];
-        "Request help and verify dispatch" -> "Return receipt";
+        "Has parent?" -> "Original assignment thread?" [label="yes"];
+        "Original assignment thread?" [shape=diamond];
+        "Original assignment thread?" -> "Steer there" [label="yes"];
+        "Original assignment thread?" -> "Steer in new parent thread" [label="no"];
+        "Steer there" -> "Verify dispatch" -> "Finish without posting a receipt";
+        "Steer in new parent thread" -> "Verify dispatch";
+        "Has parent?" -> "Finish without posting a receipt" [label="no"];
     }
     ```"""
     issue, cli, error = context['initial'], context['cli'], context['error']
@@ -33,8 +37,6 @@ def block(args, context):
     parent = cli('get', issue['parent_issue_id']) if issue.get('parent_issue_id') else None
     if parent:
         require(parent['workspace_id'] == issue['workspace_id'], 'Parent is outside the issue workspace')
-        if not args.parent_thread:
-            raise error('missing_parent_thread', 'Supply --parent-thread with the relevant parent request comment.')
         if parent.get('assignee_type') not in {'agent', 'squad'} or not parent.get('assignee_id'):
             raise error('missing_parent_owner', 'Assign a responsible agent or squad to the parent before handing off.')
     receipt = context['state'].setdefault('handoff', {'reason': reason, 'parent_thread': args.parent_thread})
@@ -53,23 +55,19 @@ def block(args, context):
             context['save_state']()
         return receipt[key]
 
-    comment = publish('blocker', issue['id'], '/note\n' + reason)
-    data = {'comment_id': comment['id']}
     if category(issue) != 'blocked':
         cli('status', issue['id'], 'blocked', '--no-start', write=True)
     if parent:
         target_type, target_id = parent['assignee_type'], parent['assignee_id']
-        link = f"[Child blocker](mention://issue/{issue['id']}) · Comment: {comment['id']}"
+        link = f"[{issue.get('identifier') or issue['id']}](mention://issue/{issue['id']})"
+        thread = ('--parent', args.parent_thread) if args.parent_thread else ()
         request = publish('parent_request', parent['id'],
-                          f"[@Parent owner](mention://{target_type}/{target_id}) Please resolve this child blocker.\n\n{reason}\n\n{link}",
-                          '--parent', args.parent_thread, '--steer-active')
+                          f"[@Parent owner](mention://{target_type}/{target_id}) {link}: {reason}",
+                          *thread, '--steer-active')
         outcome = next((row for row in request.get('trigger_outcomes', [])
                         if row['target_type'] == target_type and row['target_id'] == target_id), {})
         if outcome.get('status') not in {'steered', 'queued', 'coalesced', 'deferred'}:
             raise error('parent_not_notified', 'Parent help request was posted but dispatch was not confirmed; inspect comment ' + request['id'] + ' before retrying.')
-        data.update(parent_comment_id=request['id'], parent_dispatch=outcome['status'])
-    return {'instruction': 'Blocker posted and parent help request dispatched; await its response.' if parent else
-                           'Blocker posted; await the issue owner.', 'data': data}
 
 
 def require(condition, message):
@@ -110,8 +108,8 @@ workflow = Workflow(
     State('confirm', CONFIRM, initial=True, precheck=precheck,
           options=(Option('confirm', 'describe', 'Confirm the barrier is outside this issue scope.'),)),
     State('describe', DESCRIBE, precheck=precheck,
-          options=(Option('continue', 'finished', 'Post the blocker and request parent help through native steering.', block,
+          options=(Option('continue', 'finished', 'Mark blocked and send one concise parent help request through native steering.', block,
                           params=(Parameter('--reason', 'Concrete blocker and required parent help'),
-                                  Parameter('--parent-thread', 'Relevant parent request comment ID', required=False))),)),
-    State('finished', 'Blocker is persisted and parent dispatch is confirmed when this issue has a parent.', final=True, precheck=precheck),
+                                  Parameter('--parent-thread', 'Original assignment comment on the parent, when available', required=False))),)),
+    State('finished', 'Issue is blocked; parent help was requested when applicable. Explain the blocker in your normal reply, not a separate receipt or note.', final=True, precheck=precheck),
 )
