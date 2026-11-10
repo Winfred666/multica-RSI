@@ -45,7 +45,7 @@ function ItemGroup({ label, items, selected, onChange, disabled, replacing }: {
 }
 
 function Category({ category, wsId, count, pkg, selected, onChange, disabled }: {
-  category: WorkspacePackageCategory; wsId: string; count: number; pkg?: WorkspacePackage;
+  category: Exclude<WorkspacePackageCategory, "issues">; wsId: string; count: number; pkg?: WorkspacePackage;
   selected: string[]; onChange: (ids: string[]) => void; disabled: boolean;
 }) {
   const { t } = useT("workspace");
@@ -53,15 +53,16 @@ function Category({ category, wsId, count, pkg, selected, onChange, disabled }: 
   const [expanded, setExpanded] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [error, setError] = useState(false);
-  const query = useQuery({ ...packageItemsOptions(wsId, category), enabled: expanded && (!pkg || category !== "agents") });
-  const items = pkg?.[category] ?? query.data ?? [];
-  const replacing = new Set(pkg ? items.filter((item) => query.data?.some((existing) => category === "plugins" ? !!item.key && existing.key === item.key : existing.name === item.name)).map((item) => item.id) : []);
+  const query = useQuery({ ...packageItemsOptions(wsId, category), enabled: expanded && (!pkg || (category !== "agents" && category !== "projects")) });
+  const packageItems = pkg && (category === "projects" ? pkg.projects.map((item) => ({ id: item.id, name: item.title })) : pkg[category]);
+  const items: WorkspacePackageItem[] = packageItems ?? query.data ?? [];
+  const replacing = new Set(pkg && category !== "projects" ? items.filter((item) => query.data?.some((existing) => category === "plugins" ? !!item.key && existing.key === item.key : existing.name === item.name)).map((item) => item.id) : []);
   const label = t(($) => $.package[category]);
   const toggleAll = async (checked: boolean) => {
     if (!checked) { onChange([]); return; }
     setSelecting(true);
     setError(false);
-    try { onChange((pkg?.[category] ?? await qc.fetchQuery(packageItemsOptions(wsId, category))).map((item) => item.id)); }
+    try { onChange((packageItems ?? await qc.fetchQuery(packageItemsOptions(wsId, category))).map((item) => item.id)); }
     catch { setError(true); }
     finally { setSelecting(false); }
   };
@@ -90,11 +91,17 @@ export function PackageChecklist({ wsId, counts, pkg, selection, onChange, disab
 }) {
   const { t } = useT("workspace");
   const inventory = useQuery({ ...packageInventoryOptions(wsId), enabled: !!pkg && counts.system_prompt });
+  const issues = useQuery({ ...packageItemsOptions(wsId, "issues"), enabled: !pkg, refetchOnMount: "always" });
+  const issueItems = pkg?.issues ?? issues.data;
   return <fieldset disabled={disabled} className="min-w-0 space-y-1">
+    <Category category="projects" wsId={wsId} count={counts.projects} pkg={pkg} selected={selection.projects}
+      onChange={(ids) => onChange((current) => ({ ...current, projects: ids }))} disabled={disabled} />
     <div className="pl-7">
-      <CheckRow label={`${t(($) => $.package.projects_issues)} (${counts.projects} / ${counts.issues})`} checked={selection.projects_issues}
-        disabled={disabled || counts.projects + counts.issues === 0} onChange={(checked) => onChange((current) => ({ ...current, projects_issues: checked }))} />
-      <p className="text-caption text-muted-foreground">{t(($) => $.package.projects_hint)}</p>
+      <CheckRow label={`${t(($) => $.package.issues)} (${counts.issues})`} checked={counts.issues > 0 && selection.issues.length === counts.issues}
+        disabled={disabled || counts.issues === 0 || (!pkg && (issues.isFetching || issues.isError || !issueItems))}
+        onChange={(checked) => onChange((current) => ({ ...current, issues: checked ? (issueItems ?? []).map((item) => item.id) : [] }))} />
+      {!pkg && issues.isFetching && <p role="status" className="text-caption">{t(($) => $.package.loading)}</p>}
+      {!pkg && issues.isError && <p role="alert" className="text-caption text-destructive">{t(($) => $.package.failed)}</p>}
     </div>
     {(["agents", "skills", "mcps", "plugins"] as const).map((category) => <Category key={category} category={category} wsId={wsId} count={counts[category]} pkg={pkg}
       selected={selection[category]} onChange={(ids) => onChange((current) => ({ ...current, [category]: ids }))} disabled={disabled} />)}

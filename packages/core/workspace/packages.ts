@@ -31,7 +31,8 @@ export const packageItemsOptions = (wsId: string, category: WorkspacePackageCate
 
 export function packageSelection(pkg?: WorkspacePackage): WorkspacePackageSelection {
   return {
-    projects_issues: !!pkg && (pkg.projects.length > 0 || pkg.issues.length > 0),
+    projects: pkg?.projects.map((item) => item.id) ?? [],
+    issues: pkg?.issues.map((item) => item.id) ?? [],
     agents: pkg?.agents.map((item) => item.id) ?? [],
     skills: pkg?.skills.map((item) => item.id) ?? [],
     mcps: pkg?.mcps.map((item) => item.id) ?? [],
@@ -43,7 +44,7 @@ export function packageSelection(pkg?: WorkspacePackage): WorkspacePackageSelect
 export function useImportWorkspacePackage(wsId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ pkg, selection, pluginExecutionToken }: { pkg: WorkspacePackage; selection: WorkspacePackageSelection; pluginExecutionToken?: string }) => {
+    mutationFn: async ({ pkg, selection, pluginExecutionToken }: { pkg: WorkspacePackage; selection?: WorkspacePackageSelection; pluginExecutionToken?: string }) => {
       const result = await api.importWorkspacePackage(wsId, pkg, selection, pluginExecutionToken);
       if (!result) throw new Error("Invalid workspace import response");
       return result;

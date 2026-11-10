@@ -34,8 +34,8 @@
   "package": {
     "import_action": "Importar espacio de trabajo",
     "export_action": "Exportar espacio de trabajo",
-    "projects_issues": "Proyectos e incidencias",
-    "projects_hint": "Un agente puede copiar proyectos e incidencias de forma selectiva al nuevo espacio de trabajo.",
+    "projects": "Proyectos",
+    "issues": "Incidencias",
     "agents": "Agentes",
     "agents_hint": "Los agentes copiados están inactivos y requieren configuración en una nueva máquina de ejecución.",
     "skills": "Habilidades",
