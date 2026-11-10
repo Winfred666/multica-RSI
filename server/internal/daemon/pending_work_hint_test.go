@@ -22,6 +22,10 @@ func pendingWorkHintDaemon(t *testing.T, handler http.HandlerFunc) (*Daemon, *in
 	withPendingWorkHintMinInterval(t, 0)
 	var calls int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/daemon/heartbeat" {
+			http.NotFound(w, r)
+			return
+		}
 		atomic.AddInt32(&calls, 1)
 		handler(w, r)
 	}))
