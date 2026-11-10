@@ -13,7 +13,8 @@ ORDER BY position ASC, created_at ASC;
 
 -- name: ListProjectResourcesForProjects :many
 SELECT * FROM project_resource
-WHERE project_id = ANY(sqlc.arg('project_ids')::uuid[])
+WHERE workspace_id = sqlc.arg('workspace_id')
+  AND project_id = ANY(sqlc.arg('project_ids')::uuid[])
 ORDER BY project_id, position ASC, created_at ASC;
 
 -- name: GetProjectResource :one

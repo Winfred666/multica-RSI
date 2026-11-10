@@ -29,7 +29,8 @@ func TestWorkspacePackageSelectiveRoundTrip(t *testing.T) {
 		t.Fatal("startup kit contains work data")
 	}
 	p.Projects = []PackageProject{{ID: "project", Title: "Portable project", Status: "planned", Priority: "high", Resources: []PackageProjectResource{{ResourceType: "github_repo", ResourceRef: json.RawMessage(`{"url":"  https://github.com/example/portable.git  ","ref":" main "}`)}}}}
-	p.Issues = []PackageIssue{{ID: "child", Title: "Child", Status: "backlog", Priority: "none", ProjectID: "project", ParentIssueID: "parent", AgentID: "agent", Metadata: json.RawMessage(`{"git_branch":"feat/portable"}`)}, {ID: "parent", Title: "Parent", Status: "todo", Priority: "high", ProjectID: "project"}}
+	stage := int32(1)
+	p.Issues = []PackageIssue{{Stage: &stage, ID: "child", Title: "Child", Status: "backlog", Priority: "none", ProjectID: "project", ParentIssueID: "parent", AgentID: "agent", Metadata: json.RawMessage(`{"git_branch":"feat/portable"}`)}, {ID: "parent", Title: "Parent", Status: "todo", Priority: "high", ProjectID: "project"}}
 	p.Agents = []PackageAgent{{ID: "agent", Name: "Portable agent", RuntimeMode: "local", Instructions: "Keep working", Skills: []PackageBinding{{ID: p.Skills[0].ID, Enabled: false}}, MCPs: []PackageBinding{{ID: "mcp", Enabled: false}}}}
 	p.MCPs = []PackageMCP{{ID: "mcp", Name: "portable-mcp", Config: json.RawMessage(`{"command":"example","args":[]}`)}}
 	ws := dbfx.Insert(t, "workspace", testutil.Cols{"name": "Package destination", "slug": "handler-package-destination"})
@@ -48,7 +49,13 @@ func TestWorkspacePackageSelectiveRoundTrip(t *testing.T) {
 	}
 	writer := *testHandler
 	writer.Queries = testHandler.Queries.WithTx(tx)
-	selection := PackageSelection{ProjectsIssues: true, SystemPrompt: true}
+	selection := PackageSelection{SystemPrompt: true}
+	for _, id := range imported.Projects {
+		selection.Projects = append(selection.Projects, id)
+	}
+	for _, id := range imported.Issues {
+		selection.Issues = append(selection.Issues, id)
+	}
 	for _, id := range imported.Skills {
 		selection.Skills = append(selection.Skills, id)
 	}
@@ -99,6 +106,41 @@ func TestWorkspacePackageSelectiveRoundTrip(t *testing.T) {
 	}
 	if len(got.Agents[0].MCPs) != 1 || got.Agents[0].MCPs[0].Enabled {
 		t.Fatal("disabled MCP binding changed")
+	}
+	// Atomic selectors reuse the importer and do no per-reference reads.
+	recorder := &packageReadRecorder{DBTX: tx}
+	subsetWriter := writer
+	subsetWriter.Queries = db.New(recorder)
+	issueSelection := PackageSelection{Issues: []string{strings.ToUpper(imported.Issues["child"])}}
+	issueOnly, err := subsetWriter.exportWorkspacePackage(ctx, parseUUID(ws), issueSelection)
+	if err != nil || len(recorder.calls) != 2 || len(issueOnly.Issues) != 1 || len(issueOnly.Projects) != 0 {
+		t.Fatalf("issue-only export: %v, reads=%d, package=%+v", err, len(recorder.calls), issueOnly)
+	}
+	detached := issueOnly.Issues[0]
+	if detached.ParentIssueID != "" || detached.ProjectID != "" || detached.AgentID != "" || detached.Stage != nil {
+		t.Fatal("issue-only export retained external references")
+	}
+	if _, err := writer.importWorkspacePackage(ctx, tx, parseUUID(ws), parseUUID(testUserID), issueOnly); err != nil {
+		t.Fatalf("detached package failed to import: %v", err)
+	}
+	recorder.calls = nil
+	projectOnly, err := subsetWriter.exportWorkspacePackage(ctx, parseUUID(ws), PackageSelection{Projects: selection.Projects})
+	if err != nil || len(recorder.calls) != 2 || len(projectOnly.Projects) != 1 || len(projectOnly.Issues) != 0 || len(projectOnly.IssueStatuses) != 0 {
+		t.Fatalf("project-only export: %v, reads=%d", err, len(recorder.calls))
+	}
+	recorder.calls = nil
+	if empty, err := subsetWriter.exportWorkspacePackage(ctx, parseUUID(ws), PackageSelection{}); err != nil || len(recorder.calls) != 0 || len(empty.Projects)+len(empty.Issues) != 0 {
+		t.Fatal("empty selection read or exported work data")
+	}
+	for _, selection := range []PackageSelection{{Projects: []string{"unknown"}}, {Issues: []string{"11111111-1111-4111-8111-111111111111"}}} {
+		if _, err := subsetWriter.exportWorkspacePackage(ctx, parseUUID(ws), selection); !errors.Is(err, errWorkspacePackageInvalid) {
+			t.Fatalf("invalid selector accepted: %v", err)
+		}
+	}
+	for _, issue := range got.Issues {
+		if issue.ID == imported.Issues["child"] && (issue.ParentIssueID == "" || issue.ProjectID == "" || issue.Stage == nil) {
+			t.Fatal("subset export changed the full package")
+		}
 	}
 	// Reimport exported bundles over the already-installed default versions.
 	pluginSelection := PackageSelection{}

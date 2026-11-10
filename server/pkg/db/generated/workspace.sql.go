@@ -385,6 +385,12 @@ func (q *Queries) ListDaemonWorkspaces(ctx context.Context, userID pgtype.UUID) 
 
 const listWorkspacePackageSummaries = `-- name: ListWorkspacePackageSummaries :many
 SELECT resources.id, resources.name, resources.is_system_skill, resources.key FROM (
+    SELECT p.id, p.title AS name, false AS is_system_skill, ''::text AS key FROM project p
+    WHERE p.workspace_id = $1 AND $2::text = 'projects'
+    UNION ALL
+    SELECT i.id, i.title AS name, false AS is_system_skill, ''::text AS key FROM issue i
+    WHERE i.workspace_id = $1 AND $2::text = 'issues'
+    UNION ALL
     SELECT s.id, s.name, s.is_system_skill, ''::text AS key FROM skill s
     WHERE s.workspace_id = $1 AND $2::text = 'skills'
     UNION ALL
@@ -415,7 +421,7 @@ type ListWorkspacePackageSummariesRow struct {
 	Key           string      `json:"key"`
 }
 
-// Only expandable categories. Projects/issues stay a single count selection.
+// Bounded resource summaries; never load package bodies.
 func (q *Queries) ListWorkspacePackageSummaries(ctx context.Context, arg ListWorkspacePackageSummariesParams) ([]ListWorkspacePackageSummariesRow, error) {
 	rows, err := q.db.Query(ctx, listWorkspacePackageSummaries,
 		arg.WorkspaceID,

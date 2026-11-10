@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/jackc/pgx/v5"
@@ -71,11 +72,14 @@ func (h *Handler) ExportWorkspacePackage(w http.ResponseWriter, r *http.Request)
 
 func (h *Handler) exportWorkspacePackage(ctx context.Context, ws pgtype.UUID, selection PackageSelection) (WorkspacePackage, error) {
 	p := emptyWorkspacePackage()
-	for _, ids := range [][]string{selection.Agents, selection.Skills, selection.MCPs, selection.Plugins} {
-		for _, id := range ids {
-			if _, err := util.ParseUUID(id); err != nil {
+	for _, ids := range []*[]string{&selection.Projects, &selection.Issues, &selection.Agents, &selection.Skills, &selection.MCPs, &selection.Plugins} {
+		*ids = slices.Clone(*ids)
+		for i, id := range *ids {
+			uuid, err := util.ParseUUID(id)
+			if err != nil {
 				return p, errWorkspacePackageInvalid
 			}
+			(*ids)[i] = uuidToString(uuid)
 		}
 	}
 	if selection.SystemPrompt {
@@ -85,25 +89,30 @@ func (h *Handler) exportWorkspacePackage(ctx context.Context, ws pgtype.UUID, se
 		}
 		p.SystemPrompt = textToPtr(workspace.Context)
 	}
-	if selection.ProjectsIssues {
-		projects, err := h.Queries.ListProjects(ctx, db.ListProjectsParams{WorkspaceID: ws})
+	if len(selection.Projects) > 0 {
+		ids := packageUUIDs(selection.Projects)
+		projects, err := h.Queries.ListProjects(ctx, db.ListProjectsParams{WorkspaceID: ws, Ids: ids})
 		if err != nil {
 			return p, err
 		}
+		resources, err := h.Queries.ListProjectResourcesForProjects(ctx, db.ListProjectResourcesForProjectsParams{WorkspaceID: ws, ProjectIds: ids})
+		if err != nil {
+			return p, err
+		}
+		byProject := map[pgtype.UUID][]PackageProjectResource{}
+		for _, resource := range resources {
+			byProject[resource.ProjectID] = append(byProject[resource.ProjectID], PackageProjectResource{ResourceType: resource.ResourceType, ResourceRef: resource.ResourceRef, Label: textToPtr(resource.Label), Position: resource.Position})
+		}
 		for _, project := range projects {
-			entry := PackageProject{ID: uuidToString(project.ID), Title: project.Title, Description: textToPtr(project.Description), Icon: textToPtr(project.Icon), Status: project.Status, Priority: project.Priority, StartDate: project.StartDate, DueDate: project.DueDate, Resources: []PackageProjectResource{}}
-			resources, err := h.Queries.ListProjectResourcesInWorkspace(ctx, db.ListProjectResourcesInWorkspaceParams{ProjectID: project.ID, WorkspaceID: ws})
-			if err != nil {
-				return p, err
-			}
-			for _, resource := range resources {
-				entry.Resources = append(entry.Resources, PackageProjectResource{ResourceType: resource.ResourceType, ResourceRef: resource.ResourceRef, Label: textToPtr(resource.Label), Position: resource.Position})
-			}
+			entry := PackageProject{ID: uuidToString(project.ID), Title: project.Title, Description: textToPtr(project.Description), Icon: textToPtr(project.Icon), Status: project.Status, Priority: project.Priority, StartDate: project.StartDate, DueDate: project.DueDate, Resources: append([]PackageProjectResource{}, byProject[project.ID]...)}
 			p.Projects = append(p.Projects, entry)
 		}
+	}
+	if len(selection.Issues) > 0 {
+		ids := packageUUIDs(selection.Issues)
 		// Use the existing paginated query without truncating large workspaces.
 		for offset := int32(0); ; offset += 500 {
-			issues, err := h.Queries.ListIssues(ctx, db.ListIssuesParams{WorkspaceID: ws, Limit: 500, Offset: offset})
+			issues, err := h.Queries.ListIssues(ctx, db.ListIssuesParams{WorkspaceID: ws, Ids: ids, Limit: 500, Offset: offset})
 			if err != nil {
 				return p, err
 			}
@@ -216,7 +225,20 @@ func (h *Handler) exportWorkspacePackage(ctx context.Context, ws pgtype.UUID, se
 		}
 		p.Plugins = append(p.Plugins, PackagePlugin{ID: uuidToString(plugin.ID), Key: plugin.PluginKey, Name: metadata.Name, Bundle: bundle, Config: config, Enabled: plugin.Enabled})
 	}
-	return p, nil
+	selected, err := selectedPackage(p, &selection)
+	if err != nil {
+		return p, errWorkspacePackageInvalid
+	}
+	return selected, nil
+}
+
+// Export IDs have already been validated and normalized above.
+func packageUUIDs(ids []string) []pgtype.UUID {
+	result := make([]pgtype.UUID, len(ids))
+	for i, id := range ids {
+		result[i] = parseUUID(id)
+	}
+	return result
 }
 
 // The same count/summary response describes stored inventory and an uploaded package.
@@ -240,9 +262,9 @@ func packageInventoryPage(w http.ResponseWriter, r *http.Request) (PackageInvent
 		return page, true
 	}
 	switch page.Category {
-	case "agents", "skills", "mcps", "plugins":
+	case "projects", "issues", "agents", "skills", "mcps", "plugins":
 	default:
-		writeError(w, 400, "category must be agents, skills, mcps or plugins")
+		writeError(w, 400, "category must be projects, issues, agents, skills, mcps or plugins")
 		return page, false
 	}
 	// Match existing list endpoints' limit/offset convention and cap.
@@ -272,6 +294,14 @@ func packageInspection(w http.ResponseWriter, r *http.Request, p WorkspacePackag
 		index++
 	}
 	switch page.Category {
+	case "projects":
+		for _, v := range p.Projects {
+			add(v.ID, v.Title, false)
+		}
+	case "issues":
+		for _, v := range p.Issues {
+			add(v.ID, v.Title, false)
+		}
 	case "agents":
 		for _, v := range p.Agents {
 			add(v.ID, v.Name, false)

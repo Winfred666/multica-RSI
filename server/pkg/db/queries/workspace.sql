@@ -260,8 +260,14 @@ SELECT
 FROM workspace w WHERE w.id = $1;
 
 -- name: ListWorkspacePackageSummaries :many
--- Only expandable categories. Projects/issues stay a single count selection.
+-- Bounded resource summaries; never load package bodies.
 SELECT resources.id, resources.name, resources.is_system_skill, resources.key FROM (
+    SELECT p.id, p.title AS name, false AS is_system_skill, ''::text AS key FROM project p
+    WHERE p.workspace_id = sqlc.arg('workspace_id') AND sqlc.arg('category')::text = 'projects'
+    UNION ALL
+    SELECT i.id, i.title AS name, false AS is_system_skill, ''::text AS key FROM issue i
+    WHERE i.workspace_id = sqlc.arg('workspace_id') AND sqlc.arg('category')::text = 'issues'
+    UNION ALL
     SELECT s.id, s.name, s.is_system_skill, ''::text AS key FROM skill s
     WHERE s.workspace_id = sqlc.arg('workspace_id') AND sqlc.arg('category')::text = 'skills'
     UNION ALL

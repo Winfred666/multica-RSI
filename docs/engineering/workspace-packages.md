@@ -17,20 +17,24 @@ credentials are excluded using the existing actor classification.
 
 Inventory and inspect return `{counts: {projects, issues, agents, skills, mcps,
 plugins, system_prompt}}`. Counts are integers; `system_prompt` is a boolean.
-Projects/issues stay a count selection, with no item expansion. To expand another
-category, use `?category=agents|skills|mcps|plugins&limit=50&offset=0` on the same
+To page through a category, use
+`?category=projects|issues|agents|skills|mcps|plugins&limit=50&offset=0` on the same
 inventory or inspect route. Responses add `category`, `limit`, `offset` (when
 nonzero) and `items: [{id, name, is_system_skill?, key?}]` when nonempty. The maximum
 limit is 100; category counts give the total. Inventory orders by name and ID;
 inspection follows package order. Neither response includes bodies, files,
-configurations, ZIPs or issue IDs. The existing resource endpoints provide details.
+configurations or ZIPs. Project and issue summaries use the title as `name`. The existing resource endpoints provide details.
 Import returns the same count fields directly, without ID maps.
 
-A selection is `{projects_issues: false, agents: [], skills: [], mcps: [],
+A selection is `{projects: [], issues: [], agents: [], skills: [], mcps: [],
 plugins: [], system_prompt: false}`. Arrays contain IDs from inventory summaries
 or the uploaded package. Export reads content only for selected categories/IDs;
-selecting projects/issues exports the complete group. Omitted export fields
-select nothing. Omitted import selection selects everything; `{}` selects
+projects and issues use exact ID arrays like skills. Omitted, null or empty
+export arrays select nothing. A project does not select its issues; an issue
+does not select its parent, children, project or agent. Select-all clients pass
+all desired IDs, not a boolean. References to unselected resources are removed
+from the package, including parent-relative stage when a child is detached.
+Source records are unchanged. Omitted import selection selects everything; `{}` selects
 nothing. Unknown IDs fail with 400. Inspect and import accept one JSON request
 up to 64 MiB, including base64 data.
 
@@ -60,7 +64,7 @@ Omitting it leaves the workspace's execution credential unchanged. Activation
 requires the plugins feature flag, host configuration and a valid member PAT;
 the credential is encrypted and excluded from the package and response.
 
-Projects/issues receive new IDs, issue numbers and creators. Hierarchy, selected
+Projects/issues receive new IDs, issue numbers and creators. Selected hierarchy, selected
 agent assignments, dates, stages, metadata and status keys survive. Repository
 resource refs use the normal validator and stored normalization. Machine-bound
 `local_directory` resources and nonempty issue properties return 400 before any
@@ -95,13 +99,13 @@ otherwise existing workspace authorization is used implicitly. Import has no PAT
 
 ## CLI
 
-`workspace package` returns counts. Page through an expandable category to find
+`workspace package` returns counts. Page through a category to find
 IDs, then pass the backend selection object through `--selection-file`:
 
 ```sh
 multica workspace package SOURCE
 multica workspace package SOURCE --category skills --limit 50 --offset 0
-# selection.json: {"agents":["AGENT_ID"],"skills":["SKILL_ID"],"system_prompt":true}
+# selection.json: {"projects":["PROJECT_ID"],"issues":["ISSUE_ID"],"skills":["SKILL_ID"]}
 multica workspace export SOURCE --selection-file selection.json --file workspace.json
 multica workspace import DESTINATION --file workspace.json --inspect
 multica workspace import DESTINATION --file workspace.json --inspect --category skills
