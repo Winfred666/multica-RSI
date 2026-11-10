@@ -9,9 +9,11 @@ behavior. The [README](../../README.md) presents the research platform.
 - **Editable startup prompts.** We replaced embedded workflow instructions with
   workspace Go templates and SOP skills. You can edit the workspace prompt;
   the server validates the template on save. The kit routes issue turns to the
-  brief textual `multica-issue-workflow` skill only when available. Acceptance and
-  benchmark delivery rules live in its textual reference, so masking the skill
-  removes them. The prompt keeps common CLI rules,
+  brief textual `multica-issue-workflow` skill only when available. Its textual
+  reference owns label-specific delivery comments, acceptance and benchmark
+  completion rules; masking the skill removes them. Other skills and continuation
+  prompts defer to it for delivery and review, keeping their own API, delegation,
+  blocker and resource contracts. The prompt keeps common CLI rules,
   and ends with explicit Never-HERO
   scope limits and Stop-slop writing rules: confirmed verdict/achievement first, cause or method and decisive
   evidence next, with useful references beside each claim. Visuals show cause and effect

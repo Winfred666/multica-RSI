@@ -171,14 +171,8 @@ Current behavior:
 - moving a squad-assigned issue out of `backlog` can trigger the leader;
 - changing assignee cancels existing tasks for the issue before enqueueing the
   new assignee path;
-- parent issue status is agent-managed (same model as direct agent assignment):
-  the leader's first assignment turn should move the parent to `in_progress`
-  and keep it there while members work; the leader moves the parent to
-  `in_review` only when a later re-trigger confirms the overall goal is met.
-  When the run carries a `[Project workflow]` block, the parent stays at its
-  current step instead and the leader runs that block's Step done command.
-  Completing a leader task (including the first dispatch) does not itself
-  change issue status;
+- completing a leader task, including the first dispatch, does not itself
+  change issue status. Follow `multica-issue-workflow` for delivery and review;
 - that status authority is granted only when the issue's `assignee_type` /
   `assignee_id` point at THIS squad. The leader briefing is injected on every
   leader path, including an `@squad` mention on an issue owned by a plain agent
@@ -253,9 +247,6 @@ These actions can trigger agent work or mutate durable state:
 - `description` has no proven runtime prompt effect.
 - `role` is roster context, not automatic scheduling.
 - Backlog assignment does not immediately start work.
-- First leader dispatch is not parent completion — parent stays `in_progress`
-  until the leader later confirms the overall goal and moves it to `in_review`
-  (under a `[Project workflow]` block: stays at its step until Step done).
 - Child completion does not automatically change parent status. Parent wakeups
   come from workspace plugins or explicitly created wakeup rules.
 - Getting the leader briefing does NOT imply status authority. A squad

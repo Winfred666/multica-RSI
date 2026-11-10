@@ -11,10 +11,10 @@ receive their own prepared branches and inherited sandbox.
 
 The first `exp` requires `--baseline-score SCORE --direction min|max`.
 Competitive siblings share `--experiment-group GROUP --experiment-group-size N`;
-create all members before waiting. Ordinary children report independently.
+create all members before waiting.
 
-Each child posts final results as a native issue comment and enters `in_review`
-while awaiting acceptance. Use `multica-surface-block` for an external blocker.
+Use `multica-issue-workflow` for delivery and acceptance, and
+`multica-surface-block` for an external blocker.
 Follow returned error guidance, reconcile writes before retrying, and use `repaired`
 once for assertion failures; report a repeated failure through `multica-surface-block`.
 

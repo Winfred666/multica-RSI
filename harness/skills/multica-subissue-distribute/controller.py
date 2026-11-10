@@ -215,7 +215,7 @@ workflow = Workflow(
             Parameter('--experiment-group', required=False),
             Parameter('--experiment-group-size', required=False, type=int))),
     )),
-    State('finished', 'Child prepared. Follow its native delivery or blocker steering in this parent issue.',
+    State('finished', 'Child prepared.',
           final=True, precheck=precheck),
     params=(Parameter('--repo', required=False, type=Path),),
 )

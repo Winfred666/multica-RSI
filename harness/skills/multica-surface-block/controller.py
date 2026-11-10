@@ -111,5 +111,5 @@ workflow = Workflow(
           options=(Option('continue', 'finished', 'Mark blocked and send one concise parent help request through native steering.', block,
                           params=(Parameter('--reason', 'Concrete blocker and required parent help'),
                                   Parameter('--parent-thread', 'Original assignment comment on the parent, when available', required=False))),)),
-    State('finished', 'Issue is blocked; parent help was requested when applicable. Explain the blocker in your normal reply, not a separate receipt or note.', final=True, precheck=precheck),
+    State('finished', 'Issue is blocked; parent help was requested when applicable.', final=True, precheck=precheck),
 )

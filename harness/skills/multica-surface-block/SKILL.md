@@ -15,8 +15,7 @@ original assignment thread on its parent when one exists; omit it only when
 there is no assignment thread. The script marks the issue blocked and steers
 one concise help request to that thread, or a new parent thread when absent.
 It completes only after parent dispatch is confirmed. It posts no blocker note
-or return receipt on the current issue; explain the blocker in your normal
-reply under the triggering comment (top-level for an assignment without one).
+or return receipt on the current issue. Follow `multica-issue-workflow` for replies.
 
 A blocked child can resume an incomplete handoff. Keep the saved handoff when
 a write or dispatch is uncertain; inspect the native comment before retrying.

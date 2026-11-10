@@ -161,9 +161,8 @@ mutate durable workspace state and affect future tasks. Ask before changing
 A project can use a workflow: its ordered status columns, where a column may
 hand the issue off to a handler — a fixed agent, squad or member, the project
 lead, or the issue's creator. When the issue's project uses one, the per-turn
-prompt carries a `[Project workflow]` block. Its statuses and commands are
-the whole status contract for this issue: the built-in moves in the issues
-reference (`in_progress` on start, `in_review` on delivery) do not apply.
+prompt carries a `[Project workflow]` block. Follow `multica-issue-workflow`
+for issue execution policy; the contracts below describe workflow commands.
 
 - **The step's scope is its instructions.** A step that hands off carries the
   instructions its owner wrote; that is the work for this run. A step

@@ -1,16 +1,14 @@
 ---
 name: multica-platform
-description: "Use for Multica platform actions the runtime brief does not fully cover: issue and PR contracts, sub-issues, charts and files in comments, mentions, agents, squads, autopilots, projects, runtimes, skill import. Not for the product code you are working on."
+description: "Multica platform commands and API contracts, not issue delivery or review. Not for product code."
 user-invocable: false
 allowed-tools: Bash(multica *), Bash(git *), Bash(gh *)
 ---
 
 # Operating Multica
 
-Your runtime brief owns the per-turn workflow: which issue you are on, when to
-comment, what status to write. This skill owns the platform contracts behind
-it — what a command actually does, what the server validates, and which writes
-have consequences you cannot take back.
+Use `multica-issue-workflow` for issue delivery, review and acceptance.
+This skill covers platform commands, validation and side effects.
 
 Read the invariants below, then open the reference(s) your task actually needs
 — usually one, sometimes a few. Do not read them all.

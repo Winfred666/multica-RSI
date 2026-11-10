@@ -1,5 +1,40 @@
 # Acceptance and delivery
 
+## Delivery comments
+
+Choose the format by issue label. These formats do not change status,
+acceptance or benchmark contracts.
+
+### `dev`
+
+Keep code minimal and scoped. Open with one sentence naming the feature or fix
+and linking its commit on the issue's branch. Give the full diff against the
+integration base: `+A / -D lines across N files`. List at most the three
+most-changed files; totals include all files.
+
+| Relative path | Added / deleted | Change |
+| --- | --- | --- |
+| `path/to/file` | +A / -D | One sentence explaining the change. |
+
+Give the decisive check result. Report confirmed defects only if they threaten
+correctness or block acceptance. For reverts or cancellations, amend the original
+delivery comment in place, not by appending another report; replace stale claims,
+commit links and counts.
+
+### `exp`
+
+Keep code minimal and reproducible. Open with one sentence giving the authorized
+benchmark and metric, baseline → result, improvement or regression, and any fallback.
+Explain the key method in one short paragraph with evidence and a reproduction
+command or source link. Use a publication-ready plot or grid if useful.
+End with one sentence: "Student's next step or choices, pending approval: …"
+
+### `query`
+
+Open with a clear verdict supported by one short paragraph of quantitative or
+theoretical evidence. Link authoritative primary sources or mainstream community
+references beside the evidence. Use a compact table or visual if useful.
+
 ## Child acceptance
 
 A child submits verified work as `in_review` and waits for parent acceptance;
