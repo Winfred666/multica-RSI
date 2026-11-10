@@ -9,7 +9,8 @@
   ],
   "skills": [
     "create-symbolic-sop",
-    "harness-backup-restore"
+    "harness-backup-restore",
+    "multica-workspace-manipulation"
   ],
   "plugins": [
     "in-progress-ralph",

@@ -37,7 +37,10 @@ the named startup kit. See the [package contract](../docs/engineering/workspace-
 System skills inherit into newly created agents; optional skills remain in the
 workspace library for attachment.
 The optional library contains `create-symbolic-sop` for SOP authoring and
-`harness-backup-restore`. Mika onboarding guidance renders in the chat system
+`harness-backup-restore` and [explicit workspace manipulation](skills/multica-workspace-manipulation/SKILL.md).
+Workspace manipulation requires an operator-provisioned member descriptor; ordinary
+task credentials and remote-sop do not grant cross-workspace access. It is not a
+system skill and is never attached automatically. Mika onboarding guidance renders in the chat system
 prompt and applies only when product-authored onboarding context is present.
 
 Plugin packages and checks live in [plugins/](plugins/README.md). Startup publishes
