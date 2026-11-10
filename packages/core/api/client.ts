@@ -3171,9 +3171,9 @@ export class ApiClient {
     return parseWithFallback(raw, WorkspacePackageSchema, null as WorkspacePackage | null, { endpoint: "GET /api/workspaces/{id}/package/default" });
   }
 
-  async inspectWorkspacePackage(id: string, pkg: unknown) {
+  async inspectWorkspacePackage(id: string, pkg: unknown, selection?: WorkspacePackageSelection) {
     const raw = await this.fetch<unknown>(`/api/workspaces/${id}/import/inspect`, {
-      method: "POST", body: JSON.stringify({ package: pkg }), headers: workspaceHeader({ workspaceId: id }),
+      method: "POST", body: JSON.stringify({ package: pkg, selection }), headers: workspaceHeader({ workspaceId: id }),
     });
     return parseWithFallback(raw, WorkspacePackageInventorySchema, null as WorkspacePackageInventory | null, { endpoint: "POST /api/workspaces/{id}/import/inspect" });
   }
@@ -3185,7 +3185,7 @@ export class ApiClient {
     return parseWithFallback(raw, WorkspacePackageSchema, null as WorkspacePackage | null, { endpoint: "POST /api/workspaces/{id}/export" });
   }
 
-  async importWorkspacePackage(id: string, pkg: WorkspacePackage, selection: WorkspacePackageSelection, pluginExecutionToken?: string) {
+  async importWorkspacePackage(id: string, pkg: WorkspacePackage, selection?: WorkspacePackageSelection, pluginExecutionToken?: string) {
     const raw = await this.fetch<unknown>(`/api/workspaces/${id}/import`, {
       method: "POST", body: JSON.stringify({ package: pkg, selection, plugin_execution_token: pluginExecutionToken }), headers: workspaceHeader({ workspaceId: id }),
     });

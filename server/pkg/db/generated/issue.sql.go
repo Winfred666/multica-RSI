@@ -1388,21 +1388,22 @@ SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority,
        i.revision, i.duplicate_of_issue_id
 FROM issue i
 WHERE i.workspace_id = $1
-  AND ($4::text IS NULL OR i.status = $4)
-  AND ($5::text IS NULL OR i.priority = $5)
-  AND ($6::uuid IS NULL OR i.assignee_id = $6)
-  AND ($7::uuid[] IS NULL OR i.assignee_id = ANY($7::uuid[]))
-  AND ($8::uuid IS NULL OR i.creator_id = $8)
-  AND ($9::uuid IS NULL OR i.project_id = $9)
-  AND ($10::bool IS NULL OR (i.start_date IS NOT NULL OR i.due_date IS NOT NULL))
-  AND ($11::jsonb IS NULL OR i.metadata @> $11::jsonb)
+  AND ($4::uuid[] IS NULL OR i.id = ANY($4::uuid[]))
+  AND ($5::text IS NULL OR i.status = $5)
+  AND ($6::text IS NULL OR i.priority = $6)
+  AND ($7::uuid IS NULL OR i.assignee_id = $7)
+  AND ($8::uuid[] IS NULL OR i.assignee_id = ANY($8::uuid[]))
+  AND ($9::uuid IS NULL OR i.creator_id = $9)
+  AND ($10::uuid IS NULL OR i.project_id = $10)
+  AND ($11::bool IS NULL OR (i.start_date IS NOT NULL OR i.due_date IS NOT NULL))
+  AND ($12::jsonb IS NULL OR i.metadata @> $12::jsonb)
   AND (
-    $12::uuid IS NULL
+    $13::uuid IS NULL
     -- (1) assignee is an agent owned by the user
     OR (i.assignee_type = 'agent' AND i.assignee_id IN (
           SELECT a.id FROM agent a
            WHERE a.workspace_id = $1
-             AND a.owner_id     = $12::uuid
+             AND a.owner_id     = $13::uuid
     ))
     -- (2)(3)(4) assignee is a squad related to the user — three relations
     OR (i.assignee_type = 'squad' AND i.assignee_id IN (
@@ -1412,7 +1413,7 @@ WHERE i.workspace_id = $1
             JOIN squad s ON s.id = sm.squad_id
            WHERE s.workspace_id = $1
              AND sm.member_type = 'member'
-             AND sm.member_id   = $12::uuid
+             AND sm.member_id   = $13::uuid
           UNION
           -- (3) the squad's canonical leader is an agent owned by the user.
           -- We read squad.leader_id directly rather than relying on a
@@ -1423,7 +1424,7 @@ WHERE i.workspace_id = $1
             JOIN agent a ON a.id = s.leader_id
            WHERE s.workspace_id = $1
              AND a.workspace_id = $1
-             AND a.owner_id     = $12::uuid
+             AND a.owner_id     = $13::uuid
           UNION
           -- (4) the squad has an agent member owned by the user
           SELECT sm.squad_id
@@ -1433,7 +1434,7 @@ WHERE i.workspace_id = $1
            WHERE s.workspace_id = $1
              AND sm.member_type = 'agent'
              AND a.workspace_id = $1
-             AND a.owner_id     = $12::uuid
+             AND a.owner_id     = $13::uuid
     ))
   )
 ORDER BY i.position ASC, i.created_at DESC
@@ -1444,6 +1445,7 @@ type ListIssuesParams struct {
 	WorkspaceID    pgtype.UUID   `json:"workspace_id"`
 	Limit          int32         `json:"limit"`
 	Offset         int32         `json:"offset"`
+	Ids            []pgtype.UUID `json:"ids"`
 	Status         pgtype.Text   `json:"status"`
 	Priority       pgtype.Text   `json:"priority"`
 	AssigneeID     pgtype.UUID   `json:"assignee_id"`
@@ -1493,6 +1495,7 @@ func (q *Queries) ListIssues(ctx context.Context, arg ListIssuesParams) ([]ListI
 		arg.WorkspaceID,
 		arg.Limit,
 		arg.Offset,
+		arg.Ids,
 		arg.Status,
 		arg.Priority,
 		arg.AssigneeID,

@@ -72,6 +72,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 - **Settings.** You can manage hosted plugin execution credentials and personal
   sub-issue following from workspace settings. Owners/admins can import and export
   workspace packages with selective checklists; resource names load in bounded pages.
+  Project/issue selectors are exact ID arrays, default off for export, with no
+  relationship expansion. References outside the package are detached in memory.
 - **Onboarding.** We removed the acquisition-source survey and its follow-up popup.
   New workspaces defer the startup kit to the shared import checklist before runtime
   setup. Import selects all resources; export selects none. Startup import can unselect

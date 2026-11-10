@@ -126,12 +126,13 @@ type PackagePlugin struct {
 	Enabled bool           `json:"enabled"`
 }
 type PackageSelection struct {
-	ProjectsIssues bool     `json:"projects_issues"`
-	Agents         []string `json:"agents"`
-	Skills         []string `json:"skills"`
-	MCPs           []string `json:"mcps"`
-	Plugins        []string `json:"plugins"`
-	SystemPrompt   bool     `json:"system_prompt"`
+	Projects     []string `json:"projects"`
+	Issues       []string `json:"issues"`
+	Agents       []string `json:"agents"`
+	Skills       []string `json:"skills"`
+	MCPs         []string `json:"mcps"`
+	Plugins      []string `json:"plugins"`
+	SystemPrompt bool     `json:"system_prompt"`
 }
 type ImportWorkspacePackageRequest struct {
 	Package              WorkspacePackage  `json:"package"`
@@ -158,66 +159,87 @@ func selectedPackage(p WorkspacePackage, selection *PackageSelection) (Workspace
 		return p, nil
 	}
 	result := emptyWorkspacePackage()
-	if selection.ProjectsIssues {
-		result.Projects = p.Projects
-		result.Issues = p.Issues
-		result.IssueStatuses = p.IssueStatuses
-	}
 	if selection.SystemPrompt {
 		result.SystemPrompt = p.SystemPrompt
 	}
-	pick := func(ids []string, visit func(func(string) bool)) error {
-		wanted := map[string]bool{}
+	// Requested IDs become true when found; reuse these sets to prune links.
+	requested := func(ids []string) map[string]bool {
+		found := map[string]bool{}
 		for _, id := range ids {
-			wanted[id] = true
+			found[id] = false
 		}
-		visit(func(id string) bool {
-			if wanted[id] {
-				delete(wanted, id)
-				return true
-			}
+		return found
+	}
+	take := func(ids map[string]bool, id string) bool {
+		if found, wanted := ids[id]; !wanted || found {
 			return false
-		})
-		if len(wanted) > 0 {
-			return fmt.Errorf("selection contains an unknown resource ID")
 		}
-		return nil
+		ids[id] = true
+		return true
 	}
-	if err := pick(selection.Agents, func(has func(string) bool) {
-		for _, v := range p.Agents {
-			if has(v.ID) {
-				result.Agents = append(result.Agents, v)
+	projects, issues, agents := requested(selection.Projects), requested(selection.Issues), requested(selection.Agents)
+	skills, mcps, plugins := requested(selection.Skills), requested(selection.MCPs), requested(selection.Plugins)
+	statuses := map[string]bool{}
+	for _, v := range p.Projects {
+		if take(projects, v.ID) {
+			result.Projects = append(result.Projects, v)
+		}
+	}
+	for _, v := range p.Issues {
+		if take(issues, v.ID) {
+			result.Issues = append(result.Issues, v)
+			statuses[v.Status] = true
+		}
+	}
+	for _, v := range p.Agents {
+		if take(agents, v.ID) {
+			result.Agents = append(result.Agents, v)
+		}
+	}
+	for _, v := range p.Skills {
+		if take(skills, v.ID) {
+			result.Skills = append(result.Skills, v)
+		}
+	}
+	for _, v := range p.MCPs {
+		if take(mcps, v.ID) {
+			result.MCPs = append(result.MCPs, v)
+		}
+	}
+	for _, v := range p.Plugins {
+		if take(plugins, v.ID) {
+			result.Plugins = append(result.Plugins, v)
+		}
+	}
+	for _, ids := range []map[string]bool{projects, issues, agents, skills, mcps, plugins} {
+		for _, found := range ids {
+			if !found {
+				return result, fmt.Errorf("selection contains an unknown resource ID")
 			}
 		}
-	}); err != nil {
-		return result, err
 	}
-	if err := pick(selection.Skills, func(has func(string) bool) {
-		for _, v := range p.Skills {
-			if has(v.ID) {
-				result.Skills = append(result.Skills, v)
-			}
+	for i := range result.Issues {
+		v := &result.Issues[i]
+		if !issues[v.ParentIssueID] {
+			v.ParentIssueID = ""
+			v.Stage = nil
 		}
-	}); err != nil {
-		return result, err
+		if !projects[v.ProjectID] {
+			v.ProjectID = ""
+		}
+		if !agents[v.AgentID] {
+			v.AgentID = ""
+		}
 	}
-	if err := pick(selection.MCPs, func(has func(string) bool) {
-		for _, v := range p.MCPs {
-			if has(v.ID) {
-				result.MCPs = append(result.MCPs, v)
-			}
-		}
-	}); err != nil {
-		return result, err
+	for i := range result.Agents {
+		v := &result.Agents[i]
+		v.Skills = slices.DeleteFunc(slices.Clone(v.Skills), func(b PackageBinding) bool { return !skills[b.ID] })
+		v.MCPs = slices.DeleteFunc(slices.Clone(v.MCPs), func(b PackageBinding) bool { return !mcps[b.ID] })
 	}
-	if err := pick(selection.Plugins, func(has func(string) bool) {
-		for _, v := range p.Plugins {
-			if has(v.ID) {
-				result.Plugins = append(result.Plugins, v)
-			}
+	for _, status := range p.IssueStatuses {
+		if statuses[status.Key] {
+			result.IssueStatuses = append(result.IssueStatuses, status)
 		}
-	}); err != nil {
-		return result, err
 	}
 	return result, nil
 }

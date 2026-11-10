@@ -224,12 +224,18 @@ func (q *Queries) ListProjectResources(ctx context.Context, projectID pgtype.UUI
 
 const listProjectResourcesForProjects = `-- name: ListProjectResourcesForProjects :many
 SELECT id, project_id, workspace_id, resource_type, resource_ref, label, position, created_at, created_by FROM project_resource
-WHERE project_id = ANY($1::uuid[])
+WHERE workspace_id = $1
+  AND project_id = ANY($2::uuid[])
 ORDER BY project_id, position ASC, created_at ASC
 `
 
-func (q *Queries) ListProjectResourcesForProjects(ctx context.Context, projectIds []pgtype.UUID) ([]ProjectResource, error) {
-	rows, err := q.db.Query(ctx, listProjectResourcesForProjects, projectIds)
+type ListProjectResourcesForProjectsParams struct {
+	WorkspaceID pgtype.UUID   `json:"workspace_id"`
+	ProjectIds  []pgtype.UUID `json:"project_ids"`
+}
+
+func (q *Queries) ListProjectResourcesForProjects(ctx context.Context, arg ListProjectResourcesForProjectsParams) ([]ProjectResource, error) {
+	rows, err := q.db.Query(ctx, listProjectResourcesForProjects, arg.WorkspaceID, arg.ProjectIds)
 	if err != nil {
 		return nil, err
 	}

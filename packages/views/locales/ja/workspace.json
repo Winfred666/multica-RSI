@@ -34,8 +34,8 @@
   "package": {
     "import_action": "ワークスペースをインポート",
     "export_action": "ワークスペースをエクスポート",
-    "projects_issues": "プロジェクトと課題",
-    "projects_hint": "エージェントに新しいワークスペースへコピーするプロジェクトと課題を選ばせることができます。",
+    "projects": "プロジェクト",
+    "issues": "課題",
     "agents": "エージェント",
     "agents_hint": "コピーしたエージェントは無効で、新しいランタイム端末での設定が必要です。",
     "skills": "スキル",

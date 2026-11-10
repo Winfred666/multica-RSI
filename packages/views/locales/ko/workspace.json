@@ -34,8 +34,8 @@
   "package": {
     "import_action": "워크스페이스 가져오기",
     "export_action": "워크스페이스 내보내기",
-    "projects_issues": "프로젝트 및 이슈",
-    "projects_hint": "에이전트가 새 워크스페이스에 복사할 프로젝트와 이슈를 선택할 수 있습니다.",
+    "projects": "프로젝트",
+    "issues": "이슈",
     "agents": "에이전트",
     "agents_hint": "복사된 에이전트는 비활성 상태이며 새 런타임 기기에서 설정해야 합니다.",
     "skills": "스킬",

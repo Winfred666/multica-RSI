@@ -17,13 +17,13 @@ func init() { workspaceCmd.AddCommand(newWorkspacePackageCommands()...) }
 func newWorkspacePackageCommands() []*cobra.Command {
 	inventory := &cobra.Command{
 		Use: "package [workspace-id|slug|prefix]", Short: "Inspect workspace package counts and resource summaries",
-		Long: "Returns counts by default. Use --category with --limit and --offset to page through agents, skills, MCPs or plugins. Use --default to download the embedded startup package.",
+		Long: "Returns counts by default. Use --category with --limit and --offset to page through projects, issues, agents, skills, MCPs or plugins. Use --default to download the embedded startup package.",
 		Args: cobra.MaximumNArgs(1), RunE: runWorkspacePackage,
 	}
 	inventory.Flags().Bool("default", false, "Return the embedded harness-only startup package")
 	export := &cobra.Command{
 		Use: "export [workspace-id|slug|prefix]", Short: "Export selected workspace resources as a JSON package",
-		Long: "Selects nothing by default. --selection-file uses the backend selection object: projects_issues and system_prompt booleans, and agents, skills, mcps and plugins ID arrays. Projects/issues are copied as a group; an agent can selectively copy them separately. Packages can contain private instructions and MCP configuration.",
+		Long: "Selects nothing by default. --selection-file uses the backend selection object: projects, issues, agents, skills, mcps and plugins ID arrays, and the system_prompt boolean. Selection does not expand relationships; references to unselected resources are omitted. Packages can contain private instructions and MCP configuration.",
 		Args: cobra.MaximumNArgs(1), RunE: runWorkspacePackage,
 	}
 	export.Flags().String("file", "", "Write the package to a file instead of stdout")
@@ -38,7 +38,7 @@ func newWorkspacePackageCommands() []*cobra.Command {
 	addWorkspaceImportFlags(importCmd)
 	importCmd.MarkFlagsMutuallyExclusive("inspect", "activate-plugins")
 	for _, cmd := range []*cobra.Command{inventory, importCmd} {
-		cmd.Flags().String("category", "", "Summary category: agents, skills, mcps or plugins (import requires --inspect)")
+		cmd.Flags().String("category", "", "Summary category: projects, issues, agents, skills, mcps or plugins (import requires --inspect)")
 		cmd.Flags().Int("limit", 50, "Summary page size (1–100)")
 		cmd.Flags().Int("offset", 0, "Summary page offset")
 	}
@@ -101,8 +101,8 @@ func runWorkspacePackage(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("--limit and --offset require --category")
 		}
 		if category != "" {
-			if category != "agents" && category != "skills" && category != "mcps" && category != "plugins" {
-				return fmt.Errorf("--category must be agents, skills, mcps or plugins")
+			if category != "projects" && category != "issues" && category != "agents" && category != "skills" && category != "mcps" && category != "plugins" {
+				return fmt.Errorf("--category must be projects, issues, agents, skills, mcps or plugins")
 			}
 			if limit < 1 || limit > 100 || offset < 0 {
 				return fmt.Errorf("--limit must be 1–100 and --offset must be nonnegative")

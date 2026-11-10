@@ -34,8 +34,8 @@
   "package": {
     "import_action": "导入工作区",
     "export_action": "导出工作区",
-    "projects_issues": "项目与议题",
-    "projects_hint": "可让智能体为新工作区选择性复制项目与议题。",
+    "projects": "项目",
+    "issues": "议题",
     "agents": "智能体",
     "agents_hint": "复制的智能体处于未激活状态，需要在新的运行时机器上完成配置。",
     "skills": "技能",
