@@ -86,8 +86,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 ## CLI and daemon
 
 - **Workspace operations.** Workspace commands require a member context. Ordinary
-  daemon tasks and task tokens are refused with a pointer to the explicit
-  `multica-workspace-manipulation` skill. The local daemon has no workspace PAT
+  daemon tasks and task tokens are refused with a plain permission error.
+  The local daemon has no workspace PAT
   proxy. Task credentials stay bound to their original workspace; backend APIs
   and membership checks are unchanged. Member plugin activation is opt-in and
   uses only the member PAT authenticating the CLI.

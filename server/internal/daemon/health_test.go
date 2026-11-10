@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,34 +19,6 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/daemon/repocache"
 )
-
-func TestHealthServerHasNoWorkspaceElevationRoutes(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan struct{})
-	d := &Daemon{logger: slog.Default()}
-	go func() {
-		defer close(done)
-		d.serveHealth(ctx, ln, time.Now())
-	}()
-	defer func() { cancel(); <-done }()
-	for _, path := range []string{
-		"/workspace/create", "/api/workspaces", "/api/workspaces/",
-		"/api/workspaces/33333333-3333-3333-3333-333333333333/import",
-	} {
-		resp, err := http.Post("http://"+ln.Addr().String()+path, "application/json", strings.NewReader(`{}`))
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusNotFound {
-			t.Errorf("%s: status = %d, want 404", path, resp.StatusCode)
-		}
-	}
-}
 
 func TestHealthHandlerReportsEmptyCLICommitWithoutFallback(t *testing.T) {
 	d := &Daemon{

@@ -18,8 +18,8 @@ var workspaceCmd = &cobra.Command{
 	Use:   "workspace",
 	Short: "Work with workspaces",
 	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-		if inDaemonManagedExecutionContext() || strings.HasPrefix(resolveToken(cmd), cli.TaskTokenPrefix) {
-			return fmt.Errorf("workspace commands require a member context; use the explicit multica-workspace-manipulation skill for authorized workspace operations%s", daemonPortOnlyContextHint())
+		if inDaemonTaskIdentityContext() || os.Getenv("MULTICA_DAEMON_PORT") != "" || strings.HasPrefix(resolveToken(cmd), cli.TaskTokenPrefix) {
+			return fmt.Errorf("workspace commands require a member context")
 		}
 		return nil
 	},
