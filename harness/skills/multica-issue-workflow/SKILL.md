@@ -12,11 +12,15 @@ description: Own issue workflow, delivery comments, review and acceptance.
    Complete the assignment within Agent Identity boundaries; reuse its checkout
    and verified evidence.
    Keep routine build/test progress in run output, not issue comments. For
-   meaningful progress comments, reuse one continuing thread on the issue rather
-   than creating a new root for each update.
+   meaningful progress comments, reuse one continuing thread on the issue. With a
+   trigger, pass `--parent <trigger-comment-id>`. Without one, reuse the task's
+   progress root or create it once and retain its returned comment `id`; pass
+   `--parent <root-comment-id>` for subsequent updates. Omitting `--parent`
+   creates a separate thread.
 4. Post final results through `multica issue comment add --content-file <path>`.
-   Reply under this turn's trigger; assignments without a trigger use a top-level
-   comment. Terminal output is not delivery.
+   Apply the same parent rule to final delivery: reply under this turn's trigger,
+   otherwise reuse the task's progress root or create one if none exists.
+   Terminal output is not delivery.
 5. Delivered work awaiting acceptance enters `in_review`; unfinished work stays
    `in_progress`; `done` stays human. A `[Project workflow]` overrides built-in
    status commands.
