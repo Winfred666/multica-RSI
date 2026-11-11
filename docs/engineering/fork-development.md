@@ -38,9 +38,10 @@ behavior. The [README](../../README.md) presents the research platform.
 See the [hosted plugin guide](hosted-workflow-plugins.md) for
 configuration and API details. The [workspace startup kit](../../harness/README.md)
 contains the system prompt, system and library skills, and two plugins for
-in-progress continuation and issue-comment cleanup. Optional skills are SOP
-authoring and harness backup/restore; Mika's
-onboarding essentials live in the chat system prompt. Workspace creation
+in-progress continuation and issue-comment cleanup. Optional skills cover SOP
+authoring, harness backup/restore and workspace manipulation, including a blocking
+member-inbox listener using native read semantics. Mika's onboarding essentials
+live in the chat system prompt. Workspace creation
 installs no kit. Onboarding imports the selected resources through the shared
 checklist. The package API also supports selective export/import of
 projects/issues, agents, skills, MCPs, plugins and the system prompt. Imported

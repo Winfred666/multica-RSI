@@ -1,6 +1,6 @@
 ---
 name: multica-workspace-manipulation
-description: Create, import, inspect, export and run member CLI commands in a chosen workspace.
+description: Create, import, inspect, export, run member CLI commands and wait for inbox events in a chosen workspace.
 ---
 
 Run `python3 <skill>/wrapper.py --help` (`python` on hosts using that name).
@@ -28,7 +28,17 @@ python3 <skill>/wrapper.py --target WORKSPACE_UUID run runtime list
 python3 <skill>/wrapper.py --target WORKSPACE_UUID run agent create --name Worker --runtime-id RUNTIME_ID
 python3 <skill>/wrapper.py --target WORKSPACE_UUID run issue create --title Trial --project PROJECT_ID --assignee-id AGENT_ID --status todo
 python3 <skill>/wrapper.py --target WORKSPACE_UUID run issue runs ISSUE_ID
+python3 <skill>/wrapper.py --target WORKSPACE_UUID inbox-wait
 ```
+
+`inbox-wait` polls the authorized member's target-workspace inbox every five
+seconds until an unread notification exists, reads the oldest, prints one JSON
+event and exits. It uses the default read API, which also marks unread siblings
+on the same issue read. No notifications, replies or tasks are created. Output
+contains native issue ID/title, event type, actor type/ID, full body, details
+(such as comment ID), current issue status, read state and a one-sentence `next`
+prompt: steer briefly if needed, then wait again unless target work is complete
+or acceptable. Ctrl-C stops waiting. Run one listener per member/workspace.
 
 Use native absolute paths (including Windows paths) and a new export filename.
 Native package selections, membership checks and opt-in plugin activation apply.
