@@ -40,7 +40,7 @@ configuration and API details. The [workspace startup kit](../../harness/README.
 contains the system prompt, system and library skills, and two plugins for
 in-progress continuation and issue-comment cleanup. Optional skills cover SOP
 authoring, harness backup/restore and workspace manipulation, including a blocking
-member-inbox listener using native read semantics. Mika's onboarding essentials
+member-inbox listener with bounded previews and native read semantics. Mika's onboarding essentials
 live in the chat system prompt. Workspace creation
 installs no kit. Onboarding imports the selected resources through the shared
 checklist. The package API also supports selective export/import of

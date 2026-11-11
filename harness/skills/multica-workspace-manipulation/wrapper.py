@@ -63,7 +63,7 @@ def main():
             return 130
         except (OSError, ValueError, KeyError, TypeError):
             sys.exit('Inbox request failed. Reconcile inbox read state before retrying.')
-        print(redact(json.dumps(event, ensure_ascii=False, indent=2), token))
+        print(redact(json.dumps(event, ensure_ascii=False, separators=(',', ':')), token))
         return 0
     cli = shutil.which(os.environ.get('MULTICA_CLI_PATH', 'multica'))
     if not cli:

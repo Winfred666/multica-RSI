@@ -4,19 +4,12 @@ description: Create, import, inspect, export, run member CLI commands and wait f
 ---
 
 Run `python3 <skill>/wrapper.py --help` (`python` on hosts using that name).
-This library skill is a small CLI appendix, not a SoP. The same Python-standard-
-library scripts work independently of the agent provider: `wrapper.py` executes
-native member CLI commands; `auth.py` loads the authorized host member profile.
-No Bash, Unix sockets, provider paths or inherited-subprocess FD support is needed.
 
-The host owner must authorize use of its existing `~/.multica/config.json` member
-profile. Home resolution follows the host OS. Use `--member-config PATH` for a
-named/alternate profile (`~/.multica/profiles/NAME/config.json`). The script reads
-that source automatically for each action, without saving another PAT copy.
-An explicitly inherited `MULTICA_WORKSPACE_MEMBER_FD` is also supported; its server
-comes from `MULTICA_SERVER_URL`. `MULTICA_CLI_PATH` selects the trusted host CLI,
-otherwise PATH is used. A remote host needs its own authorized member profile or
-credential handoff; attaching this skill does not grant host credential access.
+Requires a host-owner-authorized member profile at `~/.multica/config.json`.
+Use `--member-config PATH` for an alternate profile. Task credentials do not
+authorize these commands. Alternatively, the host can supply
+`MULTICA_WORKSPACE_MEMBER_FD` with `MULTICA_SERVER_URL`.
+`MULTICA_CLI_PATH` selects the member CLI executable when it is not on PATH.
 
 ```sh
 python3 <skill>/wrapper.py create --name Trial --slug trial
@@ -31,21 +24,14 @@ python3 <skill>/wrapper.py --target WORKSPACE_UUID run issue runs ISSUE_ID
 python3 <skill>/wrapper.py --target WORKSPACE_UUID inbox-wait
 ```
 
-`inbox-wait` polls the authorized member's target-workspace inbox every five
-seconds until an unread notification exists, reads the oldest, prints one JSON
-event and exits. It uses the default read API, which also marks unread siblings
-on the same issue read. No notifications, replies or tasks are created. Output
-contains native issue ID/title, event type, actor type/ID, full body, details
-(such as comment ID), current issue status, read state and a one-sentence `next`
-prompt: steer briefly if needed, then wait again unless target work is complete
-or acceptable. Ctrl-C stops waiting. Run one listener per member/workspace.
+`create` returns a new workspace ID; the other operations require `--target`.
+Use absolute file paths and a new export filename. For imported agents, bind a
+runtime with `run agent update AGENT_ID --runtime-id ID`. Creating an agent-assigned
+`todo` issue dispatches a task.
 
-Use native absolute paths (including Windows paths) and a new export filename.
-Native package selections, membership checks and opt-in plugin activation apply.
-Imported agents need runtime binding: `run agent update AGENT_ID --runtime-id ID`.
-Confirm an actual run, not workspace creation alone. Reconcile writes before retrying.
-`run` accepts workspace resource commands without a shell; local/auth commands and
-server/workspace/profile overrides are rejected. The member child has temporary
-HOME/USERPROFILE and cwd, with no task/agent/daemon variables. Original task auth
-and ordinary CLI checks stay unchanged. Keep PATs out of prompts, argv, exports,
-agent configuration and logs. No backend or daemon change is required.
+`inbox-wait` waits for the oldest unread member notification, returns one compact
+JSON event, and marks that issue's notifications read. Output includes the issue,
+actor, status, a body preview of up to 500 characters, `body_truncated`,
+`details.comment_id` when available, and `next`. Ctrl-C cancels the wait.
+
+Keep member credentials out of command arguments, packages and agent configuration.

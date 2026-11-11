@@ -22,6 +22,9 @@ def wait(server, token, target):
                 'id', 'workspace_id', 'issue_id', 'title', 'type', 'actor_type',
                 'actor_id', 'body', 'details', 'issue_status', 'read',
             )}
+            event['body_truncated'] = len(item['body'] or '') > 500
+            event['body'] = item['body'][:500] if item['body'] else item['body']
+            event['details'] = {k: v for k, v in (item['details'] or {}).items() if k == 'comment_id'}
             event['next'] = ('Reply or steer briefly if needed; rerun this inbox-wait command '
                              'unless target work is complete or acceptable, then stop.')
             return event
