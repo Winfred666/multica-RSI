@@ -32,9 +32,9 @@ A PR that is large to review is not a reason to split. Organize it into
 reviewable commits and put a review guide in its description.
 
 When you do split, say in the parent comment why each piece is independent.
-Each child's run gets a `[Parent issue]` block that points it at the parent,
-so the child's description carries its scope and acceptance criteria; it does
-not need to restate every decision made on the parent.
+Each child's description states its requested outcome and only the context
+needed to act. Keep the body free-form and preserve user requirements; link
+shared context instead of copying parent plans or adding acceptance boilerplate.
 
 ## Sub-issues: todo starts work now, backlog parks it
 
