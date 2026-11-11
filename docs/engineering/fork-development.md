@@ -49,6 +49,9 @@ an execution PAT. See [the API contract](workspace-packages.md). Child dispatch 
 `multica-subissue-distribute`; delivery uses the textual issue-workflow skill and native
 comments, with `in_review` awaiting acceptance. Parents accept children; bounded
 benchmarks follow their scoped completion policy. Other root completion stays human.
+The issue workflow keeps progress and final delivery in one task thread with
+`--parent`; corrections to another agent's active work use `--steer` when its run
+accepts input. Thread placement alone does not deliver input into a running turn.
 The kit has no separate executable delivery or review procedure.
 Quick-create keeps the upstream task routing: its execution rules render only
 for a quick-create turn, and the native task prompt supplies picker and field

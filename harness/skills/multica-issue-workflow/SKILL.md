@@ -17,6 +17,11 @@ description: Own issue workflow, delivery comments, review and acceptance.
    progress root or create it once and retain its returned comment `id`; pass
    `--parent <root-comment-id>` for subsequent updates. Omitting `--parent`
    creates a separate thread.
+   For a correction to another agent's active work, inspect
+   `multica issue runs <issue-id> --active --output json`. If its run reports
+   `can_supplement: true`, add `--steer <run-id>` alongside `--parent` when
+   posting. A plain reply can wait until the run ends even in the same thread;
+   follow `multica-platform`'s steering limits.
 4. Post final results through `multica issue comment add --content-file <path>`.
    Apply the same parent rule to final delivery: reply under this turn's trigger,
    otherwise reuse the task's progress root or create one if none exists.
