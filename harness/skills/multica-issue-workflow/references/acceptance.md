@@ -7,16 +7,18 @@ acceptance or benchmark contracts.
 
 ### `dev`
 
-Keep code minimal and scoped. Open with one sentence naming the feature or fix
+Use the `query` format for question replies. Omit progress updates unless necessary; keep them minimal.
+
+Keep code minimal and scoped. Open with one sentence naming the feature or fix and its key method
 and linking its commit on the issue's branch. Give the full diff against the
 integration base: `+A / -D lines across N files`. List at most the three
-most-changed files; totals include all files.
+most-changed files; totals include all files. Do not append details about other files outside the table.
 
 | Relative path | Added / deleted | Change |
 | --- | --- | --- |
 | `path/to/file` | +A / -D | One sentence explaining the change. |
 
-Give the decisive check result. Report confirmed defects only if they threaten
+Give the decisive behavioral check result in one clause, not pass counts or a checklist. Report confirmed defects only if they threaten
 correctness or block acceptance. For reverts or cancellations, amend the original
 delivery comment in place, not by appending another report; replace stale claims,
 commit links and counts.
