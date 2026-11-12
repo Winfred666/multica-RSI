@@ -22,8 +22,11 @@ class SymbolicProtocol(unittest.TestCase):
         self.root = Path(temporary.name)
         self.package = self.root / 'skill'
         shutil.copytree(TEMPLATE, self.package)
-        for name in ('sop.py', 'wrapper.py', 'monitor.py'):
+        for name in ('sop.py', 'wrapper.py', 'monitor.py', 'common.py'):
             shutil.copy2(PACKAGE / name, self.package / name)
+        self.enterContext(patch.object(sys, 'path', [str(self.package), *sys.path]))
+        self.enterContext(patch.dict(sys.modules))
+        sys.modules.pop('common', None)
         self.metadata = self.root / 'metadata'
         binary = self.root / 'bin'
         binary.mkdir()
@@ -357,17 +360,12 @@ workflow = Workflow(
         result = {'status': 'variant', 'state_changed': True, 'accepted': True}
         with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue',
                         MULTICA_WORKSPACE_ID='fixture-workspace', MULTICA_TOKEN='fixture-token',
-                        MULTICA_SERVER_URL='http://fixture.invalid'), patch.object(wrapper, 'upload_artifact') as upload:
+                        MULTICA_SERVER_URL='http://fixture.invalid'), patch.object(wrapper, 'write_artifact') as upload:
             wrapper.publish_artifacts(context, controller, result)
-        filename, html = upload.call_args.args
-        self.assertEqual(upload.call_args.kwargs, {'issue_id': 'fixture-issue'})
-        with patch.dict(os.environ, MULTICA_ISSUE_ID='native-issue', MULTICA_WORKSPACE_ID='fixture-workspace',
-                        MULTICA_TOKEN='fixture-token', MULTICA_SERVER_URL='http://fixture.invalid'), \
-                patch.object(wrapper, 'urlopen') as request:
-            wrapper.upload_artifact(filename, html, issue_id='fixture-issue')
-        body = request.call_args.args[0].data
-        self.assertIn(b'name="issue_id"\r\n\r\nfixture-issue', body)
-        self.assertNotIn(b'name="task_id"', body)
+        reference, html, parent = upload.call_args.args
+        self.assertEqual(reference['issue_id'], 'fixture-issue')
+        self.assertIsNone(parent)
+        filename = reference['filename']
         self.assertEqual(filename, 'multica-parallel-refinement-state.html')
         self.assertIn('fixture-issue', html)
         self.assertNotIn('task_id', html)

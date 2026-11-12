@@ -4,7 +4,7 @@ description: Create or revise a working symbolic SoP by copying the runtime and 
 ---
 
 Copy [assets/template/](assets/template/) into the new skill directory. Keep
-`sop.py`, `wrapper.py` and `monitor.py` unchanged; replace the example
+`sop.py`, `wrapper.py`, `common.py` and `monitor.py` unchanged; replace the example
 `controller.py` with the procedure. Keep the copied `config.json`; set `DEBUG`
 to `true` when you want the compiled HTML preview.
 
@@ -16,7 +16,7 @@ error guidance. Follow recalls in the same turn; reconcile writes before retryin
 and use a returned `repaired` command once for a failed assertion.
 
 Export `workflow = Workflow(...)` from `controller.py`. Declare one initial
-state and at least one final state; final states have no options. Each option
+state. Complete through `FINISHED` (imported from `sop`) or a final state with no options. Each option
 names its target, prompt, action and inputs. Script fixed work; leave judgment
 at explicit choices. For example:
 
@@ -45,10 +45,22 @@ identifies the current issue; `context['cli'](*words, write=False)` runs
 `multica issue <words> --output json`. Pass separate arguments and mark writes
 with `write=True`; use native Multica SoPs for platform workflows.
 The runtime stores status and recovery in `issue.metadata["sop.<skill-name>"]`.
-Keep controller `data` internal; expose needed facts through instructions/options. Store only small procedure-specific
-settings in issue metadata when needed; keep delivery/review records in comments.
+Keep controller `data` internal; expose needed facts through instructions/options.
+Keep delivery/review records in comments.
+
+The shared runtime follows [R-328's accepted protocol](https://github.com/Winfred666/multica-featssship/tree/e0eaa073dfea3c85d57f3430c0be5294365e2555/installation).
+A state may declare `owner={"id": ..., "name": ...}` (or a callable). The runtime
+checks that owner before actions, uses `Workflow(handoff=...)` for the existing
+scripted handoff, and synchronizes accepted destination ownership with
+`issue assign --to-id ... --no-start`. Help and rejected transitions do not hand off.
+`FINISHED` clears transient state and returns re-entry guidance.
 When revising a procedure, preserve its checks, side effects, completion rules
-and live state.
+and live state. Keep delivery/review records in comments.
+
+HTML debug/controller artifacts use ordinary comment attachments through
+`common.write_artifact`.
+Change this creator/template first; obtain human approval before propagating to
+other symbolic SoPs or installed distributions.
 
 The preview derives the state graph from `Workflow`; use `Branch` for automatic
 script-selected transitions. Optional action docstrings can explain local logic.
