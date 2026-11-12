@@ -1895,5 +1895,13 @@
       "empty_title": "No saved views yet",
       "empty_description": "Set up filters and display options in an issue list, then save them as a view."
     }
+  },
+  "sop": {
+    "waiting": "Waiting",
+    "failed": "Failed",
+    "submit": "Submit",
+    "answered": "Answered",
+    "submitting": "Submitting…",
+    "submitted": "Submitted. Waiting for workflow confirmation."
   }
 }

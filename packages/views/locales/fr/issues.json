@@ -1895,5 +1895,13 @@
       "empty_title": "Aucune vue enregistrée pour l'instant",
       "empty_description": "Réglez les filtres et l'affichage d'une liste de tâches, puis enregistrez-les comme vue."
     }
+  },
+  "sop": {
+    "waiting": "En attente",
+    "failed": "Échec",
+    "submit": "Envoyer",
+    "answered": "Répondu",
+    "submitting": "Envoi…",
+    "submitted": "Envoyé. En attente de confirmation du workflow."
   }
 }

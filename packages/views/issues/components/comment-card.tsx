@@ -31,7 +31,7 @@ import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useLocale, useTimeAgo } from "../../i18n";
-import { ContentEditor, type ContentEditorRef, ReadonlyContent, useFileDropZone, FileDropOverlay, Attachment as AttachmentRenderer, AttachmentDownloadProvider, useUploadGate, useComposerSubmit } from "../../editor";
+import { ContentEditor, type ContentEditorRef, useFileDropZone, FileDropOverlay, Attachment as AttachmentRenderer, AttachmentDownloadProvider, useUploadGate, useComposerSubmit } from "../../editor";
 import { useCommentUploads } from "./use-comment-uploads";
 import { FileUploadButton } from "@multica/ui/components/common/file-upload-button";
 import { api, dispatchReasonCode, errorCode } from "@multica/core/api";
@@ -63,6 +63,7 @@ import { useAttachmentVersions } from "./deliverables/attachment-versions";
 import { VersionBadge } from "./deliverables/version-badge";
 import { useRunCommentMotion } from "./use-run-comment-motion";
 import { WakeupSourceChip } from "./wakeup-source-chip";
+import { SOPCommentContent, SOPRawToggle } from "./sop-comment-content";
 
 const commentActionClassName =
   "text-muted-foreground aria-expanded:bg-transparent aria-expanded:hover:bg-muted dark:aria-expanded:hover:bg-muted/50";
@@ -675,6 +676,7 @@ function CommentRow({
   const canEditEntry = receipts.length === 0 && (isOwn || (canModerate && entry.actor_type === "member"));
   const canDeleteEntry = !receipts.some(isSupplementInFlight) && (isOwn || canModerate);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [rawContent, setRawContent] = useState(false);
 
   const reactions = entry.reactions ?? [];
 
@@ -742,6 +744,7 @@ function CommentRow({
             align="end"
             className={buttonVariants({ variant: "ghost", size: "icon-sm", className: commentActionClassName })}
           />}
+          {!edit.editing && <SOPRawToggle entry={entry} pressed={rawContent} onClick={() => setRawContent(!rawContent)} className={commentActionClassName} />}
           <DropdownMenu>
             <DeferredTooltip
               content={t(($) => $.comment.more_actions)}
@@ -906,7 +909,7 @@ function CommentRow({
           <div tabIndex={currentUserId ? 0 : undefined} role="group"
             aria-label={t(($) => $.reply.annotations.source_label, { name: entry.actor_name || getActorName(entry.actor_type, entry.actor_id) })}
             data-comment-content={entry.id} className="pl-12 pr-4 max-md:pl-3 max-md:pr-3 text-body leading-relaxed text-foreground">
-            <ReadonlyContent content={entry.content ?? ""} attachments={entry.attachments} />
+            <SOPCommentContent issueId={issueId} entry={entry} currentUserId={currentUserId} raw={rawContent} />
           </div>
           <AttachmentList attachments={entry.attachments} content={entry.content} className="mt-1.5 pl-12 pr-4 max-md:pl-3 max-md:pr-3" />
           <div className="pl-12 pr-4 max-md:pl-3 max-md:pr-3">
@@ -1065,6 +1068,7 @@ function CommentCardImpl({
   const canEditEntry = receipts.length === 0 && (isOwn || (canModerate && entry.actor_type === "member"));
   const canDeleteEntry = !receipts.some(isSupplementInFlight) && (isOwn || canModerate);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [rawContent, setRawContent] = useState(false);
   // A reply here goes into the running turn of a run that belongs to this
   // thread by default; another thread's turn is only reached by choice.
   const steerThreadRunByDefault = useCallback(
@@ -1284,6 +1288,7 @@ function CommentCardImpl({
                     align="end"
                     className={buttonVariants({ variant: "ghost", size: "icon-sm", className: commentActionClassName })}
                   />}
+                  {!edit.editing && <SOPRawToggle entry={entry} pressed={rawContent} onClick={() => setRawContent(!rawContent)} className={commentActionClassName} />}
                   <DropdownMenu>
                     <DeferredTooltip
                       content={t(($) => $.comment.more_actions)}
@@ -1456,7 +1461,7 @@ function CommentCardImpl({
                 <div tabIndex={currentUserId ? 0 : undefined} role="group"
             aria-label={t(($) => $.reply.annotations.source_label, { name: entry.actor_name || getActorName(entry.actor_type, entry.actor_id) })}
             data-comment-content={entry.id} className="pl-8 max-md:pl-0 text-body leading-relaxed text-foreground">
-                  <ReadonlyContent content={entry.content ?? ""} attachments={entry.attachments} />
+                  <SOPCommentContent issueId={issueId} entry={entry} currentUserId={currentUserId} raw={rawContent} />
                 </div>
                 <AttachmentList attachments={entry.attachments} content={entry.content} className="mt-1.5 pl-8 max-md:pl-0" />
                 <div className="pl-8 max-md:pl-0">

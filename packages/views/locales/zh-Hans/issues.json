@@ -1825,5 +1825,13 @@
       "empty_title": "还没有保存的视图",
       "empty_description": "在任务列表里调好筛选和显示方式，然后另存为视图。"
     }
+  },
+  "sop": {
+    "waiting": "等待回答",
+    "failed": "失败",
+    "submit": "提交",
+    "answered": "已回答",
+    "submitting": "提交中…",
+    "submitted": "已提交，等待工作流确认。"
   }
 }

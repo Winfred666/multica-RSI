@@ -1895,5 +1895,13 @@
     "loading_report": "Cargando informe...",
     "create_child": "Crear subtarea",
     "retry_agents": "Recargar colaboradores"
+  },
+  "sop": {
+    "waiting": "En espera",
+    "failed": "Falló",
+    "submit": "Enviar",
+    "answered": "Respondida",
+    "submitting": "Enviando…",
+    "submitted": "Enviada. Esperando confirmación del flujo de trabajo."
   }
 }
