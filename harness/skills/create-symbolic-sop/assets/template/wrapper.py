@@ -599,7 +599,8 @@ def publish_artifacts(context, controller, result):
         parent = getattr(context.get('args'), 'thread', None) or context.get('state', {}).get('reply_parent')
         # FUTURE TODO: temp bypass agent as middel-layer, would be elegant when treat SoP sys as first class member role to speak in an issue
         for filename, content in artifacts.items():
-            write_artifact({'issue_id': context['issue_id'], 'filename': filename}, content, parent)
+            write_artifact({'issue_id': context['issue_id'], 'filename': filename}, content, parent,
+                           independent=bool(controller.DEBUG and shifted and filename == controller.SOP_NAME + '-state.html'))
     except Exception as error:
         print(redact('Live artifact update failed: ' + str(error)), file=sys.stderr)
 

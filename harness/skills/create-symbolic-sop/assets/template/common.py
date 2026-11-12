@@ -67,7 +67,12 @@ def read_config(reference):
 
 
 def write_config(reference, config, parent=None, message=' '):
-    """Upload JSON, retain the returned identity, and announce a non-owning link."""
+    return _write_resource(reference, json.dumps(config, indent=2, allow_nan=False) + '\n',
+                           'application/json', parent, message)
+
+
+def _write_resource(reference, content, content_type, parent, message):
+    """Upload a file, retain its returned identity, and announce a non-owning link."""
     fields = {}
     if reference.get('attachment_id'):
         fields['attachment_id'] = reference['attachment_id']
@@ -75,11 +80,11 @@ def write_config(reference, config, parent=None, message=' '):
     body = b''.join((f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n').encode()
                     for key, value in fields.items())
     body += (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{reference["filename"]}"\r\n'
-             'Content-Type: application/json\r\n\r\n').encode()
-    body += (json.dumps(config, indent=2, allow_nan=False) + '\n').encode() + f'\r\n--{boundary}--\r\n'.encode()
+             f'Content-Type: {content_type}\r\n\r\n').encode()
+    body += content.encode() + f'\r\n--{boundary}--\r\n'.encode()
     row = request('/api/upload-file', body, 'multipart/form-data; boundary=' + boundary)
     reference['attachment_id'] = row['id']
-    # Persist this reference with link_config before other issues resume reading it.
+    # Config callers persist this reference before other issues resume reading it.
     try:
         if not parent:
             roots = cli('issue', 'comment', 'list', reference['issue_id'], '--roots-only', '--summary')
@@ -90,11 +95,13 @@ def write_config(reference, config, parent=None, message=' '):
             words += ['--parent', parent]
         return cli(*words)
     except Exception as error:
-        raise ValueError('Configuration uploaded as ' + row['id'] +
+        raise ValueError('Resource uploaded as ' + row['id'] +
                          '; reconcile the reference before retrying announcement: ' + str(error)) from error
 
 
-def write_artifact(reference, content, parent=None, message=' '):
+def write_artifact(reference, content, parent=None, message=' ', *, independent=False):
+    if independent:
+        return _write_resource(reference, content, 'text/html', parent, message)
     if not parent:
         roots = cli('issue', 'comment', 'list', reference['issue_id'], '--roots-only', '--summary')
         parent = roots[-1]['id'] if roots else None

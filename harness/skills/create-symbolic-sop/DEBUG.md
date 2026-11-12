@@ -161,9 +161,10 @@ state with no options is also supported. State owners appear in the graph;
 scripted handoffs and guarded `--no-start` assignee updates remain runtime work.
 
 Set `"DEBUG": true` in the skill's `config.json` to publish `<skill-name>-state.html`
-on every state shift as an ordinary comment attachment, following R-328's
-`common.write_artifact` delivery. Shared JSON configuration, not HTML previews,
-is the artifact-first target; see [configuration artifacts](references/config-artifacts.md).
+on every state shift as an ownerless upload, linked from the current issue
+comment without taking ownership. It uses the existing HTTP upload helper,
+omitting issue/comment/task fields even in an issue run. See
+[configuration artifacts](references/config-artifacts.md).
 The wrapper renders `controller.workflow` states, option
 targets and symbolic branches, with state meanings, native issue
 ID and assertion failures. Put the graph before headings and metadata so it is
@@ -195,7 +196,7 @@ Omit HTML help controls.
 Resolve dynamic option targets during normal choice resolution. DEBUG defaults
 to `false`. For an existing HTML view, export read-only `artifacts(context)` from
 `controller.py` returning `{stable_filename: html_string}`; the wrapper updates
-these ordinary comment artifacts after accepted callbacks, like DEBUG previews.
+these ordinary comment artifacts after accepted callbacks.
 Publication failures leave workflow results intact and report warnings on stderr.
 
 

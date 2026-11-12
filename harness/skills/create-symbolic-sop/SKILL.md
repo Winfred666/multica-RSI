@@ -60,8 +60,9 @@ scripted handoff, and synchronizes accepted destination ownership with
 When revising a procedure, preserve its checks, side effects, completion rules
 and live state. Keep delivery/review records in comments.
 
-HTML debug/controller artifacts use ordinary comment attachments through
-`common.write_artifact`; do not turn them into ownerless configuration resources.
+Auto-compiled DEBUG previews upload ownerless and link from the current issue
+comment through `common.write_artifact`. Controller-supplied artifacts remain
+ordinary comment attachments.
 Change this creator/template first; obtain human approval before propagating to
 other symbolic SoPs or installed distributions.
 

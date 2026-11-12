@@ -49,10 +49,12 @@ No automatic delete/recreate or cleanup of existing metadata/configurations occu
 
 ## HTML and commands
 
-`common.write_artifact` keeps HTML on R-328's ordinary comment-attachment path.
-It posts in the supplied thread (or an existing root). Do not publish DEBUG or
-controller HTML as independent/ownerless configuration resources. The wrapper
-keeps these publications best effort, including after completion.
+Auto-compiled DEBUG HTML uses `common.write_artifact`'s ownerless upload path
+and posts a non-owning `!file[label](returned markdown_url)` link in the current
+issue thread (or an existing root). It omits issue/comment/task upload fields,
+avoiding the CLI's ambient task ownership. Controller-supplied artifacts keep
+R-328's ordinary comment attachments. Publication remains best effort, including
+after completion; DEBUG settings and publication triggers are unchanged.
 
 The minimal client contract is:
 
@@ -68,7 +70,7 @@ and URLs, not text extraction/OCR. `download` saves the actual text/image bytes.
 The template uses the existing HTTP upload/read API for configs and ordinary
 CLI comment/download operations; it does not require an installed CLI with the
 new upload flags. See [the accepted backend contract](../../../../docs/engineering/fork-development.md#attachment-ownership-backend-p1).
-No independent flag, manual `metadata.deliverables` list or link/unlink wrapper is used.
+No independent CLI/API flag, manual `metadata.deliverables` list or link/unlink wrapper is used.
 
 This change is creator/template-only. Human approval is required before mechanical
 propagation to other symbolic SoPs or workspace installs.
