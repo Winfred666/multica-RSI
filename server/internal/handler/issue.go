@@ -3590,17 +3590,18 @@ type UpdateIssueRequest struct {
 	// that landed asynchronously after that base without making media already
 	// present in the base impossible for the user to delete. Older clients omit
 	// it and receive conservative channel-media preservation.
-	DescriptionBase *string  `json:"description_base,omitempty"`
-	Status          *string  `json:"status"`
-	Priority        *string  `json:"priority"`
-	AssigneeType    *string  `json:"assignee_type"`
-	AssigneeID      *string  `json:"assignee_id"`
-	Position        *float64 `json:"position"`
-	StartDate       *string  `json:"start_date"`
-	DueDate         *string  `json:"due_date"`
-	ParentIssueID   *string  `json:"parent_issue_id"`
-	ProjectID       *string  `json:"project_id"`
-	Stage           *int32   `json:"stage"`
+	DescriptionBase     *string  `json:"description_base,omitempty"`
+	Status              *string  `json:"status"`
+	Priority            *string  `json:"priority"`
+	AssigneeType        *string  `json:"assignee_type"`
+	AssigneeID          *string  `json:"assignee_id"`
+	Position            *float64 `json:"position"`
+	StartDate           *string  `json:"start_date"`
+	DueDate             *string  `json:"due_date"`
+	ParentIssueID       *string  `json:"parent_issue_id"`
+	ProjectID           *string  `json:"project_id"`
+	Stage               *int32   `json:"stage"`
+	RemoveAttachmentIDs []string `json:"remove_attachment_ids,omitempty"`
 	// AttachmentIDs lets the description editor bind newly uploaded files to
 	// this issue so they surface in `GET /api/issues/:id/attachments` and the
 	// editor's preview Eye keeps working past a refresh. Existing bindings
@@ -3715,7 +3716,7 @@ func refreshUntouchedNullableIssueParams(params *db.UpdateIssueParams, current d
 
 var errIssueFieldConflict = errors.New("issue text field conflict")
 
-func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.UUID, params db.UpdateIssueParams, rawFields map[string]json.RawMessage, titleBase, descriptionBase *string, attachmentIDs []pgtype.UUID, statusKey string, workflowAssignee bool) (db.Issue, db.Issue, bool, error) {
+func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.UUID, params db.UpdateIssueParams, rawFields map[string]json.RawMessage, titleBase, descriptionBase *string, attachmentIDs []pgtype.UUID, statusKey string, workflowAssignee bool, removeIDs ...pgtype.UUID) (db.Issue, db.Issue, bool, error) {
 	if h.TxStarter == nil {
 		return db.Issue{}, db.Issue{}, false, errors.New("atomic issue update requires transaction starter")
 	}
@@ -3732,6 +3733,14 @@ func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.
 	if err := assertIssueStatusStillActive(ctx, qtx, workspaceID, statusKey); err != nil {
 		return db.Issue{}, db.Issue{}, false, err
 	}
+	current, err := qtx.LockIssueForDescriptionUpdate(ctx, db.LockIssueForDescriptionUpdateParams{
+		ID:          params.ID,
+		WorkspaceID: workspaceID,
+	})
+	if err != nil {
+		return db.Issue{}, db.Issue{}, false, fmt.Errorf("lock issue for update: %w", err)
+	}
+
 	if len(attachmentIDs) > 0 {
 		if _, err := qtx.LockAttachmentsForIssueLink(ctx, db.LockAttachmentsForIssueLinkParams{
 			WorkspaceID:   workspaceID,
@@ -3739,13 +3748,6 @@ func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.
 		}); err != nil {
 			return db.Issue{}, db.Issue{}, false, fmt.Errorf("lock issue attachments: %w", err)
 		}
-	}
-	current, err := qtx.LockIssueForDescriptionUpdate(ctx, db.LockIssueForDescriptionUpdateParams{
-		ID:          params.ID,
-		WorkspaceID: workspaceID,
-	})
-	if err != nil {
-		return db.Issue{}, db.Issue{}, false, fmt.Errorf("lock issue for update: %w", err)
 	}
 
 	if params.Title.Valid && titleBase != nil && current.Title != *titleBase && current.Title != params.Title.String {
@@ -3793,6 +3795,19 @@ func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.
 	}
 
 	attachmentsChanged := false
+	if len(removeIDs) > 0 {
+		changed, unlinkErr := qtx.UnlinkIssueAttachments(ctx, db.UnlinkIssueAttachmentsParams{WorkspaceID: workspaceID, IssueID: params.ID, AttachmentIds: removeIDs, BumpRevision: issue.Revision == current.Revision})
+		if unlinkErr != nil {
+			return db.Issue{}, current, false, unlinkErr
+		}
+		attachmentsChanged = changed.ChangedCount > 0
+		if changed.IssueRevision > 0 {
+			issue, err = qtx.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{ID: params.ID, WorkspaceID: workspaceID})
+			if err != nil {
+				return db.Issue{}, current, false, err
+			}
+		}
+	}
 	if len(attachmentIDs) > 0 {
 		linked, linkErr := qtx.LinkAttachmentsToIssue(ctx, db.LinkAttachmentsToIssueParams{
 			IssueID:       issue.ID,
@@ -3803,7 +3818,7 @@ func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.
 		if linkErr != nil {
 			return db.Issue{}, current, false, fmt.Errorf("link issue attachments: %w", linkErr)
 		}
-		attachmentsChanged = linked.LinkedCount > 0
+		attachmentsChanged = attachmentsChanged || linked.LinkedCount > 0
 		if linked.IssueRevision > 0 {
 			issue, err = qtx.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{
 				ID:          issue.ID,
@@ -4075,15 +4090,20 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	removeIDs, ok := parseUUIDSliceOrBadRequest(w, req.RemoveAttachmentIDs, "remove_attachment_ids")
+	if !ok {
+		return
+	}
+
 	// The agent this write hands the issue to gets the change as its own run,
 	// not also through its event wakeups.
 	writeCtx := withWakeupHandedTo(r.Context(), h.handedToAgent(r.Context(), prevIssue, params, handoff != nil))
 	var issue db.Issue
 	attachmentsChanged := false
-	if req.Description != nil || req.TitleBase != nil || req.DescriptionBase != nil || len(attachmentIDs) > 0 {
+	if req.Description != nil || req.TitleBase != nil || req.DescriptionBase != nil || len(attachmentIDs) > 0 || len(removeIDs) > 0 {
 		var lockedPrev db.Issue
 		issue, lockedPrev, attachmentsChanged, err = h.updateIssueAtomically(
-			writeCtx, prevIssue.WorkspaceID, params, rawFields, req.TitleBase, req.DescriptionBase, attachmentIDs, statusKeyForGuard, handoff != nil,
+			writeCtx, prevIssue.WorkspaceID, params, rawFields, req.TitleBase, req.DescriptionBase, attachmentIDs, statusKeyForGuard, handoff != nil, removeIDs...,
 		)
 		if lockedPrev.ID.Valid {
 			prevIssue = lockedPrev

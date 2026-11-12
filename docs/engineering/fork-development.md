@@ -197,85 +197,70 @@ See the [Multica License](../../LICENSE) and [NOTICE](../../NOTICE) for terms an
 attribution. Index Labs develops the original
 [Multica repository](https://github.com/multica-ai/multica).
 
-## Independent deliverables (Backend P1)
+## Attachment ownership (Backend P1)
 
-Independent deliverables reuse attachment rows and storage, with an explicit
-`independent` boolean, default false. They have no issue, comment, task, chat or
-source-context owner. Existing uploads are not converted. Uploader fields record
-provenance only. Ordinary attachment operations keep their existing behavior.
+Deliverables, description inputs and comment uploads use the existing
+`attachment` table. “Input” is a UI interpretation, not a stored type.
+`issue_id` and `comment_id` are nullable owning foreign keys with their original
+cascade behavior. Comment-bound rows normally retain both the comment and its
+parent issue ID. Independence means both owner columns are null; there is no
+stored independent flag, separate object/link table or backend soft-link model.
 
-Use these existing endpoints with the resource's workspace context:
+### Existing routes and exact contract
 
-- Create: `POST /api/upload-file`, multipart `file` and `independent=true`.
-  All owner fields must be absent. Response is the existing attachment shape with
-  `independent:true`. A new upload without an ID creates a new resource even when
-  its filename matches another resource.
-- Discover, including unlinked resources:
-  `GET /api/workspaces/{workspaceUUID}?include=deliverables` adds
-  `deliverables: AttachmentResponse[]`. Without this opt-in the response is
-  unchanged. Discovery includes all independent resources in that workspace,
-  regardless of issue links; ordinary uploads are excluded.
-- Read: `GET /api/attachments/{id}`; preview and download retain the existing
-  `/{id}/content` and `/{id}/download` routes. Persist `markdown_url`, which always
-  follows the stable ID download route for independent resources. Independent
-  downloads use the existing no-store proxy, including signed download
-  capabilities, so storage/CDN caching cannot serve prior content.
-- Replace: `POST /api/upload-file`, multipart `file`, `independent=true` and
-  `attachment_id={uuid}`. Only an existing independent object in the selected
-  workspace is eligible. The resource row is locked while current bytes overwrite
-  its existing storage key and file metadata is updated. No previous blob,
-  backup, or content-history row is created. Storage must not retain object
-  versions externally if no-history storage is required.
-- Link: `PUT /api/issues/{issue}/metadata/deliverables`, with
-  `{"value":"[\"<independent-uuid>\"]"}`. The `deliverables` value is a primitive
-  **string encoding a JSON array** of distinct canonical UUIDs. The server checks
-  that every ID is an independent resource in the issue's workspace. Share the
-  same ID by recording it on multiple issues. Read through the existing issue
-  metadata API or the issue's `metadata` response.
-- Unlink: write the remaining array (encoded `[]` is valid), or
-  `DELETE /api/issues/{issue}/metadata/deliverables` to remove all links. These
-  operations only change metadata. Deleting an issue likewise removes only its
-  links; resources and other issues' links survive. Existing metadata limits
-  (50 keys, 8KB) and single-key last-writer semantics apply. Clients updating a
-  link set must read/modify/write the entire encoded array.
+- **Create:** `POST /api/upload-file`, multipart `file`, with workspace context.
+  No `independent` flag. A plain upload has neither issue nor comment owner.
+  Existing `issue_id`, `comment_id` and task upload bindings remain dependent.
+- **Attach ownership:** existing issue create/update `attachment_ids` binds
+  unowned workspace files to that issue. Existing comment create/edit
+  `attachment_ids` binds unowned or same-issue unbound files to that comment
+  and its parent issue. Neither operation moves another owner's file. A comment
+  edit replaces its attachment set; omitting `attachment_ids` leaves it alone.
+- **Explicit detach:** `PUT /api/issues/{id}` with
+  `{"remove_attachment_ids":["attachmentUUID"]}` clears both owner columns for
+  selected files owned by that issue or its comments. Removing a file from its
+  original comment's `attachment_ids` clears both columns too. These operations
+  keep the same file ID and bytes. Attaching and removing the same ID in one
+  issue update detaches first, then reattaches it to the issue.
+- **Normal deletion:** deleting an issue/comment still deletes its dependent
+  attachments and stored bytes. Explicit detachment must happen first to protect
+  a file. Deleting an attachment or workspace still deletes resources normally.
+- **Issue lookup:** existing `GET /api/issues/{id}/attachments` and issue
+  `attachments` projections select rows by owning `issue_id` and workspace.
+  Normal comment-bound rows already appear because they retain the parent issue
+  ID. A legacy upload supplied only `comment_id` is not included by this query.
+  An ownerless file mentioned through a client soft link does not appear there.
+- **Workspace lookup:** existing `GET /api/workspaces/{workspaceUUID}` with
+  `?include=attachments` includes an `attachments` array of ordinary workspace
+  attachment responses, excluding private chat and source snapshots. This
+  generalizes the earlier P1 `include=deliverables` projection; it adds no HTTP
+  route. Without the opt-in, the response is unchanged. Callers select ownerless
+  files by absent `issue_id` AND `comment_id`; there is no floating/soft-link
+  search or filter. Each entry carries the existing ID, filename, content type,
+  byte size and read/download URLs. This list has the existing unpaginated shape.
+- **Read:** existing `/api/attachments/{id}`, `/{id}/content` and
+  `/{id}/download` work without an issue/comment owner, with workspace access
+  checks unchanged. Persist `markdown_url`. Ownerless files use the stable ID
+  route and no-store proxy to avoid immutable caching during renewal; original
+  dependent files retain their download/signing behavior.
+- **Replace:** existing `POST /api/upload-file`, multipart `file` and
+  `attachment_id={uuid}`. Under the owner/row locks, the backend preserves
+  dependent content by creating a new ID/key with the same owner columns.
+  Ownerless files instead renew the same ID/key without a previous-byte backup.
+  The response ID is authoritative. Existing task filename renewal remains,
+  but never overwrites comment-bound content. Clients choose no history mode.
+  Private chat and source snapshots are excluded from this replacement flow.
+  External object-version retention must be disabled for no-history renewal.
 
-Clients should omit missing resources when rendering stored links. Explicit
-resource deletion still uses the existing attachment deletion endpoint and is
-separate from unlinking; it does not rewrite issue metadata. The Frontend and CLI
-slices own their client/schema changes. Plan: [P1 #50](https://github.com/Winfred666/multica-RSI/issues/50).
+There are **no new routes** or metadata requirements. Metadata, including any
+`deliverables` value, is opaque to this feature: no validation, projection,
+migration or cleanup. Clients may soft-link the same independent ID from several
+issues, but that does not establish ownership or affect history/deletion policy.
+Deleting those issues/comments cannot hurt an ownerless attachment. The backend
+cannot distinguish a soft-linked file from a completely unreferenced one.
 
-### Independent deliverables in web and desktop
+Migration 618 only removes the erroneous `independent` column/check. It creates
+no table/index and changes no file IDs, ownership, metadata, history or bytes.
+Regenerate query bindings after SQL changes with `make sqlc`.
 
-The shared issue tree discovers workspace resources through `?include=deliverables`.
-Only explicit `independent:true` objects become free root nodes, one per ID,
-including unlinked objects. Same-name independent IDs are never filename versions.
-Issue cards and the detail sidebar show **Linked deliverables** separately from
-comment outputs; dashed tree connectors represent the metadata relationship.
-Missing resources are omitted. Removing links or issues leaves free nodes intact.
-The existing attachment viewer opens both surfaces. While these views are open,
-workspace discovery refreshes every 30 seconds and invalidates independent preview
-caches so replacement serves current bytes. Ordinary comment outputs retain their
-existing grouping and version history.
-
-
-## Independent deliverables (SoP template)
-
-The canonical creator/template publishes live HTML and DEBUG previews with
-explicit independent IDs. `sop_artifacts` retains each skill/filename slot's UUID;
-`deliverables` links the resource to the issue. Both metadata values are encoded
-strings and survive transient SoP state cleanup. Repeated callbacks replace by ID,
-not filename; ordinary comment-bound uploads stay unchanged. Publication errors
-leave workflow results intact and require reconciliation before retrying.
-
-The [publication contract](../../harness/skills/create-symbolic-sop/references/independent-publication.md)
-defines create/read/replace/link/unlink and exact CLI spelling for the CLI slice:
-`attachment upload FILE --independent [--attachment-id ID]`,
-`attachment list --independent`, `attachment get ID`, existing `attachment download`
-and read/modify/write via `issue metadata set --key deliverables --type string`.
-The CLI returns the canonical attachment response for independent uploads and
-discovery, including unlinked resources. Ordinary chat uploads keep their existing
-output and task binding. `--attachment-id` requires `--independent`, which rejects
-explicit `--task` and suppresses ambient owners. Link/unlink uses the existing
-metadata commands, preserving other IDs by read/modify/write. This template change is
-not a rollout: human approval is required before propagating to other symbolic
-SoPs or installed distributions.
+Plan: [Backend P1 #50](https://github.com/Winfred666/multica-RSI/issues/50).
