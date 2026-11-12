@@ -50,6 +50,14 @@ settings in issue metadata when needed; keep delivery/review records in comments
 When revising a procedure, preserve its checks, side effects, completion rules
 and live state.
 
+Live HTML publication uses explicit independent resource IDs, not issue/comment/task
+ownership or filename grouping. Follow [independent publication](references/independent-publication.md)
+for the canonical create/read/replace/link/unlink contract and CLI spelling.
+The template retains publication IDs in `sop_artifacts` and issue links in
+`deliverables`, separate from transient SoP state. Ordinary comment attachments
+stay unchanged. Change this creator/template first; obtain human approval before
+propagating the protocol to other symbolic SoPs or installed distributions.
+
 The preview derives the state graph from `Workflow`; use `Branch` for automatic
 script-selected transitions. Optional action docstrings can explain local logic.
 For API details, protocol debugging or preview tuning, read [DEBUG.md](DEBUG.md)

@@ -336,6 +336,49 @@ workflow = Workflow(
         self.assertEqual(second['reason'], 'exit')
         self.assertEqual(second['new_output'], {})
 
+    def test_independent_publication_reuses_identity_and_preserves_links(self):
+        import io
+        spec = importlib.util.spec_from_file_location('protocol_wrapper', self.package / 'wrapper.py')
+        wrapper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(wrapper)
+        existing = '00000000-0000-4000-8000-000000000001'
+        resource_id = '00000000-0000-4000-8000-000000000002'
+        metadata = {'deliverables': json.dumps([existing])}
+        requests = []
+        fail_link = True
+
+        def cli(*args):
+            if args[0] == 'get':
+                return {'metadata': metadata.copy()}
+            key = args[args.index('--key') + 1]
+            if key == 'deliverables' and fail_link:
+                raise ValueError('Link unavailable')
+            metadata[key] = args[args.index('--value') + 1]
+            return {'metadata': metadata}
+
+        def upload(request, timeout):
+            requests.append(request.data)
+            return io.BytesIO(json.dumps({'id': resource_id, 'independent': True,
+                                         'markdown_url': 'http://fixture.invalid/stable'}).encode())
+
+        with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue', MULTICA_WORKSPACE_ID='fixture-workspace',
+                        MULTICA_TOKEN='fixture-token', MULTICA_SERVER_URL='http://fixture.invalid'), \
+                patch.object(wrapper, 'multica', side_effect=cli), patch.object(wrapper, 'urlopen', side_effect=upload), \
+                patch('sys.stderr', new_callable=io.StringIO) as warnings:
+            self.assertIsNone(wrapper.upload_artifact('state.html', 'first', issue_id='fixture-issue', skill='fixture'))
+            self.assertIn(resource_id, warnings.getvalue())
+            fail_link = False
+            result = wrapper.upload_artifact('state.html', 'second', issue_id='fixture-issue', skill='fixture')
+            self.assertEqual(result['id'], resource_id)
+        self.assertNotIn(b'name="attachment_id"', requests[0])
+        self.assertIn(b'name="attachment_id"\r\n\r\n' + resource_id.encode(), requests[1])
+        for body in requests:
+            self.assertIn(b'name="independent"\r\n\r\ntrue', body)
+            for owner in ('issue_id', 'comment_id', 'task_id', 'chat_session_id', 'chat_message_id', 'source_context_id'):
+                self.assertNotIn(('name="' + owner + '"').encode(), body)
+        self.assertEqual(json.loads(metadata['sop_artifacts']), {'fixture': {'state.html': resource_id}})
+        self.assertEqual(json.loads(metadata['deliverables']), [existing, resource_id])
+
     def test_configured_preview_uses_actual_workflow(self):
         script = self.root / 'test_solution.py'
         script.write_text('def validate(): return True\n'
@@ -360,14 +403,7 @@ workflow = Workflow(
                         MULTICA_SERVER_URL='http://fixture.invalid'), patch.object(wrapper, 'upload_artifact') as upload:
             wrapper.publish_artifacts(context, controller, result)
         filename, html = upload.call_args.args
-        self.assertEqual(upload.call_args.kwargs, {'issue_id': 'fixture-issue'})
-        with patch.dict(os.environ, MULTICA_ISSUE_ID='native-issue', MULTICA_WORKSPACE_ID='fixture-workspace',
-                        MULTICA_TOKEN='fixture-token', MULTICA_SERVER_URL='http://fixture.invalid'), \
-                patch.object(wrapper, 'urlopen') as request:
-            wrapper.upload_artifact(filename, html, issue_id='fixture-issue')
-        body = request.call_args.args[0].data
-        self.assertIn(b'name="issue_id"\r\n\r\nfixture-issue', body)
-        self.assertNotIn(b'name="task_id"', body)
+        self.assertEqual(upload.call_args.kwargs, {'issue_id': 'fixture-issue', 'skill': controller.SOP_NAME})
         self.assertEqual(filename, 'multica-parallel-refinement-state.html')
         self.assertIn('fixture-issue', html)
         self.assertNotIn('task_id', html)

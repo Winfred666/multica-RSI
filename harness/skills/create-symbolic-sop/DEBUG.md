@@ -167,7 +167,10 @@ extra finish action. Declare its normal completion target so the final state is
 connected before execution; handlers can still return another state for a retry.
 
 Set `"DEBUG": true` in the skill's `config.json` to publish `<skill-name>-state.html`
-on every state shift. The wrapper renders `controller.workflow` states, option
+on every state shift as an independent workspace resource. The wrapper reuses
+its persisted ID and replaces current content; no past content is retained.
+See [independent publication](references/independent-publication.md) for identity,
+linking, failure recovery and the CLI contract. The wrapper renders `controller.workflow` states, option
 targets and symbolic branches, with state meanings, native issue
 ID and assertion failures. Put the graph before headings and metadata so it is
 visible in thumbnails. Use a CSS orientation media query: in landscape, fit SVGs
@@ -198,8 +201,9 @@ Omit HTML help controls.
 Resolve dynamic option targets during normal choice resolution. DEBUG defaults
 to `false`. For an existing HTML view, export read-only `artifacts(context)` from
 `controller.py` returning `{stable_filename: html_string}`; the wrapper updates
-these live artifacts after accepted callbacks. Upload failures leave workflow
-results intact.
+these independent live artifacts after accepted callbacks, using the same explicit-ID
+publication path as DEBUG previews. Upload or metadata failures leave workflow
+results intact and report reconciliation guidance on stderr.
 
 
 ## External tools

@@ -25,6 +25,18 @@ During test, inspect the returned log excerpt and choose `continue` or `exceptio
 immediately; the full logs remain at the printed paths. Test completion or
 exception advances to review.
 
+Optional HTML artifacts and DEBUG previews publish as independent workspace
+resources. The runtime retains explicit IDs in issue metadata `sop_artifacts`
+(`{skill_name: {filename: UUID}}`, JSON encoded as a string) and links them through
+`deliverables` (a string-encoded UUID array). Completion/quit clears only the
+transient `sop.<skill-name>` key; publication IDs and links survive. Repeated
+publication replaces current content by ID with no history. A filename names a
+local publication slot, never a resource lookup. Ordinary comment attachments
+are not converted. Unlinking removes metadata only; publishing again restores
+the link. Coordinate concurrent metadata writers. On a publication warning,
+reconcile the reported ID and metadata before retrying publication, not the
+completed workflow action.
+
 In every state, follow returned error guidance and finish unmet prerequisites
 before retrying. Reconcile writes first. For assertion failures, use the returned
 `repaired` recall once; report a repeated failure through native Multica block.

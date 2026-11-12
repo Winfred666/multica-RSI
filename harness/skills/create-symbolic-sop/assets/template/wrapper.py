@@ -440,27 +440,51 @@ def response(result):
     return agent_decision(output)
 
 
-def upload_artifact(filename, content, *, issue_id):
-    """Publish the named live deliverable on the native issue."""
+def upload_artifact(filename, content, *, issue_id, skill):
+    """Publish an independent object, retaining its explicit ID across SOP runs."""
     if not all(os.environ.get(key) for key in
                ('MULTICA_SERVER_URL', 'MULTICA_TOKEN', 'MULTICA_ISSUE_ID', 'MULTICA_WORKSPACE_ID')):
         return
-    boundary = 'sop-' + uuid.uuid4().hex
-    fields = {'issue_id': issue_id}
-    body = b''.join((f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n').encode()
-                    for key, value in fields.items())
-    body += (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-             'Content-Type: text/html\r\n\r\n').encode() + content.encode() + f'\r\n--{boundary}--\r\n'.encode()
-    request = Request(os.environ['MULTICA_SERVER_URL'].rstrip('/') + '/api/upload-file', data=body, headers={
-        'Authorization': 'Bearer ' + os.environ['MULTICA_TOKEN'],
-        'X-Workspace-ID': os.environ['MULTICA_WORKSPACE_ID'],
-        'Content-Type': 'multipart/form-data; boundary=' + boundary})
+    attachment = None
     # A preview failure must never repeat a completed workflow action.
     try:
+        metadata = multica('get', issue_id)['metadata']
+        bindings = json.loads(metadata.get('sop_artifacts', '{}'))
+        artifacts = bindings.setdefault(skill, {})
+        attachment_id = artifacts.get(filename)
+        fields = {'independent': 'true'}
+        if attachment_id:
+            fields['attachment_id'] = attachment_id
+        boundary = 'sop-' + uuid.uuid4().hex
+        body = b''.join((f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n').encode()
+                        for key, value in fields.items())
+        body += (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+                 'Content-Type: text/html\r\n\r\n').encode() + content.encode() + f'\r\n--{boundary}--\r\n'.encode()
+        request = Request(os.environ['MULTICA_SERVER_URL'].rstrip('/') + '/api/upload-file', data=body, headers={
+            'Authorization': 'Bearer ' + os.environ['MULTICA_TOKEN'],
+            'X-Workspace-ID': os.environ['MULTICA_WORKSPACE_ID'],
+            'Content-Type': 'multipart/form-data; boundary=' + boundary})
         with urlopen(request, timeout=30) as response:
-            response.read()
+            attachment = json.load(response)
+        resource_id = str(uuid.UUID(attachment['id']))
+        if attachment.get('independent') is not True or (attachment_id and resource_id != attachment_id):
+            raise ValueError('Upload did not return the requested independent identity')
+        if not attachment_id:
+            artifacts[filename] = resource_id
+            # Persist identity before linking, so a failed link never triggers another create.
+            multica('metadata', 'set', issue_id, '--key', 'sop_artifacts', '--type', 'string',
+                    '--value', json.dumps(bindings, separators=(',', ':')))
+        links = json.loads(metadata.get('deliverables', '[]'))
+        if resource_id not in links:
+            links.append(resource_id)
+            multica('metadata', 'set', issue_id, '--key', 'deliverables', '--type', 'string',
+                    '--value', json.dumps(links, separators=(',', ':')))
+        return attachment
     except Exception as error:
-        print(redact('Live artifact update failed: ' + str(error)), file=sys.stderr)
+        identity = f" Resource {attachment['id']}: {attachment.get('markdown_url', '')}." if attachment else ''
+        print(redact('Live artifact update failed: ' + str(error) + identity +
+                     ' Reconcile sop_artifacts and workspace deliverables before retrying; do not rerun the workflow action.'),
+              file=sys.stderr)
 
 
 def graph_svg(source, identifier):
@@ -582,10 +606,10 @@ def publish_artifacts(context, controller, result):
         # In DEBUG mode, update the controller workflow's state chart artifact on every state shift.
         if controller.DEBUG and shifted:
             upload_artifact(controller.SOP_NAME + '-state.html', state_artifact(context, controller, result),
-                            issue_id=context['issue_id'])
+                            issue_id=context['issue_id'], skill=controller.SOP_NAME)
         if not result.get('error') and hasattr(controller, 'artifacts'):
             for filename, content in controller.artifacts({**context, 'cli': multica, 'error': SOPError}).items():
-                upload_artifact(filename, content, issue_id=context['issue_id'])
+                upload_artifact(filename, content, issue_id=context['issue_id'], skill=controller.SOP_NAME)
     except Exception as error:
         print(redact('Live artifact update failed: ' + str(error)), file=sys.stderr)
 

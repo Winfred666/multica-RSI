@@ -243,3 +243,22 @@ Clients should omit missing resources when rendering stored links. Explicit
 resource deletion still uses the existing attachment deletion endpoint and is
 separate from unlinking; it does not rewrite issue metadata. The Frontend and CLI
 slices own their client/schema changes. Plan: [P1 #50](https://github.com/Winfred666/multica-RSI/issues/50).
+
+
+## Independent deliverables (SoP template)
+
+The canonical creator/template publishes live HTML and DEBUG previews with
+explicit independent IDs. `sop_artifacts` retains each skill/filename slot's UUID;
+`deliverables` links the resource to the issue. Both metadata values are encoded
+strings and survive transient SoP state cleanup. Repeated callbacks replace by ID,
+not filename; ordinary comment-bound uploads stay unchanged. Publication errors
+leave workflow results intact and require reconciliation before retrying.
+
+The [publication contract](../../harness/skills/create-symbolic-sop/references/independent-publication.md)
+defines create/read/replace/link/unlink and exact CLI spelling for the CLI slice:
+`attachment upload FILE --independent [--attachment-id ID]`,
+`attachment list --independent`, `attachment get ID`, existing `attachment download`
+and read/modify/write via `issue metadata set --key deliverables --type string`.
+These new CLI flags/commands await CLI implementation. This template change is
+not a rollout: human approval is required before propagating to other symbolic
+SoPs or installed distributions.
