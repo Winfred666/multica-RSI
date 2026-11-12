@@ -280,7 +280,7 @@ client history mode, separate link/unlink commands or independent-only list.
 
 ### Common preview tiles
 
-Workspace `?include=attachments` supplies ordinary files. Tree free nodes select rows with both owner fields empty and deduplicate by ID, not filename. They float beside the issue trees on a separate layer beneath the cards, outside root packing, and reuse common preview tiles without extra titles or filename headers. Description content links use the ordinary attachment URL matcher to draw soft-reference edges; they do not establish ownership. Comment files in the FK attachment projection join the existing deliverable collection and version rendering even before their timeline loads. No metadata-deliverables list or parallel linked-file section is read.
+Workspace `?include=attachments` supplies ordinary files. Tree free nodes select rows with both owner fields empty and deduplicate by ID, not filename. They float beside the issue trees on a separate layer beneath the cards, outside root packing, and reuse common preview tiles without extra titles or filename headers. Description content links use the ordinary attachment URL matcher to draw straight dashed SVG soft-reference lines without a routing library; they do not establish ownership. Comment files in the FK attachment projection join the existing deliverable collection and version rendering even before their timeline loads. No metadata-deliverables list or parallel linked-file section is read.
 
 ## SoP configuration artifacts (template only)
 
