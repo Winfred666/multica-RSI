@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -65,7 +66,7 @@ func init() {
 	// Runtime commands
 	daemonCmd.GroupID = groupRuntime
 	runtimeCmd.GroupID = groupRuntime
-	remoteSOPCmd.GroupID = groupRuntime
+	sopCmd.GroupID = groupRuntime
 
 	// Additional commands
 	authCmd.GroupID = groupAdditional
@@ -92,7 +93,7 @@ func init() {
 	rootCmd.AddCommand(chatCmd)
 	rootCmd.AddCommand(daemonCmd)
 	rootCmd.AddCommand(runtimeCmd)
-	rootCmd.AddCommand(remoteSOPCmd)
+	rootCmd.AddCommand(sopCmd)
 	rootCmd.AddCommand(authCmd)
 	rootCmd.AddCommand(userCmd)
 	rootCmd.AddCommand(loginCmd)
@@ -120,6 +121,10 @@ func main() {
 	}
 	cli.CleanupStaleUpdateArtifacts()
 	if err := rootCmd.Execute(); err != nil {
+		var sopExit *sopExitError
+		if errors.As(err, &sopExit) {
+			os.Exit(sopExit.code)
+		}
 		if err != errSilent {
 			fmt.Fprintln(os.Stderr, cli.FormatError(err, debugFlag))
 		}

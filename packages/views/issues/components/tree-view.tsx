@@ -6,7 +6,7 @@ import { useDeleteAttachments } from "@multica/core/issues/mutations";
 import { useQuery } from "@tanstack/react-query";
 import { issueWorkspaceId, layoutWorkspaceTree, workspaceTreeOptions } from "@multica/core/workspace/tree";
 import { EyeOff, Layers, Plus, RotateCcw } from "@multica/ui/icons";
-import type { AgentTask, Issue, Project } from "@multica/core/types";
+import type { AgentTask, Attachment, Issue, Project } from "@multica/core/types";
 import { useWSEvent } from "@multica/core/realtime";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { paths, useWorkspacePaths } from "@multica/core/paths";
@@ -14,6 +14,7 @@ import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { isBuiltInIssueStatus } from "@multica/core/issue-statuses";
 import { agentTaskSnapshotOptions } from "@multica/core/agents";
 import { issueAttachmentsOptions, issueTimelineOptions } from "@multica/core/issues/queries";
+import { workspaceAttachmentsOptions } from "@multica/core/workspace/queries";
 import { useIndependentArtifacts } from "@multica/core/attachments";
 import { collectDeliverableFiles } from "@multica/core/attachments/deliverables";
 import { issueStatusCategory, statusColumnKeys } from "@multica/core/issues";
@@ -78,6 +79,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   const sortDirection = useViewStore((s) => s.sortDirection);
   const treeViewport = useViewStore((s) => s.treeViewport);
   const setTreeViewport = useViewStore((s) => s.setTreeViewport);
+  const deliverables = useQuery(workspaceAttachmentsOptions(wsId));
   const { data: tasks = EMPTY_TASKS } = useQuery(agentTaskSnapshotOptions(wsId));
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [layoutWidth, setLayoutWidth] = useState(0);
@@ -95,8 +97,8 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   const layout = useMemo(() => layoutWorkspaceTree(buildIssueTree(
       sortIssues(issues, sortBy, sortDirection, statusColumnKeys(catalog)),
       new Set(hiddenStatuses.filter((status) => !statusFilters.includes(status))), expanded,
-    ), wsId, snapshots.data, sizes, layoutWidth), [issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, sizes, wsId, snapshots.data, layoutWidth]);
-  const isSnapshot = (node: IssueTreeNode) => !!snapshots.data?.[node.issues[0]!.workspace_id];
+    ), wsId, snapshots.data, sizes, layoutWidth, deliverables.data), [deliverables.data, issues, sortBy, sortDirection, catalog, hiddenStatuses, statusFilters, expanded, sizes, wsId, snapshots.data, layoutWidth]);
+  const isSnapshot = (node: IssueTreeNode) => !!node.issues[0] && !!snapshots.data?.[node.issues[0].workspace_id];
   const measured = layout.nodes.every(({ node }) => isWorkspaceNode(node) || sizes.has(node.id));
   const canvas = useZoomCanvas({
     content: layoutWidth > 0 && !pending && !snapshots.isFetching && measured ? layout : null,
@@ -187,7 +189,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
     if (deleteAttachments.isPending || !selectedArtifacts.length) return;
     const ids = selectedArtifacts.map((element) => element.dataset.treeArtifact!);
     deleteAttachments.mutate(selectedArtifacts.map((element) => ({
-      issueId: element.closest<HTMLElement>("[data-tree-card]")!.dataset.treeCard!,
+      issueId: element.closest<HTMLElement>("[data-tree-card]")?.dataset.treeCard,
       ids: element.dataset.attachmentIds!.split(","),
     })), {
       onSuccess: () => selection.deselect(ids),
@@ -254,7 +256,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
             if (event.key === "Escape") selection.clear();
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
               event.preventDefault();
-              selection.select(layout.nodes.filter(({ node }) => !node.collapsed && !isWorkspaceNode(node) && !isSnapshot(node)).map(({ node }) => node.issues[0]!.id));
+              selection.select(layout.nodes.filter(({ node }) => !node.deliverable && !node.collapsed && !isWorkspaceNode(node) && !isSnapshot(node)).map(({ node }) => node.issues[0]!.id));
               return;
             }
           }
@@ -265,7 +267,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
         <svg width={layout.width} height={layout.height} className="pointer-events-none absolute inset-0" aria-hidden="true">
           {layout.nodes.filter(({ node }) => isWorkspaceNode(node)).map(({ node, x, y, width, height }) =>
             <rect key={node.id} x={x - width / 2} y={y} width={width} height={height} rx={8} className="fill-background stroke-surface-border" />)}
-          {[...layout.nodes, ...layout.links.flatMap(({ source, target }) => byId.has(target) ? [{ ...byId.get(target)!, parentId: source }] : [])].map((position) => {
+          {[...layout.nodes, ...layout.links.flatMap(({ source, target, kind }) => byId.has(target) ? [{ ...byId.get(target)!, parentId: source, relationship: kind }] : [])].map((position) => {
             const parent = position.parentId ? byId.get(position.parentId) : null;
             if (!parent) return null;
             const startY = parent.y + parent.height;
@@ -274,27 +276,34 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
             const dx = position.x - parent.x;
             const radius = Math.min(12, Math.abs(dx) / 2);
             const direction = Math.sign(dx);
-            const path = dx === 0
+            const relationship = "relationship" in position && position.relationship === "deliverable";
+            const linkMidX = (parent.x + parent.width / 2 + position.x - position.width / 2) / 2;
+            const path = relationship
+              ? `M ${parent.x + parent.width / 2} ${parent.y + parent.height / 2} C ${linkMidX} ${parent.y + parent.height / 2} ${linkMidX} ${position.y + position.height / 2} ${position.x - position.width / 2} ${position.y + position.height / 2}`
+              : dx === 0
               ? `M ${parent.x} ${startY} V ${endY}`
               : `M ${parent.x} ${startY} V ${midY - radius} Q ${parent.x} ${midY} ${parent.x + direction * radius} ${midY} H ${position.x - direction * radius} Q ${position.x} ${midY} ${position.x} ${midY + radius} V ${endY}`;
-            const tone = isWorkspaceNode(position.node) ? { className: "text-muted-foreground", color: undefined } : color(position.node.issues[0]!);
-            return <path key={`${position.parentId}:${position.node.id}`} d={path} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" className={tone.className} style={{ color: tone.color, opacity: 0.65 }} />;
+            const tone = relationship || isWorkspaceNode(position.node) ? { className: "text-muted-foreground", color: undefined } : color(position.node.issues[0]!);
+            return <path key={`${position.parentId}:${position.node.id}`} d={path} fill="none" stroke="currentColor" strokeWidth={1.5} strokeDasharray={relationship ? "5 4" : undefined} data-deliverable-relationship={relationship ? position.node.deliverable?.id : undefined} strokeLinecap="round" className={tone.className} style={{ color: tone.color, opacity: 0.65 }} />;
           })}
         </svg>
         {layout.nodes.map(({ node, x, y, width }) => {
+          if (node.deliverable) return <div key={node.id} className="absolute z-0" style={{ left: x - width / 2, top: y, width }}>
+            <TreeFloatingAttachment file={node.deliverable} onSizeChange={onSizeChange} />
+          </div>;
           const issue = node.issues[0]!;
           const frame = isWorkspaceNode(node);
           const snapshot = snapshots.data?.[frame ? issueWorkspaceId(issue)! : issue.workspace_id];
           const workspace = snapshot?.workspace;
           const style = { left: x - width / 2, top: y, width };
-          if (frame) return <div key={node.id} data-workspace-frame className="absolute" style={style}>
+          if (frame) return <div key={node.id} data-workspace-frame className="absolute z-10" style={style}>
             {workspace && !snapshot.error ? <AppLink href={paths.workspace(workspace.slug).issues()} className="flex h-10 items-center gap-2 overflow-hidden border-b px-3 text-caption font-medium">
               <Layers className="size-4 shrink-0" /><span className="truncate">{t(($) => $.tree.workspace_static_at, { name: workspace.name, time: snapshotTime(snapshot.capturedAt) })}</span>
             </AppLink> : <span className="flex h-10 items-center justify-center text-caption text-muted-foreground">
               {snapshot || snapshots.error ? <EyeOff className="size-4" role="img" aria-label={t(($) => $.tree.workspace_no_access)} /> : t(($) => $.tree.loading)}
             </span>}
           </div>;
-          return <div key={node.id} data-workspace-frame={isSnapshot(node) ? "" : undefined} className="absolute flex flex-col" style={style}>
+          return <div key={node.id} data-workspace-frame={isSnapshot(node) ? "" : undefined} className="absolute z-10 flex flex-col" style={style}>
             {workspace ? <TreeSnapshotNode issue={issue} workspaceSlug={workspace.slug} onSizeChange={onSizeChange} /> : <TreeIssueNode
               issue={node.issues[0]!}
               tasks={tasks}
@@ -436,4 +445,14 @@ function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, on
       {timeline.isError && <Button variant="ghost" size="xs" onClick={() => void timeline.refetch()}>{t(($) => $.tree.retry_agents)}</Button>}
     </div>
   );
+}
+
+function TreeFloatingAttachment({ file, onSizeChange }: {
+  file: Attachment;
+  onSizeChange: (id: string, size: IssueTreeSize) => void;
+}) {
+  const ref = useTreeNodeSize(`deliverable:${file.id}`, onSizeChange);
+  return <div ref={ref} data-free-attachment={file.id}>
+    <TreeDeliverables files={[{ key: file.id, latest: file, versions: [file] }]} />
+  </div>;
 }

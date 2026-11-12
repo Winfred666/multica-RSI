@@ -158,6 +158,11 @@ func attachmentURLModeFromRequest(r *http.Request) attachmentURLMode {
 	return attachmentURLModeSigned
 }
 
+// Ownerless files may renew their current key, so their URLs must bypass immutable caches.
+func attachmentHasNoOwner(a db.Attachment) bool {
+	return !a.IssueID.Valid && !a.CommentID.Valid && !a.SourceContextID.Valid && !a.ChatSessionID.Valid && !a.ChatMessageID.Valid
+}
+
 func (h *Handler) attachmentToResponse(a db.Attachment, mode attachmentURLMode) AttachmentResponse {
 	id := uuidToString(a.ID)
 	resp := AttachmentResponse{
@@ -176,7 +181,7 @@ func (h *Handler) attachmentToResponse(a db.Attachment, mode attachmentURLMode) 
 	// Only CloudFront mode overrides the stable path here; the presign and proxy
 	// modes already leave DownloadURL as the stable path and resolve it at
 	// download time, so stable mode is a no-op for them.
-	if h.CFSigner != nil && mode != attachmentURLModeStable {
+	if h.CFSigner != nil && mode != attachmentURLModeStable && !attachmentHasNoOwner(a) {
 		resp.DownloadURL = h.CFSigner.SignedURL(a.Url, time.Now().Add(h.attachmentDownloadURLTTL()))
 	}
 	if a.Width.Valid && a.Height.Valid {
@@ -764,7 +769,11 @@ func (h *Handler) writeSignedAttachmentMetadata(w http.ResponseWriter, r *http.R
 	// stored Content-Disposition (inline for media, attachment otherwise), which
 	// keeps images renderable inline while preserving the original download
 	// filename.
-	switch mode := h.resolveAttachmentDownloadMode(att.Url); mode {
+	mode := h.resolveAttachmentDownloadMode(att.Url)
+	if attachmentHasNoOwner(att) {
+		mode = attachmentDownloadModeProxy
+	}
+	switch mode {
 	case attachmentDownloadModeCloudFront:
 		// CloudFront mode: attachmentToResponse already set DownloadURL to an
 		// inline-intent signed URL. The download button needs the forced-
@@ -931,6 +940,11 @@ func (h *Handler) DownloadAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := h.Storage.KeyFromURL(att.Url)
+	// Mutable content must bypass the storage/CDN's immutable-object cache.
+	if attachmentHasNoOwner(att) {
+		h.proxyAttachmentDownload(w, r, att, key, false)
+		return
+	}
 	switch h.resolveAttachmentDownloadMode(att.Url) {
 	case attachmentDownloadModeCloudFront:
 		if h.CFSigner == nil {
@@ -1691,14 +1705,7 @@ func (h *Handler) attachmentOwnerLockAttempt(ctx context.Context, att db.Attachm
 			return db.Attachment{}, err
 		}
 	}
-	var fresh db.Attachment
-	if att.IssueID.Valid || att.CommentID.Valid {
-		fresh, err = qtx.GetAttachment(ctx, db.GetAttachmentParams{ID: att.ID, WorkspaceID: att.WorkspaceID})
-	} else {
-		// Nothing to lock above: take the row itself so it cannot gain an owner
-		// between this read and the write.
-		fresh, err = qtx.LockAttachmentRow(ctx, db.LockAttachmentRowParams{ID: att.ID, WorkspaceID: att.WorkspaceID})
-	}
+	fresh, err := qtx.LockAttachmentRow(ctx, db.LockAttachmentRowParams{ID: att.ID, WorkspaceID: att.WorkspaceID})
 	if err != nil {
 		return db.Attachment{}, err
 	}

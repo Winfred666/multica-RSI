@@ -3,6 +3,7 @@ import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, expect, it, vi } from "vitest";
 import { ApiClient, setApiInstance } from "../api";
 import { setCurrentWorkspace, getCurrentSlug } from "../platform/workspace-storage";
+import { EMPTY_ATTACHMENT } from "../api/schemas";
 import type { Issue } from "../types";
 import { buildIssueTree } from "../issues/surface/tree";
 import { layoutWorkspaceTree, workspaceTreeOptions } from "./tree";
@@ -48,4 +49,19 @@ it("captures each workspace once, paginates with explicit scope, and renders sha
   expect(inner.y + inner.height).toBeLessThan(outer.y + outer.height);
   remount();
   client.clear();
+});
+
+it("packs shared and unlinked floating files as unique roots with distinct relationships", () => {
+  const id = "01921b25-f9e1-7000-8000-000000000001";
+  const free = { ...EMPTY_ATTACHMENT, id, filename: "report.html" };
+  const unlinked = { ...free, id: "01921b25-f9e1-7000-8000-000000000002" };
+  const rows = ["first", "second"].map((id) => ({ id, workspace_id: "ws", status: "todo", description: `[report](/api/attachments/${free.id}/download)`, metadata: { deliverables: JSON.stringify([unlinked.id]) } }) as unknown as Issue);
+  const render = (issues: Issue[]) => layoutWorkspaceTree(buildIssueTree(issues, new Set(), new Set()), "ws", undefined, new Map(), 1200, [free, free, unlinked, { ...free, id: "owned", issue_id: "first" }, { ...free, id: "comment-only", comment_id: "comment" }]);
+  const layout = render(rows);
+  const packed = layoutWorkspaceTree(buildIssueTree(rows, new Set(), new Set()), "ws");
+  expect(layout.nodes.filter(({ node }) => !node.deliverable)).toEqual(packed.nodes);
+  expect(layout.nodes.filter(({ node }) => node.deliverable).every((position) => position.x - position.width / 2 >= packed.width)).toBe(true);
+  expect(layout.nodes.filter(({ node }) => node.deliverable).map(({ node, parentId }) => [node.id, parentId])).toEqual([[`deliverable:${free.id}`, null], [`deliverable:${unlinked.id}`, null]]);
+  expect(layout.links).toEqual(rows.map((row) => ({ source: row.id, target: `deliverable:${free.id}`, kind: "deliverable" })));
+  expect(render([]).nodes.map(({ node }) => node.deliverable?.id)).toEqual([free.id, unlinked.id]);
 });

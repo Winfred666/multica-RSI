@@ -500,16 +500,19 @@ func seedPreviewAttachment(t *testing.T, store *mockStorage, key, filename, cont
 
 func seedAttachmentURL(t *testing.T, rawURL, filename, contentType string, sizeBytes int64) string {
 	t.Helper()
+	// These signing assertions cover original issue-owned, immutable attachments.
+	issueID := insertWorkflowTestIssue(t, "signed attachment", int(time.Now().UnixNano()%100000)+8_775_000)
 	var id string
 	if err := testPool.QueryRow(context.Background(), `
-		INSERT INTO attachment (workspace_id, uploader_type, uploader_id, filename, url, content_type, size_bytes)
-		VALUES ($1, 'member', $2, $3, $4, $5, $6)
+		INSERT INTO attachment (workspace_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, issue_id)
+		VALUES ($1, 'member', $2, $3, $4, $5, $6, $7)
 		RETURNING id::text
-	`, testWorkspaceID, testUserID, filename, rawURL, contentType, sizeBytes).Scan(&id); err != nil {
+	`, testWorkspaceID, testUserID, filename, rawURL, contentType, sizeBytes, issueID).Scan(&id); err != nil {
 		t.Fatalf("seed attachment row: %v", err)
 	}
 	t.Cleanup(func() {
 		testPool.Exec(context.Background(), `DELETE FROM attachment WHERE id = $1`, id)
+		testPool.Exec(context.Background(), `DELETE FROM issue WHERE id = $1`, issueID)
 	})
 	return id
 }

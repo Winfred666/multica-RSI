@@ -5,6 +5,7 @@ import type { Agent, Squad, Workspace } from "../types";
 export const workspaceKeys = {
   all: (wsId: string) => ["workspaces", wsId] as const,
   list: () => ["workspaces", "list"] as const,
+  attachments: (wsId: string) => ["workspaces", wsId, "attachments"] as const,
   members: (wsId: string) => ["workspaces", wsId, "members"] as const,
   invitations: (wsId: string) => ["workspaces", wsId, "invitations"] as const,
   shareLinks: (wsId: string) => ["workspaces", wsId, "share-links"] as const,
@@ -35,6 +36,25 @@ export function workspaceBySlugOptions(slug: string) {
   return queryOptions({
     ...workspaceListOptions(),
     select: (list: Workspace[]) => list.find((w) => w.slug === slug) ?? null,
+  });
+}
+
+export function workspaceAttachmentsOptions(wsId: string) {
+  return queryOptions({
+    queryKey: workspaceKeys.attachments(wsId),
+    queryFn: async ({ client }) => {
+      const files = await api.getWorkspaceAttachments(wsId);
+      for (const file of files) {
+        if (file.issue_id || file.comment_id) continue;
+        for (const key of ["attachment-content", "attachment-inline-resign", "attachment-inline-blob"]) {
+          void client.invalidateQueries({ queryKey: [key, file.id] });
+        }
+      }
+      return files;
+    },
+    enabled: !!wsId,
+    // Ownerless uploads have no issue attachment event.
+    refetchInterval: 30_000,
   });
 }
 

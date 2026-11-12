@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import type { Attachment } from "@multica/core/types";
 import {
@@ -14,6 +15,7 @@ import {
  * show downloads. Render `modal` for the on-its-own case.
  */
 export function useOpenAttachment() {
+  const client = useQueryClient();
   const sequence = usePreviewSequence();
   const preview = useAttachmentPreview();
   const download = useDownloadAttachment();
@@ -21,11 +23,16 @@ export function useOpenAttachment() {
   const { tryOpen } = preview;
   const open = useCallback(
     (attachment: Attachment) => {
+      if (!attachment.issue_id && !attachment.comment_id) {
+        for (const key of ["attachment-content", "attachment-inline-resign", "attachment-inline-blob"]) {
+          void client.invalidateQueries({ queryKey: [key, attachment.id] });
+        }
+      }
       if (openAt(attachment.id)) return;
       if (tryOpen({ kind: "full", attachment })) return;
       download(attachment.id);
     },
-    [openAt, tryOpen, download],
+    [client, openAt, tryOpen, download],
   );
   return { open, modal: preview.modal };
 }

@@ -5,6 +5,7 @@ import {
   collectDeliverableFiles,
   deliverableKey,
   findDeliverableVersion,
+  floatingAttachments,
 } from "./deliverables";
 
 function attachment(over: Partial<Attachment> & { id: string }): Attachment {
@@ -112,4 +113,18 @@ describe("findDeliverableVersion", () => {
     expect(findDeliverableVersion(files, "description-file")).toBeUndefined();
     expect(findDeliverableVersion(files, "")).toBeUndefined();
   });
+});
+
+it("selects floating IDs only when both owners are empty, without filename grouping", () => {
+  const free = attachment({ id: "free", issue_id: null, comment_id: null });
+  const sameName = { ...free, id: "other" };
+  expect(floatingAttachments([free, free, sameName, attachment({ id: "owned" }),
+    { ...free, comment_id: "legacy-comment" }, { ...free, issue_id: "issue" }])).toEqual([free, sameName]);
+});
+
+it("includes comment files from the ordinary FK projection without a loaded timeline", () => {
+  const first = attachment({ id: "first" });
+  const second = attachment({ id: "second", comment_id: "other" });
+  expect(collectDeliverableFiles([], [first, second])[0]!.versions).toEqual([first, second]);
+  expect(collectDeliverableFiles([{ id: "c1", attachments: [first] }], [first, second])[0]!.versions).toEqual([first, second]);
 });

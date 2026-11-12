@@ -97,18 +97,19 @@ func normalizeIssuePrefix(raw string) (string, bool) {
 const issuePrefixFormatError = "issue prefix must be 1-10 uppercase letters or digits"
 
 type WorkspaceResponse struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Slug        string  `json:"slug"`
-	Description *string `json:"description"`
-	Context     *string `json:"context"`
-	Settings    any     `json:"settings"`
-	Repos       any     `json:"repos"`
-	IssuePrefix string  `json:"issue_prefix"`
-	AvatarURL   *string `json:"avatar_url"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
-	PinnedAt    *string `json:"pinned_at,omitempty"`
+	Attachments *[]AttachmentResponse `json:"attachments,omitempty"`
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	Slug        string                `json:"slug"`
+	Description *string               `json:"description"`
+	Context     *string               `json:"context"`
+	Settings    any                   `json:"settings"`
+	Repos       any                   `json:"repos"`
+	IssuePrefix string                `json:"issue_prefix"`
+	AvatarURL   *string               `json:"avatar_url"`
+	CreatedAt   string                `json:"created_at"`
+	UpdatedAt   string                `json:"updated_at"`
+	PinnedAt    *string               `json:"pinned_at,omitempty"`
 }
 
 func (h *Handler) workspaceToResponse(w db.Workspace) WorkspaceResponse {
@@ -236,7 +237,20 @@ func (h *Handler) GetWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "workspace not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, h.workspaceToResponse(ws))
+	resp := h.workspaceToResponse(ws)
+	if r.URL.Query().Get("include") == "attachments" {
+		attachments, err := h.Queries.ListWorkspaceAttachments(r.Context(), ws.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to list attachments")
+			return
+		}
+		files := make([]AttachmentResponse, len(attachments))
+		for i, a := range attachments {
+			files[i] = h.attachmentToResponse(a, attachmentURLModeFromRequest(r))
+		}
+		resp.Attachments = &files
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 type CreateWorkspaceRequest struct {

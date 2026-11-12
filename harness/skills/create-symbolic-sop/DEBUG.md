@@ -121,17 +121,11 @@ For conservative refinement, define states directly inside the exported
 `Workflow(...)` and keep predefined prechecks with their states. The harness reads
 initial and final boundaries from these declarations.
 
-If a procedure needs a small setting across runs, use a procedure-specific issue
-metadata key through the existing helper, for example:
-
-```python
-context['cli']('metadata', 'set', context['issue_id'],
-               '--key', 'my_sop_target', '--value', args.target, write=True)
-```
-
-Read it back from `context['cli']('get', context['issue_id'])['metadata']`.
-Runtime status/recovery stay runtime-owned; delivery and review records belong
-in comments. Use native steering or mentions for another issue or agent.
+Shared configuration JSON belongs in artifacts through `common.write_config` and
+`read_config`; keep only the existing small references in metadata. See
+[configuration artifacts](references/config-artifacts.md). Runtime status/recovery
+stays runtime-owned; delivery/review records belong in comments. Use native
+steering or mentions for another issue or agent.
 
 ## Workflow graph and local action diagrams
 

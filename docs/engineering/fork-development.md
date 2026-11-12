@@ -133,17 +133,24 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   `workspace create --import-file package.json` reuses import and `--selection-file`;
   it prints the created workspace even if import fails, so import can be retried.
 
-- **Remote SOPs.** `multica remote-sop ISSUE SOP [args...]` posts
-  `/note !sop <name> <JSON argv>`. Try `--help` as the first SOP argument.
-  The native `/note` prefix prevents agent activation. On each heartbeat the
-  daemon takes these notes for its runtime, moves them into execution logs,
-  and runs `python3 <skill>/wrapper.py` directly with task ID `0`.
-  Bound skill files and workspace `.agents/` folders supply SOPs containing
-  `wrapper.py`. Argument boundaries, combined stdout/stderr and
-  exit codes are preserved; missing names return the available SOP list.
-  Calls never use agent task admission, steering, provider startup or agent
-  environment preparation. Completed execution records hold only the request
-  and output. Registration and issue metadata writes are unnecessary.
+- **CLI-owned symbolic SoPs.** `multica sop list` prints only names and source
+  paths. `multica sop run NAME [args...]` resolves and runs the Python engine
+  embedded in the CLI binary, preserving argument boundaries, cwd and exit codes.
+  Skills declare `metadata: {sop: symbolic}` in `SKILL.md` frontmatter and supply
+  `controller.py`; discovery never imports controllers. `config.json` and its
+  `DEBUG` key are optional; DEBUG defaults to false. No config file is generated.
+  Injected `MULTICA_SOP_SKILL_ROOTS` (an OS path-list), `CODEX_HOME/skills`,
+  `HERMES_HOME/skills` and `CLAUDE_CONFIG_DIR/skills` supply installed skills.
+  The calling repository's skill roots, including `.agents/skills` and
+  `harness/skills`, override installed copies by frontmatter name, even from a
+  repository subdirectory. The engine receives separate semantic and writable
+  state directories as `context['sop_dir']` and `context['state_dir']`; transient
+  workflow state remains in issue metadata. Callbacks use `multica sop run`,
+  not copied wrappers. `--help` is passed to the selected SoP unchanged.
+  The daemon executes remote `/note !sop <name> <JSON argv>` requests through the
+  same CLI in the target working directory with scoped credentials. Execution
+  is bound to issue/workspace context and requires no task ID.
+  The obsolete `remote-sop` CLI command and wrapper-presence resolver are removed.
 
 - **Template publication.** The creator/template publishes shared config JSON
   and DEBUG-compiled HTML with ownerless CLI upload/renew and soft-attach to the
@@ -237,3 +244,104 @@ See [self-hosting](../../SELF_HOSTING.md) for deployment and
 See the [Multica License](../../LICENSE) and [NOTICE](../../NOTICE) for terms and upstream
 attribution. Index Labs develops the original
 [Multica repository](https://github.com/multica-ai/multica).
+
+## Attachment ownership (Backend P1)
+
+Deliverables, description inputs and comment uploads use the existing
+`attachment` table. “Input” is a UI interpretation, not a stored type.
+`issue_id` and `comment_id` are nullable owning foreign keys with their original
+cascade behavior. Comment-bound rows normally retain both the comment and its
+parent issue ID. Independence means both owner columns are null; there is no
+stored independent flag, separate object/link table or backend soft-link model.
+
+### Existing routes and exact contract
+
+- **Create:** `POST /api/upload-file`, multipart `file`, with workspace context.
+  No `independent` flag. A plain upload has neither issue nor comment owner.
+  Existing `issue_id`, `comment_id` and task upload bindings remain dependent.
+- **Attach ownership:** existing issue create/update `attachment_ids` binds
+  unowned workspace files to that issue. Existing comment create/edit
+  `attachment_ids` binds unowned or same-issue unbound files to that comment
+  and its parent issue. Neither operation moves another owner's file. A comment
+  edit replaces its attachment set; omitting `attachment_ids` leaves it alone.
+- **Explicit detach:** `PUT /api/issues/{id}` with
+  `{"remove_attachment_ids":["attachmentUUID"]}` clears both owner columns for
+  selected files owned by that issue or its comments. Removing a file from its
+  original comment's `attachment_ids` clears both columns too. These operations
+  keep the same file ID and bytes. Attaching and removing the same ID in one
+  issue update detaches first, then reattaches it to the issue.
+- **Normal deletion:** deleting an issue/comment still deletes its dependent
+  attachments and stored bytes. Explicit detachment must happen first to protect
+  a file. Deleting an attachment or workspace still deletes resources normally.
+- **Issue lookup:** existing `GET /api/issues/{id}/attachments` and issue
+  `attachments` projections select rows by owning `issue_id` and workspace.
+  Normal comment-bound rows already appear because they retain the parent issue
+  ID. A legacy upload supplied only `comment_id` is not included by this query.
+  An ownerless file mentioned through a client soft link does not appear there.
+- **Workspace lookup:** existing `GET /api/workspaces/{workspaceUUID}` with
+  `?include=attachments` includes an `attachments` array of ordinary workspace
+  attachment responses, excluding private chat and source snapshots. This
+  generalizes the earlier P1 `include=deliverables` projection; it adds no HTTP
+  route. Without the opt-in, the response is unchanged. Callers select ownerless
+  files by absent `issue_id` AND `comment_id`; there is no floating/soft-link
+  search or filter. Each entry carries the existing ID, filename, content type,
+  byte size and read/download URLs. This list has the existing unpaginated shape.
+- **Read:** existing `/api/attachments/{id}`, `/{id}/content` and
+  `/{id}/download` work without an issue/comment owner, with workspace access
+  checks unchanged. Persist `markdown_url`. Ownerless files use the stable ID
+  route and no-store proxy to avoid immutable caching during renewal; original
+  dependent files retain their download/signing behavior.
+- **Replace:** existing `POST /api/upload-file`, multipart `file` and
+  `attachment_id={uuid}`. Under the owner/row locks, the backend renews
+  only ownerless files using the same ID/key without a previous-byte backup.
+  Renewal rejects issue/comment-owned files, private chat and source snapshots.
+  Task provenance alone is not ownership. The response ID is authoritative;
+  clients choose no history mode.
+  External object-version retention must be disabled for no-history renewal.
+
+There are **no new routes** or metadata requirements. Metadata, including any
+`deliverables` value, is opaque to this feature: no validation, projection,
+migration or cleanup. Clients may soft-link the same independent ID from several
+issues, but that does not establish ownership or affect history/deletion policy.
+Deleting those issues/comments cannot hurt an ownerless attachment. The backend
+cannot distinguish a soft-linked file from a completely unreferenced one.
+
+Migration 618 only removes the erroneous `independent` column/check. It creates
+no table/index and changes no file IDs, ownership, metadata, history or bytes.
+Regenerate query bindings after SQL changes with `make sqlc`.
+
+Plan: [Backend P1 #50](https://github.com/Winfred666/multica-RSI/issues/50).
+
+### CLI
+
+`attachment upload FILE [--attachment-id ID]` uses the ordinary upload route
+without a required task or independent mode. Ambient task binding is ignored;
+`--task` explicitly selects a new chat upload and cannot be combined with renewal.
+The upload retains markdown output; the server's returned ID is authoritative. `attachment get` returns
+metadata; `attachment download` saves bytes. Workspace discovery uses
+`workspace get --include attachments --output json`. Existing issue create
+`--attachment-id` binds uploaded IDs; issue update accepts `--attachment-id`
+and `--remove-attachment-id` for the backend's attach/paired-detach operations.
+Normal issue/comment `--attachment` paths are unchanged. The `attachment attach`
+and `detach` commands provide hard ownership and `--soft` metadata links as
+described above. There is no client history mode or independent-only list.
+
+### Common preview tiles
+
+Workspace `?include=attachments` supplies ordinary files. Tree free nodes select rows with both owner fields empty and deduplicate by ID, not filename. They float beside the issue trees on a separate layer beneath the cards, outside root packing, and reuse common preview tiles without extra titles or filename headers. Description content links use the ordinary attachment URL matcher to draw smooth dashed SVG cubic Bézier soft-reference curves without a routing library; they do not establish ownership. Comment files in the FK attachment projection join the existing deliverable collection and version rendering even before their timeline loads. The issue's `independent_artifacts` metadata additionally supplies soft-linked ownerless files in its tree card and Deliverables section.
+
+## SoP configuration artifacts (template only)
+
+The creator/template adopts the [R-328 shared wrapper protocol](https://github.com/Winfred666/multica-featssship/tree/c396c654f245e2dd4d0686f70a16a73101ac4188/installation),
+including declarative owners, guarded assignee synchronization and FINISHED re-entry.
+Its `common.py` helpers retain shared configuration references. The runtime
+publishes present config JSON and DEBUG HTML through CLI ownerless upload/renew
+and soft-attach commands. MAIN/developer/reviewer
+readers share small references; configuration payloads are not issue metadata.
+Transient SoP runtime/recovery state remains separate. Shared artifact IDs
+live in `independent_artifacts`; controller-supplied artifacts stay ordinary
+comment attachments. DEBUG settings and triggers are unchanged.
+
+See [configuration artifacts](../../harness/skills/create-symbolic-sop/references/config-artifacts.md).
+The CLI manages the soft-link metadata; no independent upload flag is used. This is not a
+rollout: human approval is required before propagation to other SoPs or installs.

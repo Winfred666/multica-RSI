@@ -339,6 +339,40 @@ workflow = Workflow(
         self.assertEqual(second['reason'], 'exit')
         self.assertEqual(second['new_output'], {})
 
+    def test_config_payload_is_uploaded_and_returned_id_is_shared(self):
+        import common
+        reference = {'issue_id': 'installer', 'filename': 'master.json'}
+        uploads = []
+
+        def request(path, body, content_type):
+            uploads.append(body)
+            return {'id': 'first' if len(uploads) == 1 else 'replacement', 'markdown_url': '/stable'}
+
+        with patch.object(common, 'request', side_effect=request), patch.object(common, 'cli', return_value={'id': 'comment'}) as cli:
+            self.assertEqual(common.write_config(reference, {'setting': 1}, 'thread'), {'id': 'comment'})
+            self.assertEqual(reference['attachment_id'], 'first')
+            common.write_config(reference, {'setting': 2}, 'thread')
+            self.assertEqual(reference['attachment_id'], 'replacement')
+            self.assertNotIn('--attachment', cli.call_args.args)
+            common.link_config('MAIN', reference)
+            common.link_config('developer', reference, common.DELEGATION_KEY)
+            common.link_config('reviewer', reference, common.DELEGATION_KEY)
+            for call in cli.call_args_list[-3:]:
+                value = json.loads(call.args[call.args.index('--value') + 1])
+                self.assertEqual(value['attachment_id'], 'replacement')
+                self.assertNotIn('setting', value)
+            cli.side_effect = ValueError('Announcement unavailable')
+            failed = {'issue_id': 'installer', 'filename': 'master.json'}
+            with self.assertRaisesRegex(ValueError, 'Resource uploaded as replacement'):
+                common.write_config(failed, {'setting': 3})
+            self.assertEqual(failed['attachment_id'], 'replacement')
+        self.assertNotIn(b'name="attachment_id"', uploads[0])
+        self.assertIn(b'name="attachment_id"\r\n\r\nfirst', uploads[1])
+        for body in uploads:
+            self.assertIn(b'Content-Type: application/json', body)
+            for name in ('independent', 'issue_id', 'comment_id', 'task_id'):
+                self.assertNotIn(('name="' + name + '"').encode(), body)
+
     def test_configured_preview_uses_actual_workflow(self):
         script = self.root / 'test_solution.py'
         script.write_text('def validate(): return True\n'

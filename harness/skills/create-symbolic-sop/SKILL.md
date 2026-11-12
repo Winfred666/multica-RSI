@@ -46,6 +46,11 @@ identifies the current issue; `context['cli'](*words, write=False)` runs
 with `write=True`; use native Multica SoPs for platform workflows.
 The runtime stores status and recovery in `issue.metadata["sop.<skill-name>"]`.
 Keep controller `data` internal; expose needed facts through instructions/options.
+Transient execution/recovery state stays in that metadata key. Shared configuration
+payloads belong in JSON attachments, not issue metadata; retain only small references
+for existing readers. Follow [configuration artifacts](references/config-artifacts.md)
+for the master/delegation pattern and canonical attachment identity.
+
 Keep delivery/review records in comments.
 
 The shared runtime follows [R-328's accepted protocol](https://github.com/Winfred666/multica-featssship/tree/e0eaa073dfea3c85d57f3430c0be5294365e2555/installation).

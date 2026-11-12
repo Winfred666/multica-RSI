@@ -100,7 +100,7 @@ export function collectDeliverableFiles(
   const delivered = comments.flatMap((comment) =>
     comment && !comment.deleted_at && (comment.type === undefined || comment.type === "comment")
       ? comment.attachments ?? [] : []);
-  for (const attachment of [...delivered, ...attachments.filter((a) => a.task_id && !a.comment_id)]) {
+  for (const attachment of [...delivered, ...attachments.filter((a) => a.comment_id || a.task_id)]) {
     if (!attachment?.id || seen.has(attachment.id)) continue;
     seen.add(attachment.id);
     const key = deliverableKey(attachment);
@@ -132,4 +132,9 @@ export function findDeliverableVersion(
     if (index >= 0) return { file, version: index + 1 };
   }
   return undefined;
+}
+
+/** Workspace files without either owner render once, by ID, never by filename. */
+export function floatingAttachments(attachments: readonly Attachment[]): Attachment[] {
+  return [...new Map(attachments.filter((file) => file.id && !file.issue_id && !file.comment_id).map((file) => [file.id, file])).values()];
 }

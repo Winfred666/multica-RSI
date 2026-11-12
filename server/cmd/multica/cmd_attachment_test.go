@@ -175,8 +175,10 @@ func newAttachmentUploadTestCmd() *cobra.Command {
 }
 
 func TestRunAttachmentUploadSendsTaskIDAndPrintsContract(t *testing.T) {
+	t.Setenv("MULTICA_TASK_ID", "ambient-task")
 	const taskID = "task-abc"
 	var gotTaskID string
+	var gotAttachmentID string
 	var gotFile string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -187,6 +189,7 @@ func TestRunAttachmentUploadSendsTaskIDAndPrintsContract(t *testing.T) {
 			t.Fatalf("parse multipart: %v", err)
 		}
 		gotTaskID = r.FormValue("task_id")
+		gotAttachmentID = r.FormValue("attachment_id")
 		if f, _, err := r.FormFile("file"); err == nil {
 			_ = f.Close()
 			gotFile = "present"
@@ -222,6 +225,9 @@ func TestRunAttachmentUploadSendsTaskIDAndPrintsContract(t *testing.T) {
 	if gotTaskID != taskID {
 		t.Fatalf("server task_id = %q, want %q", gotTaskID, taskID)
 	}
+	if gotAttachmentID != "" {
+		t.Fatalf("chat upload sent attachment_id = %q", gotAttachmentID)
+	}
 	if gotFile != "present" {
 		t.Fatalf("server did not receive a file part")
 	}
@@ -242,9 +248,13 @@ func TestRunAttachmentUploadSendsTaskIDAndPrintsContract(t *testing.T) {
 // branch: a non-image file emits the block-level `!file[...]( )` card snippet,
 // not image `![...]` markdown.
 func TestRunAttachmentUploadNonImageUsesFileCardMarkdown(t *testing.T) {
+	t.Setenv("MULTICA_TASK_ID", "")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			t.Fatalf("parse multipart: %v", err)
+		}
+		if r.FormValue("task_id") != "" {
+			t.Errorf("taskless upload sent task_id: %q", r.FormValue("task_id"))
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":           "att-doc",
@@ -265,7 +275,6 @@ func TestRunAttachmentUploadNonImageUsesFileCardMarkdown(t *testing.T) {
 	}
 
 	cmd := newAttachmentUploadTestCmd()
-	_ = cmd.Flags().Set("task", "task-abc")
 
 	out, err := captureStdout(t, func() error { return runAttachmentUpload(cmd, []string{docPath}) })
 	if err != nil {
@@ -288,9 +297,13 @@ func TestRunAttachmentUploadNonImageUsesFileCardMarkdown(t *testing.T) {
 // does not truncate — otherwise the card fails to render and the standalone
 // attachment is hidden by the referenced URL, showing nothing.
 func TestRunAttachmentUploadEscapesFilename(t *testing.T) {
+	t.Setenv("MULTICA_TASK_ID", "ambient-task")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			t.Fatalf("parse multipart: %v", err)
+		}
+		if r.FormValue("task_id") != "" {
+			t.Errorf("ownerless upload sent ambient task_id = %q", r.FormValue("task_id"))
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":           "att-esc",
@@ -310,7 +323,6 @@ func TestRunAttachmentUploadEscapesFilename(t *testing.T) {
 	}
 
 	cmd := newAttachmentUploadTestCmd()
-	_ = cmd.Flags().Set("task", "task-abc")
 
 	out, err := captureStdout(t, func() error { return runAttachmentUpload(cmd, []string{docPath}) })
 	if err != nil {

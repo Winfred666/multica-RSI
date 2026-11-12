@@ -25,6 +25,14 @@ During test, inspect the returned log excerpt and choose `continue` or `exceptio
 immediately; the full logs remain at the printed paths. Test completion or
 exception advances to review.
 
+Shared configuration payloads use JSON artifacts through `common.write_config`;
+persist its updated reference with `link_config`, and read it through `read_config`.
+MAIN and delegated readers share references, not copies of configuration payloads
+in metadata. Transient `sop.<skill-name>` execution state is separate.
+Auto-compiled DEBUG previews upload ownerless with a link in the current issue
+thread; controller artifacts remain comment-owned. Publication warnings do not
+undo a completed action; reconcile writes before any retry.
+
 In every state, follow returned error guidance and finish unmet prerequisites
 before retrying. Reconcile writes first. For assertion failures, use the returned
 `repaired` recall once; report a repeated failure through native Multica block.

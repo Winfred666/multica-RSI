@@ -598,10 +598,11 @@ func (q *Queries) LinkAttachmentsToChatMessage(ctx context.Context, arg LinkAtta
 
 const linkAttachmentsToComment = `-- name: LinkAttachmentsToComment :exec
 UPDATE attachment
-SET comment_id = $1
-WHERE issue_id = $2
+SET issue_id = $2, comment_id = $1
+WHERE (issue_id IS NULL OR issue_id = $2)
   AND comment_id IS NULL
-  AND source_context_id IS NULL
+  AND workspace_id = (SELECT workspace_id FROM comment WHERE id = $1 AND issue_id = $2)
+  AND source_context_id IS NULL AND chat_session_id IS NULL AND chat_message_id IS NULL
   AND id = ANY($3::uuid[])
 `
 
@@ -621,8 +622,8 @@ WITH linked AS (
   UPDATE attachment
   SET issue_id = $1
   WHERE attachment.workspace_id = $2
-    AND attachment.issue_id IS NULL
-    AND attachment.source_context_id IS NULL
+    AND attachment.issue_id IS NULL AND attachment.comment_id IS NULL
+    AND attachment.source_context_id IS NULL AND attachment.chat_session_id IS NULL AND attachment.chat_message_id IS NULL
     AND attachment.id = ANY($3::uuid[])
   RETURNING attachment.issue_id
 ), bumped_issue AS (
@@ -1195,6 +1196,51 @@ func (q *Queries) ListSourceContextIssueAttachments(ctx context.Context, arg Lis
 	return items, nil
 }
 
+const listWorkspaceAttachments = `-- name: ListWorkspaceAttachments :many
+SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, task_id, source_context_id, width, height FROM attachment
+WHERE workspace_id = $1 AND source_context_id IS NULL
+  AND chat_session_id IS NULL AND chat_message_id IS NULL
+ORDER BY created_at ASC, id ASC
+`
+
+func (q *Queries) ListWorkspaceAttachments(ctx context.Context, workspaceID pgtype.UUID) ([]Attachment, error) {
+	rows, err := q.db.Query(ctx, listWorkspaceAttachments, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Attachment{}
+	for rows.Next() {
+		var i Attachment
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.IssueID,
+			&i.CommentID,
+			&i.UploaderType,
+			&i.UploaderID,
+			&i.Filename,
+			&i.Url,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.CreatedAt,
+			&i.ChatSessionID,
+			&i.ChatMessageID,
+			&i.TaskID,
+			&i.SourceContextID,
+			&i.Width,
+			&i.Height,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockAttachmentRow = `-- name: LockAttachmentRow :one
 SELECT id, workspace_id, issue_id, comment_id, uploader_type, uploader_id, filename, url, content_type, size_bytes, created_at, chat_session_id, chat_message_id, task_id, source_context_id, width, height FROM attachment
 WHERE id = $1 AND workspace_id = $2
@@ -1238,12 +1284,10 @@ func (q *Queries) LockAttachmentRow(ctx context.Context, arg LockAttachmentRowPa
 const lockAttachmentsForCommentLink = `-- name: LockAttachmentsForCommentLink :many
 SELECT id FROM attachment
 WHERE workspace_id = $1
-  AND issue_id = $2
-  AND comment_id IS NULL
-  AND source_context_id IS NULL
+  AND (issue_id IS NULL OR issue_id = $2) AND comment_id IS NULL
+  AND source_context_id IS NULL AND chat_session_id IS NULL AND chat_message_id IS NULL
   AND id = ANY($3::uuid[])
-ORDER BY id
-FOR UPDATE
+ORDER BY id FOR UPDATE
 `
 
 type LockAttachmentsForCommentLinkParams struct {
@@ -1252,12 +1296,6 @@ type LockAttachmentsForCommentLinkParams struct {
 	AttachmentIds []pgtype.UUID `json:"attachment_ids"`
 }
 
-// CreateComment binds attachments in the transaction that created the comment,
-// after the CreateComment statement has taken the issue row: issue -> comment
-// -> child, the order every owner-first mutation here uses. This pins the
-// requested set under that lock and returns the ids still eligible, so the
-// caller can refuse before the comment is committed when a requested
-// attachment was deleted while the issue lock was contended.
 func (q *Queries) LockAttachmentsForCommentLink(ctx context.Context, arg LockAttachmentsForCommentLinkParams) ([]pgtype.UUID, error) {
 	rows, err := q.db.Query(ctx, lockAttachmentsForCommentLink, arg.WorkspaceID, arg.IssueID, arg.AttachmentIds)
 	if err != nil {
@@ -1281,11 +1319,10 @@ func (q *Queries) LockAttachmentsForCommentLink(ctx context.Context, arg LockAtt
 const lockAttachmentsForIssueLink = `-- name: LockAttachmentsForIssueLink :many
 SELECT id FROM attachment
 WHERE workspace_id = $1
-  AND issue_id IS NULL
-  AND source_context_id IS NULL
+  AND issue_id IS NULL AND comment_id IS NULL
+  AND source_context_id IS NULL AND chat_session_id IS NULL AND chat_message_id IS NULL
   AND id = ANY($2::uuid[])
-ORDER BY id
-FOR UPDATE
+ORDER BY id FOR UPDATE
 `
 
 type LockAttachmentsForIssueLinkParams struct {
@@ -1293,12 +1330,6 @@ type LockAttachmentsForIssueLinkParams struct {
 	AttachmentIds []pgtype.UUID `json:"attachment_ids"`
 }
 
-// Issue updates bind attachments and then touch the owner row. Only rows that
-// belong to no issue yet are eligible, and nothing reaches those through an
-// issue — not teardown's cascade, not DeleteAttachment, which takes the owning
-// issue first — so locking them before the owner cannot deadlock.
-// Attachments that DO belong to the issue are locked after it; see
-// LockAttachmentsForCommentLink.
 func (q *Queries) LockAttachmentsForIssueLink(ctx context.Context, arg LockAttachmentsForIssueLinkParams) ([]pgtype.UUID, error) {
 	rows, err := q.db.Query(ctx, lockAttachmentsForIssueLink, arg.WorkspaceID, arg.AttachmentIds)
 	if err != nil {
@@ -1321,15 +1352,13 @@ func (q *Queries) LockAttachmentsForIssueLink(ctx context.Context, arg LockAttac
 
 const replaceCommentAttachments = `-- name: ReplaceCommentAttachments :execrows
 UPDATE attachment
-SET comment_id = CASE
-  WHEN id = ANY($3::uuid[]) THEN $1
-  ELSE NULL
-END
-WHERE issue_id = $2
-  AND source_context_id IS NULL
+SET issue_id = CASE WHEN id = ANY($3::uuid[]) THEN $2 ELSE NULL END,
+    comment_id = CASE WHEN id = ANY($3::uuid[]) THEN $1 ELSE NULL END
+WHERE workspace_id = (SELECT workspace_id FROM comment WHERE id = $1 AND issue_id = $2)
+  AND source_context_id IS NULL AND chat_session_id IS NULL AND chat_message_id IS NULL
   AND (
     (comment_id = $1 AND NOT id = ANY($3::uuid[]))
-    OR (comment_id IS NULL AND id = ANY($3::uuid[]))
+    OR (comment_id IS NULL AND (issue_id IS NULL OR issue_id = $2) AND id = ANY($3::uuid[]))
   )
 `
 
@@ -1345,6 +1374,49 @@ func (q *Queries) ReplaceCommentAttachments(ctx context.Context, arg ReplaceComm
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const unlinkIssueAttachments = `-- name: UnlinkIssueAttachments :one
+WITH detached AS (
+    UPDATE attachment a SET issue_id = NULL, comment_id = NULL
+    WHERE a.workspace_id = $1
+      AND (a.issue_id = $2 OR a.comment_id IN (
+          SELECT c.id FROM comment c WHERE c.issue_id = $2 AND c.workspace_id = $1
+      ))
+      AND a.id = ANY($3::uuid[]) AND a.source_context_id IS NULL
+    RETURNING a.id
+), bumped AS (
+    UPDATE issue SET revision = revision + 1, updated_at = now()
+    WHERE issue.id = $2 AND issue.workspace_id = $1
+      AND $4::boolean AND EXISTS (SELECT 1 FROM detached)
+    RETURNING revision
+)
+SELECT (SELECT COUNT(*) FROM detached)::bigint AS changed_count,
+       COALESCE((SELECT revision FROM bumped), 0)::bigint AS issue_revision
+`
+
+type UnlinkIssueAttachmentsParams struct {
+	WorkspaceID   pgtype.UUID   `json:"workspace_id"`
+	IssueID       pgtype.UUID   `json:"issue_id"`
+	AttachmentIds []pgtype.UUID `json:"attachment_ids"`
+	BumpRevision  bool          `json:"bump_revision"`
+}
+
+type UnlinkIssueAttachmentsRow struct {
+	ChangedCount  int64 `json:"changed_count"`
+	IssueRevision int64 `json:"issue_revision"`
+}
+
+func (q *Queries) UnlinkIssueAttachments(ctx context.Context, arg UnlinkIssueAttachmentsParams) (UnlinkIssueAttachmentsRow, error) {
+	row := q.db.QueryRow(ctx, unlinkIssueAttachments,
+		arg.WorkspaceID,
+		arg.IssueID,
+		arg.AttachmentIds,
+		arg.BumpRevision,
+	)
+	var i UnlinkIssueAttachmentsRow
+	err := row.Scan(&i.ChangedCount, &i.IssueRevision)
+	return i, err
 }
 
 const updateAttachment = `-- name: UpdateAttachment :one
