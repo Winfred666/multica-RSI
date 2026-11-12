@@ -14,7 +14,7 @@ import subprocess
 import sys
 from types import SimpleNamespace
 
-from common import write_artifact
+from common import publish_shared_artifact, write_artifact
 
 
 ROOT = Path(__file__).resolve().parent
@@ -590,10 +590,13 @@ def publish_artifacts(context, controller, result):
             result.get('accepted') and context['argv'] and context['argv'][0] != 'init'):
         return
     try:
+        publish_shared_artifact({'issue_id': context['issue_id'], 'filename': controller.SOP_NAME + '-config.json'},
+                                (ROOT / 'config.json').read_text())
         artifacts = {}
         # In DEBUG mode, update the controller workflow's state chart artifact on every state shift.
         if controller.DEBUG and shifted:
-            artifacts[controller.SOP_NAME + '-state.html'] = state_artifact(context, controller, result)
+            publish_shared_artifact({'issue_id': context['issue_id'], 'filename': controller.SOP_NAME + '-state.html'},
+                                    state_artifact(context, controller, result))
         if not result.get('error') and hasattr(controller, 'artifacts'):
             artifacts.update(controller.artifacts({**context, 'cli': multica, 'error': SOPError}))
         parent = getattr(context.get('args'), 'thread', None) or context.get('state', {}).get('reply_parent')

@@ -57,7 +57,11 @@ scripted handoff, and synchronizes accepted destination ownership with
 When revising a procedure, preserve its checks, side effects, completion rules
 and live state. Keep delivery/review records in comments.
 
-HTML debug/controller artifacts use ordinary comment attachments through
+The wrapper publishes `config.json` and DEBUG-compiled HTML as ownerless files
+through `attachment upload` (renewing with `--attachment-id`) and soft-links the
+returned IDs to the current issue with `attachment attach --soft`. The CLI owns
+`independent_artifacts`; config payloads and transient recovery state stay separate.
+Controller-supplied artifacts still use ordinary comment attachments through
 `common.write_artifact`.
 Change this creator/template first; obtain human approval before propagating to
 other symbolic SoPs or installed distributions.

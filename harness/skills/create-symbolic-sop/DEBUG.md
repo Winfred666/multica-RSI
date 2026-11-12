@@ -167,8 +167,13 @@ state with no options is also supported. State owners appear in the graph;
 scripted handoffs and guarded `--no-start` assignee updates remain runtime work.
 
 Set `"DEBUG": true` in the skill's `config.json` to publish `<skill-name>-state.html`
-on every state shift as an ordinary comment attachment, following R-328's
-`common.write_artifact` delivery.
+on every state shift as an ownerless, renewable attachment. The wrapper also
+publishes the package's shared `config.json` as `<skill-name>-config.json` at the
+existing publication boundary, without changing local config readers or DEBUG triggers.
+`common.publish_shared_artifact` finds the retained ID by filename in the current
+issue's soft list, uploads or renews using the CLI, then soft-attaches the returned
+ID. Only the CLI updates the `independent_artifacts` JSON-string ID list; completion
+still clears only transient `sop.<skill-name>` state.
 The wrapper renders `controller.workflow` states, option
 targets and symbolic branches, with state meanings, native issue
 ID and assertion failures. Put the graph before headings and metadata so it is

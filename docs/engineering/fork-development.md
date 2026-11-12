@@ -145,6 +145,11 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   environment preparation. Completed execution records hold only the request
   and output. Registration and issue metadata writes are unnecessary.
 
+- **Template publication.** The creator/template publishes shared config JSON
+  and DEBUG-compiled HTML with ownerless CLI upload/renew and soft-attach to the
+  current issue. IDs persist in the CLI-managed `independent_artifacts` list;
+  controller-supplied ordinary comment attachments and DEBUG triggers are unchanged.
+
 - **Symbolic SoP protocol changes.** Update `harness/skills/create-symbolic-sop`
   and its template first; require human approval before mechanically propagating
   the approved protocol to other symbolic SoPs and distributions. The approved

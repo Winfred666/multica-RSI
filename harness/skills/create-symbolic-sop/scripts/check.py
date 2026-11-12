@@ -360,11 +360,13 @@ workflow = Workflow(
         result = {'status': 'variant', 'state_changed': True, 'accepted': True}
         with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue',
                         MULTICA_WORKSPACE_ID='fixture-workspace', MULTICA_TOKEN='fixture-token',
-                        MULTICA_SERVER_URL='http://fixture.invalid'), patch.object(wrapper, 'write_artifact') as upload:
+                        MULTICA_SERVER_URL='http://fixture.invalid'), patch.object(wrapper, 'publish_shared_artifact') as upload:
             wrapper.publish_artifacts(context, controller, result)
-        reference, html, parent = upload.call_args.args
+        config_reference, config = upload.call_args_list[0].args
+        self.assertEqual(config_reference, {'issue_id': 'fixture-issue', 'filename': 'multica-parallel-refinement-config.json'})
+        self.assertEqual(json.loads(config), {'DEBUG': True})
+        reference, html = upload.call_args.args
         self.assertEqual(reference['issue_id'], 'fixture-issue')
-        self.assertIsNone(parent)
         filename = reference['filename']
         self.assertEqual(filename, 'multica-parallel-refinement-state.html')
         self.assertIn('fixture-issue', html)
