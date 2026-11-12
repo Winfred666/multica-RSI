@@ -34,7 +34,7 @@ var attachmentDownloadCmd = &cobra.Command{
 
 var attachmentUploadCmd = &cobra.Command{
 	Use:   "upload <path>",
-	Short: "Upload a file to attach to your chat reply",
+	Short: "Upload a chat attachment or an independent resource",
 	Long: `Upload a local file so it is attached to the reply of the current chat task.
 
 Intended for agents running inside a chat task: the file is tagged with the
@@ -45,22 +45,61 @@ own line to place the item: files use !file[name](url) (a card), images use
 ![name](url) (inline).
 
 The task id is read from MULTICA_TASK_ID (set by the daemon inside a task);
-override it with --task when needed.`,
+override it with --task when needed.
+
+Use --independent to create an unlinked workspace resource instead, ignoring
+ambient task/issue/chat owners. Persist its id and markdown_url. To replace its
+whole content without history, pass --independent --attachment-id <id>.
+Independent resources are linked through issue metadata, not attachment owners.
+See issue metadata set --key deliverables --type string.`,
 	Example: `  # Attach an image to the current chat reply
-  $ multica attachment upload ./chart.png`,
+  $ multica attachment upload ./chart.png
+
+  # Publish an independent resource, then replace it by explicit ID
+  $ multica attachment upload ./preview.html --independent --output json
+  $ multica attachment upload ./preview.html --independent --attachment-id <id> --output json`,
 	Args: exactArgs(1),
 	RunE: runAttachmentUpload,
+}
+
+var attachmentGetCmd = &cobra.Command{
+	Use:   "get <attachment-id>",
+	Short: "Get attachment metadata",
+	Args:  exactArgs(1),
+	RunE:  runAttachmentGet,
+}
+
+var attachmentListCmd = &cobra.Command{
+	Use:   "list --independent",
+	Short: "List workspace independent resources, including unlinked resources",
+	Args:  cobra.NoArgs,
+	RunE:  runAttachmentList,
 }
 
 func init() {
 	attachmentCmd.AddCommand(attachmentDownloadCmd)
 	attachmentCmd.AddCommand(attachmentUploadCmd)
+	attachmentCmd.AddCommand(attachmentGetCmd, attachmentListCmd)
 
 	attachmentDownloadCmd.Flags().StringP("output-dir", "o", ".", "Directory to save the downloaded file")
 	attachmentUploadCmd.Flags().String("task", "", "Chat task id to attach to (defaults to MULTICA_TASK_ID)")
+	attachmentUploadCmd.Flags().Bool("independent", false, "Publish without owners or ambient task binding")
+	attachmentUploadCmd.Flags().String("attachment-id", "", "Independent resource ID whose whole content to replace (requires --independent)")
+	attachmentUploadCmd.Flags().String("output", "json", "Output format: json")
+	attachmentGetCmd.Flags().String("output", "json", "Output format: json")
+	attachmentListCmd.Flags().String("output", "json", "Output format: json")
+	attachmentListCmd.Flags().Bool("independent", false, "List only independent resources (required)")
 }
 
 func runAttachmentUpload(cmd *cobra.Command, args []string) error {
+	independent, _ := cmd.Flags().GetBool("independent")
+	attachmentID, _ := cmd.Flags().GetString("attachment-id")
+	if independent && cmd.Flags().Changed("task") {
+		return fmt.Errorf("--independent cannot be combined with --task")
+	}
+	if !independent && cmd.Flags().Changed("attachment-id") {
+		return fmt.Errorf("--attachment-id requires --independent")
+	}
 	client, err := newAPIClient(cmd)
 	if err != nil {
 		return err
@@ -70,7 +109,7 @@ func runAttachmentUpload(cmd *cobra.Command, args []string) error {
 	if taskID == "" {
 		taskID = client.TaskID
 	}
-	if taskID == "" {
+	if !independent && taskID == "" {
 		return fmt.Errorf("no chat task in context: run inside a chat task (MULTICA_TASK_ID set) or pass --task <id>")
 	}
 
@@ -85,6 +124,18 @@ func runAttachmentUpload(cmd *cobra.Command, args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), cli.AtLeastAPITimeout(60*time.Second))
 	defer cancel()
+
+	if independent {
+		if _, err := requireWorkspaceID(cmd); err != nil {
+			return err
+		}
+		att, err := client.UploadIndependentAttachment(ctx, data, path, attachmentID)
+		if err != nil {
+			return fmt.Errorf("upload attachment: %w", err)
+		}
+		fmt.Fprintln(os.Stderr, "Uploaded:", filepath.Base(path))
+		return cli.PrintJSON(os.Stdout, att)
+	}
 
 	att, err := client.UploadChatAttachment(ctx, data, path, taskID)
 	if err != nil {
@@ -101,6 +152,47 @@ func runAttachmentUpload(cmd *cobra.Command, args []string) error {
 		"markdown_url": att.MarkdownURL,
 		"markdown":     markdown,
 	})
+}
+
+func runAttachmentGet(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+	var att map[string]any
+	if err := client.GetJSON(ctx, "/api/attachments/"+args[0], &att); err != nil {
+		return fmt.Errorf("get attachment: %w", err)
+	}
+	return cli.PrintJSON(os.Stdout, att)
+}
+
+func runAttachmentList(cmd *cobra.Command, _ []string) error {
+	independent, _ := cmd.Flags().GetBool("independent")
+	if !independent {
+		return fmt.Errorf("--independent is required")
+	}
+	workspaceID, err := requireWorkspaceID(cmd)
+	if err != nil {
+		return err
+	}
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+	var workspace struct {
+		Deliverables []map[string]any `json:"deliverables"`
+	}
+	if err := client.GetJSON(ctx, "/api/workspaces/"+workspaceID+"?include=deliverables", &workspace); err != nil {
+		return fmt.Errorf("list independent attachments: %w", err)
+	}
+	if workspace.Deliverables == nil {
+		workspace.Deliverables = []map[string]any{}
+	}
+	return cli.PrintJSON(os.Stdout, workspace.Deliverables)
 }
 
 // attachmentMarkdown renders the markdown snippet that makes an uploaded file

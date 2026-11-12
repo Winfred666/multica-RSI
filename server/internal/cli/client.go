@@ -558,28 +558,65 @@ func (c *APIClient) UploadIssueAttachment(ctx context.Context, fileData []byte, 
 // reply that task produces on completion. Returns the full AttachmentResponse
 // (id + markdown_url) so the agent can embed the image inline in its reply.
 func (c *APIClient) UploadChatAttachment(ctx context.Context, fileData []byte, filename, taskID string) (AttachmentResponse, error) {
+	fields := map[string]string{}
+	if taskID != "" {
+		fields["task_id"] = taskID
+	}
+	var result AttachmentResponse
+	if err := c.uploadAttachment(ctx, fileData, filename, fields, &result); err != nil {
+		return AttachmentResponse{}, err
+	}
+	if result.ID == "" {
+		return AttachmentResponse{}, fmt.Errorf("upload response missing attachment id")
+	}
+	return result, nil
+}
+
+// UploadIndependentAttachment creates or replaces an ownerless resource and
+// returns the canonical server response without dropping attachment fields.
+func (c *APIClient) UploadIndependentAttachment(ctx context.Context, fileData []byte, filename, attachmentID string) (map[string]any, error) {
+	fields := map[string]string{"independent": "true"}
+	if attachmentID != "" {
+		fields["attachment_id"] = attachmentID
+	}
+	var result map[string]any
+	if err := c.uploadAttachment(ctx, fileData, filename, fields, &result); err != nil {
+		return nil, err
+	}
+	id, _ := result["id"].(string)
+	markdownURL, _ := result["markdown_url"].(string)
+	if id == "" || result["independent"] != true || markdownURL == "" {
+		return nil, fmt.Errorf("upload response missing independent attachment identity or markdown_url")
+	}
+	if attachmentID != "" && id != attachmentID {
+		return nil, fmt.Errorf("upload response attachment id %q does not match %q", id, attachmentID)
+	}
+	return result, nil
+}
+
+func (c *APIClient) uploadAttachment(ctx context.Context, fileData []byte, filename string, fields map[string]string, out any) error {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
 	part, err := writer.CreateFormFile("file", filepath.Base(filename))
 	if err != nil {
-		return AttachmentResponse{}, fmt.Errorf("create form file: %w", err)
+		return fmt.Errorf("create form file: %w", err)
 	}
 	if _, err := part.Write(fileData); err != nil {
-		return AttachmentResponse{}, fmt.Errorf("write file data: %w", err)
+		return fmt.Errorf("write file data: %w", err)
 	}
-	if taskID != "" {
-		if err := writer.WriteField("task_id", taskID); err != nil {
-			return AttachmentResponse{}, fmt.Errorf("write task_id field: %w", err)
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			return fmt.Errorf("write %s field: %w", key, err)
 		}
 	}
 	if err := writer.Close(); err != nil {
-		return AttachmentResponse{}, fmt.Errorf("close multipart writer: %w", err)
+		return fmt.Errorf("close multipart writer: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/api/upload-file", &body)
 	if err != nil {
-		return AttachmentResponse{}, err
+		return err
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	c.setHeaders(req)
@@ -598,22 +635,18 @@ func (c *APIClient) UploadChatAttachment(ctx context.Context, fileData []byte, f
 	resp, err := httpClient.Do(req)
 	err = wrapTransport(req, err)
 	if err != nil {
-		return AttachmentResponse{}, err
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return AttachmentResponse{}, newHTTPError(http.MethodPost, "/api/upload-file", resp)
+		return newHTTPError(http.MethodPost, "/api/upload-file", resp)
 	}
 
-	var result AttachmentResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return AttachmentResponse{}, fmt.Errorf("decode upload response: %w", wrapBodyRead(req, err))
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("decode upload response: %w", wrapBodyRead(req, err))
 	}
-	if result.ID == "" {
-		return AttachmentResponse{}, fmt.Errorf("upload response missing attachment id")
-	}
-	return result, nil
+	return nil
 }
 
 // UploadFileWithURL uploads a file via multipart form to /api/upload-file

@@ -259,6 +259,10 @@ defines create/read/replace/link/unlink and exact CLI spelling for the CLI slice
 `attachment upload FILE --independent [--attachment-id ID]`,
 `attachment list --independent`, `attachment get ID`, existing `attachment download`
 and read/modify/write via `issue metadata set --key deliverables --type string`.
-These new CLI flags/commands await CLI implementation. This template change is
+The CLI returns the canonical attachment response for independent uploads and
+discovery, including unlinked resources. Ordinary chat uploads keep their existing
+output and task binding. `--attachment-id` requires `--independent`, which rejects
+explicit `--task` and suppresses ambient owners. Link/unlink uses the existing
+metadata commands, preserving other IDs by read/modify/write. This template change is
 not a rollout: human approval is required before propagating to other symbolic
 SoPs or installed distributions.
