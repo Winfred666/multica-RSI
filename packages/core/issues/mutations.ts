@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { api } from "../api";
 import { issueKeys } from "./queries";
+import { workspaceKeys } from "../workspace/queries";
 import { projectKeys } from "../projects/queries";
 import { inboxKeys, type ArchivedInboxCache } from "../inbox/queries";
 import {
@@ -83,15 +84,19 @@ export type UpdateIssueMutationInput = {
 } & UpdateIssueRequest;
 
 export function useDeleteAttachments() {
+  const wsId = useWorkspaceId();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (files: { issueId: string; ids: string[] }[]) => {
+    mutationFn: async (files: { issueId?: string; ids: string[] }[]) => {
       for (const file of files) for (const id of file.ids) await api.deleteAttachment(id);
     },
-    onSettled: (_data, _error, files) => Promise.all([...new Set(files.map((file) => file.issueId))].flatMap((id) => [
-      qc.invalidateQueries({ queryKey: issueKeys.attachments(id) }),
-      qc.invalidateQueries({ queryKey: issueKeys.timeline(id) }),
-    ])),
+    onSettled: (_data, _error, files) => Promise.all([
+      qc.invalidateQueries({ queryKey: workspaceKeys.deliverables(wsId) }),
+      ...[...new Set(files.flatMap((file) => file.issueId ? [file.issueId] : []))].flatMap((id) => [
+        qc.invalidateQueries({ queryKey: issueKeys.attachments(id) }),
+        qc.invalidateQueries({ queryKey: issueKeys.timeline(id) }),
+      ]),
+    ]),
   });
 }
 

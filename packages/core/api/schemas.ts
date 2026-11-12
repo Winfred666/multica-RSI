@@ -1030,6 +1030,7 @@ const AttachmentImageFields = {
 
 const AttachmentSchema = z.object({
   id: z.string(),
+  independent: z.boolean().catch(false).default(false),
   ...AttachmentImageFields,
 }).loose();
 
@@ -1085,6 +1086,7 @@ export const ChatMessagesPageSchema = z.object({
 // empty-string default does not silently break any persistence path.
 export const AttachmentResponseSchema = z.object({
   id: z.string(),
+  independent: z.boolean().catch(false).default(false),
   url: z.string(),
   download_url: z.string(),
   // Forced-attachment ("download button") URL — credential-free and, unlike
@@ -1100,6 +1102,10 @@ export const AttachmentResponseSchema = z.object({
   // Image metadata is optional and degrades on its own: a malformed value
   // means "unknown dimensions", never a lost attachment.
   ...AttachmentImageFields,
+}).loose();
+
+export const WorkspaceDeliverablesSchema = z.object({
+  deliverables: z.array(AttachmentResponseSchema).default([]),
 }).loose();
 
 export const AttachmentListSchema = z.array(AttachmentResponseSchema).default([]);

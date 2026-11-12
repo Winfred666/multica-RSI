@@ -304,7 +304,7 @@ function IssueSurfaceContent({
           ) : (
             <IssueSurfaceSkeleton mode={controller.viewMode} />
           )
-        ) : controller.isEmpty || shouldShowClientEmpty ? (
+        ) : (controller.isEmpty || shouldShowClientEmpty) && controller.viewMode !== "tree" ? (
           // A filtered-empty surface is NOT an empty surface. Claiming "no
           // issues here yet" and offering to create one is wrong when the rows
           // exist and a filter is hiding them — and it is the state the

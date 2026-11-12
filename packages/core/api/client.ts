@@ -270,6 +270,7 @@ import {
   AgentTaskPageSchema,
   AgentActivityBucketListSchema,
   AttachmentResponseSchema,
+  WorkspaceDeliverablesSchema,
   AttachmentListSchema,
   CancelTaskResponseSchema,
   ChatDraftRestoresResponseSchema,
@@ -3204,6 +3205,15 @@ export class ApiClient {
       method: "PUT", body: JSON.stringify({ pinned }),
     });
     return parseWithFallback(raw, WorkspacePinnedSchema, { pinned_at: null }, { endpoint: "PUT /api/workspaces/{id}/pin" });
+  }
+
+  async getWorkspaceDeliverables(id: string): Promise<Attachment[]> {
+    const raw = await this.fetch<unknown>(`/api/workspaces/${id}?include=deliverables`, {
+      headers: workspaceHeader({ workspaceId: id }),
+    });
+    return parseWithFallback(raw, WorkspaceDeliverablesSchema, { deliverables: [] as Attachment[] }, {
+      endpoint: "GET /api/workspaces/{id}?include=deliverables",
+    }).deliverables;
   }
 
   async getWorkspace(id: string): Promise<Workspace> {

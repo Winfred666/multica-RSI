@@ -14,6 +14,7 @@
  * Pure — no React, no DOM, no platform APIs.
  */
 
+import { z } from "zod";
 import type { Attachment } from "../types/attachment";
 
 /** The part of a timeline comment this module reads. */
@@ -106,4 +107,25 @@ export function findDeliverableVersion(
     if (index >= 0) return { file, version: index + 1 };
   }
   return undefined;
+}
+
+const DeliverableIdsSchema = z.array(z.uuid());
+
+export function linkedDeliverableIds(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = DeliverableIdsSchema.safeParse(JSON.parse(value));
+    return parsed.success ? [...new Set(parsed.data)] : [];
+  } catch {
+    return [];
+  }
+}
+
+export function independentDeliverables(attachments: readonly Attachment[]): Attachment[] {
+  return [...new Map(attachments.filter((file) => file.independent === true).map((file) => [file.id, file])).values()];
+}
+
+export function linkedDeliverables(value: unknown, attachments: readonly Attachment[]): Attachment[] {
+  const byId = new Map(independentDeliverables(attachments).map((file) => [file.id, file]));
+  return linkedDeliverableIds(value).flatMap((id) => byId.has(id) ? [byId.get(id)!] : []);
 }
