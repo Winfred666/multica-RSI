@@ -277,3 +277,17 @@ metadata; `attachment download` saves bytes. Workspace discovery uses
 and `--remove-attachment-id` for the backend's attach/paired-detach operations.
 Normal issue/comment `--attachment` paths are unchanged. No metadata protocol,
 client history mode, separate link/unlink commands or independent-only list.
+
+## SoP configuration artifacts (template only)
+
+The creator/template adopts the [R-328 shared wrapper protocol](https://github.com/Winfred666/multica-featssship/tree/c396c654f245e2dd4d0686f70a16a73101ac4188/installation),
+including declarative owners, guarded assignee synchronization and FINISHED re-entry.
+Its minimal `common.py` helpers publish shared configuration JSON as ordinary
+ownerless uploads, retaining the returned attachment ID. MAIN/developer/reviewer
+readers share small references; configuration payloads are not issue metadata.
+Transient SoP runtime/recovery state remains separate. HTML debug previews and
+controller artifacts stay ordinary comment attachments, not ownerless configs.
+
+See [configuration artifacts](../../harness/skills/create-symbolic-sop/references/config-artifacts.md).
+No manual deliverables-list or independent upload mode is used. This is not a
+rollout: human approval is required before propagation to other SoPs or installs.

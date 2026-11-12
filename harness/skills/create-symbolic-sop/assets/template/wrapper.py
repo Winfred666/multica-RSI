@@ -12,9 +12,9 @@ import shlex
 import shutil
 import subprocess
 import sys
-import uuid
 from types import SimpleNamespace
-from urllib.request import Request, urlopen
+
+from common import write_artifact
 
 
 ROOT = Path(__file__).resolve().parent
@@ -243,17 +243,26 @@ def recovery_result(receipt, status, context):
 def validate_result(result, phase, workflow, args):
     next_phase = result['phase']
     accepted = result.get('accepted', True)
-    if next_phase not in workflow.states:
+    if next_phase not in workflow.states and next_phase != workflow.FINISHED:
         raise ValueError('Controller returned an undeclared phase')
     if not isinstance(accepted, bool):
         raise ValueError('Controller accepted must be a boolean')
     if not accepted and next_phase != phase:
         raise ValueError('Rejected choices must preserve the phase')
-    if args.event == 'init' and next_phase != phase and not workflow.states[next_phase].final:
+    if args.event == 'init' and next_phase != phase and not workflow.is_finished(next_phase):
         raise ValueError('Only an accepted agent callback may advance the phase')
 
 
+def state_owner(workflow, phase, context):
+    if phase == workflow.FINISHED:
+        return None
+    owner = workflow.states[phase].owner
+    owner = owner(context) if callable(owner) else owner
+    return {key: owner[key] for key in ('id', 'name')} if owner else None
+
+
 def transition(args, context, controller):
+    from sop import Completed
     workflow = controller.workflow
     phases = set(workflow.states)
     state = read_state(context, phases | {'error', 'blocked'})
@@ -273,16 +282,6 @@ def transition(args, context, controller):
         context['argv'] = receipt['argv']
         phase = receipt['phase']
         args = arguments(receipt['argv'], controller)
-    if args.error is not None or args.error_file is not None:
-        message = args.error if args.error is not None else args.error_file.read_text(encoding='utf-8')
-        hint = next((hint for pattern, hint in PATTERNS if re.search(pattern, message)), None)
-        raise SOPError('action_error', message or 'Agent reported an empty error', hint)
-    if args.event == 'quit' and phase == workflow.initial and not args.extra:
-        delete_state(context)
-        context['quitted'] = True
-        context['state'] = state
-        message = f'SoP {controller.SOP_NAME} quitted'
-        raise SOPError('quitted', message, message)
 
     def cli(*command, write=False):
         record = {'argv': list(command), 'write': write, 'succeeded': False}
@@ -306,16 +305,27 @@ def transition(args, context, controller):
         else:
             context['phase'] = phase
             context['args'] = args
+            result = None
             try:
                 initial = assertion_before(workflow, context)
-            except Exception as error:
-                from sop import Completed
-                if not isinstance(error, Completed):
-                    raise
+            except Completed as error:
                 context.pop('assertion', None)
                 initial = context.get('initial')
                 result = error.result
-            else:
+            owner = state_owner(workflow, result['phase'] if result else phase, context)
+            if owner and context['agent_id'] != owner['id']:
+                raise SystemExit('Rejected: this action belongs to ' + owner['name'] + '.')
+            if result is None:
+                if args.error is not None or args.error_file is not None:
+                    message = args.error if args.error is not None else args.error_file.read_text(encoding='utf-8')
+                    hint = next((hint for pattern, hint in PATTERNS if re.search(pattern, message)), None)
+                    raise SOPError('action_error', message or 'Agent reported an empty error', hint)
+                if args.event == 'quit' and phase == workflow.initial and not args.extra:
+                    delete_state(context)
+                    context['quitted'] = True
+                    context['state'] = state
+                    message = f'SoP {controller.SOP_NAME} quitted'
+                    raise SOPError('quitted', message, message)
                 try:
                     if before is None and args.event != 'init':
                         raise SOPError('invalid_transition', 'Start this SOP with a bare call or init before choosing an option')
@@ -348,6 +358,8 @@ def transition(args, context, controller):
     if result['phase'] == workflow.initial:
         result.setdefault('alternatives', []).append({'instruction': 'Stop this SOP.', 'callback': ['quit']})
     next_phase = result.pop('phase')
+    if next_phase == workflow.FINISHED:
+        result['instruction'] = finished_instruction(controller)
     result.setdefault('accepted', True)
     status = next_phase if result['accepted'] or receipt else before
     result['next_step'] = callback(result.pop('instruction'), result.pop('callback', None))
@@ -356,7 +368,12 @@ def transition(args, context, controller):
     if alternatives:
         result['next_step']['alternatives'] = [callback(choice['instruction'], choice['callback'])
                                                 for choice in alternatives]
-    finished = workflow.states[next_phase].final
+    owner = state_owner(workflow, next_phase, context)
+    if result['accepted'] and workflow.handoff and owner and owner['id'] != context['agent_id'] and not context.get('handoff'):
+        workflow.handoff(args, context, owner)
+    if result['accepted'] and owner and (before is None or owner != state_owner(workflow, phase, context)):
+        multica('assign', context['issue_id'], '--to-id', owner['id'], '--no-start')
+    finished = workflow.is_finished(next_phase)
     changed = before != (None if finished else status)
     result.update(ok=invalid is None, status=status, finished=finished,
                   state_changed=changed, error=invalid)
@@ -417,10 +434,20 @@ def agent_decision(output):
     return {key: output[key] for key in ('status', 'instruction', 'next_step', 'error', 'evidence', 'usage') if key in output}
 
 
+# TODO: finish state pending definition. Distinguish re-entry from end-loop
+# completion; delegation cleans SOP state at the ringed-circle for re-entry.
+# Blocked runs do not reach that node. No end-loop mode is defined yet.
+def finished_instruction(controller):
+    return (controller.SOP_NAME + ' SoP finished, directly and silently end this turn. '
+            'Allow re-enter with initial command in SKILL.md next round.')
+
+
 def response(result):
     """Agent guidance for the current issue state."""
     step = result['next_step']
     instruction = step['instruction']
+    if result['status'] == 'FINISHED':
+        return {'status': result['status'], 'instruction': instruction}
     if result['status'] is not None:
         instruction = f'You are in SOP state "{result["status"]}". {instruction}'
     options = []
@@ -440,53 +467,6 @@ def response(result):
     return agent_decision(output)
 
 
-def upload_artifact(filename, content, *, issue_id, skill):
-    """Publish an independent object, retaining its explicit ID across SOP runs."""
-    if not all(os.environ.get(key) for key in
-               ('MULTICA_SERVER_URL', 'MULTICA_TOKEN', 'MULTICA_ISSUE_ID', 'MULTICA_WORKSPACE_ID')):
-        return
-    attachment = None
-    # A preview failure must never repeat a completed workflow action.
-    try:
-        metadata = multica('get', issue_id)['metadata']
-        bindings = json.loads(metadata.get('sop_artifacts', '{}'))
-        artifacts = bindings.setdefault(skill, {})
-        attachment_id = artifacts.get(filename)
-        fields = {'independent': 'true'}
-        if attachment_id:
-            fields['attachment_id'] = attachment_id
-        boundary = 'sop-' + uuid.uuid4().hex
-        body = b''.join((f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n').encode()
-                        for key, value in fields.items())
-        body += (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-                 'Content-Type: text/html\r\n\r\n').encode() + content.encode() + f'\r\n--{boundary}--\r\n'.encode()
-        request = Request(os.environ['MULTICA_SERVER_URL'].rstrip('/') + '/api/upload-file', data=body, headers={
-            'Authorization': 'Bearer ' + os.environ['MULTICA_TOKEN'],
-            'X-Workspace-ID': os.environ['MULTICA_WORKSPACE_ID'],
-            'Content-Type': 'multipart/form-data; boundary=' + boundary})
-        with urlopen(request, timeout=30) as response:
-            attachment = json.load(response)
-        resource_id = str(uuid.UUID(attachment['id']))
-        if attachment.get('independent') is not True or (attachment_id and resource_id != attachment_id):
-            raise ValueError('Upload did not return the requested independent identity')
-        if not attachment_id:
-            artifacts[filename] = resource_id
-            # Persist identity before linking, so a failed link never triggers another create.
-            multica('metadata', 'set', issue_id, '--key', 'sop_artifacts', '--type', 'string',
-                    '--value', json.dumps(bindings, separators=(',', ':')))
-        links = json.loads(metadata.get('deliverables', '[]'))
-        if resource_id not in links:
-            links.append(resource_id)
-            multica('metadata', 'set', issue_id, '--key', 'deliverables', '--type', 'string',
-                    '--value', json.dumps(links, separators=(',', ':')))
-        return attachment
-    except Exception as error:
-        identity = f" Resource {attachment['id']}: {attachment.get('markdown_url', '')}." if attachment else ''
-        print(redact('Live artifact update failed: ' + str(error) + identity +
-                     ' Reconcile sop_artifacts and workspace deliverables before retrying; do not rerun the workflow action.'),
-              file=sys.stderr)
-
-
 def graph_svg(source, identifier):
     dot = ensure_command('dot', 'graphviz')
     result = subprocess.run([dot, '-Tsvg', '-Gid=' + identifier,
@@ -501,6 +481,10 @@ def graph_svg(source, identifier):
 
 def state_artifact(context, controller, result):
     """Render the controller's workflow and highlight the current or failed state."""
+    FINISHED = controller.workflow.FINISHED
+    def node(name):
+        return '__end' if name == FINISHED else name
+
     status = result['status']
     recovery = context.get('state', {}).get('recovery', {})
     assertion = recovery.get('assertion', {})
@@ -511,10 +495,12 @@ def state_artifact(context, controller, result):
     states = controller.workflow.states
     quote = json.dumps
     diagram = 'digraph workflow {\nrankdir=LR; bgcolor="transparent";\nnode [shape=box];\n'
-    diagram += '\n'.join(f'{quote(name)} [id={quote("state_" + name)}];' for name in states)
+    diagram += '\n'.join(f'{quote(name)} [id={quote("state_" + name)}, label=<{escape(name)}' +
+                         (f'<br/><font point-size="9">{escape(owner["name"])}</font>'
+                          if (owner := state_owner(controller.workflow, name, context)) else '') + '>];' for name in states)
     for branch in controller.workflow.branches.values():
         diagram += f'\n{quote(branch.name)} [shape=diamond, label={quote(branch.description)}];'
-        diagram += '\n' + '\n'.join(f'{quote(branch.name)} -> {quote(target)} [label={quote(label)}];'
+        diagram += '\n' + '\n'.join(f'{quote(branch.name)} -> {quote(node(target))} [label={quote(label)}];'
                                      for label, target in branch.routes.items())
     edges = {(state.name, option.name): option.target for state in states.values()
              if not callable(state.options) for option in state.options}
@@ -528,17 +514,17 @@ def state_artifact(context, controller, result):
                      for name, source in charts.items()
                      if source}
              for state, charts in logic.items()}
-    diagram += '\n' + '\n'.join(f'{quote(source)} -> {quote(target)} [id="option_{index}", label={quote(option)}];'
+    diagram += '\n' + '\n'.join(f'{quote(source)} -> {quote(node(target))} [id="option_{index}", label={quote(option)}];'
                                 for index, ((source, option), target) in enumerate(edges.items()))
-    # Boundary markers are diagram-only; they never introduce workflow options.
+    # Start is diagram-only; FINISHED owns the ringed-circle completion action.
     boundaries = ['__start [shape=point, label="", fillcolor=black, color=black, width=0.05, height=0.05];',
-                  '__end [shape=doublecircle, label="", style=filled, fillcolor=black, color=black, width=0.2, height=0.2, fixedsize=true];',
+                  '__end [id="state_FINISHED", shape=doublecircle, label="", style=filled, fillcolor=black, color=black, width=0.2, height=0.2, fixedsize=true];',
                   f'__start -> {quote(controller.workflow.initial)};']
     boundaries.extend(f'{quote(state.name)} -> __end;' for state in states.values() if state.final)
     diagram += '\n' + '\n'.join(boundaries)
-    if phase in states:
+    if phase in states or phase == FINISHED:
         color = '#fee2e2' if result.get('error') else '#dcfce7'
-        diagram += f'\n{quote(phase)} [fillcolor="{color}", color="#2563eb", penwidth=2];\n'
+        diagram += f'\n{quote(node(phase))} [fillcolor="{color}", color="#2563eb", penwidth=2];\n'
     diagram += '\n}'
     details = {'issue_id': context['issue_id'], 'sop': controller.SOP_NAME, 'status': status}
     if result.get('error'):
@@ -546,11 +532,13 @@ def state_artifact(context, controller, result):
     nodes = {}
     for state in states.values():
         # Other states show declared guidance; previews never run views or option factories.
-        choices = [callback(option.prompt, option.callback()) for option in state.options] if not callable(state.options) else []
+        options = context.get('resolved_options', {}).get(state.name, () if callable(state.options) else state.options)
+        choices = [callback(option.prompt, option.callback()) for option in options]
         if state.initial:
             choices.append(callback('Stop this SOP.', ['quit']))
         nodes[state.name] = response({'status': state.name,
                                      'next_step': {**callback(state.description), 'alternatives': choices}})
+    nodes[FINISHED] = {'status': FINISHED, 'instruction': finished_instruction(controller)}
     if context.get('output'):
         nodes[phase] = agent_decision(context['output'])
     links = {f'option_{index}': {
@@ -565,7 +553,7 @@ def state_artifact(context, controller, result):
                          separators=(',', ':')).replace('<', '\\u003c')
     return ('<!doctype html><html lang="en"><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1"><title>' + escape(controller.SOP_NAME) + '</title>'
-            '<style>body{font:15px system-ui;margin:8px}pre{white-space:pre;overflow-x:auto}'
+            '<style>body{font:15px system-ui;margin:8px}pre{white-space:pre-wrap;overflow-wrap:anywhere;overflow-x:auto}'
             '.diagram{margin:0;max-width:100%;overflow-x:auto}.diagram svg{display:block;max-width:none;margin:auto}'
             '@media(orientation:landscape){.diagram{overflow-x:hidden}.diagram svg{max-width:100%;height:auto}}'
             '[role="button"]{cursor:pointer}.edge path{pointer-events:stroke}.edge text{paint-order:stroke;stroke:white;stroke-width:3px}'
@@ -595,21 +583,23 @@ def state_artifact(context, controller, result):
 
 
 def publish_artifacts(context, controller, result):
-    if not controller or not all(os.environ.get(key) for key in
-            ('MULTICA_SERVER_URL', 'MULTICA_TOKEN', 'MULTICA_ISSUE_ID', 'MULTICA_WORKSPACE_ID')):
+    if not controller:
         return
     shifted = result.get('state_changed') or result.get('finished')
     if not (shifted or result.get('error') or
             result.get('accepted') and context['argv'] and context['argv'][0] != 'init'):
         return
     try:
+        artifacts = {}
         # In DEBUG mode, update the controller workflow's state chart artifact on every state shift.
         if controller.DEBUG and shifted:
-            upload_artifact(controller.SOP_NAME + '-state.html', state_artifact(context, controller, result),
-                            issue_id=context['issue_id'], skill=controller.SOP_NAME)
+            artifacts[controller.SOP_NAME + '-state.html'] = state_artifact(context, controller, result)
         if not result.get('error') and hasattr(controller, 'artifacts'):
-            for filename, content in controller.artifacts({**context, 'cli': multica, 'error': SOPError}).items():
-                upload_artifact(filename, content, issue_id=context['issue_id'], skill=controller.SOP_NAME)
+            artifacts.update(controller.artifacts({**context, 'cli': multica, 'error': SOPError}))
+        parent = getattr(context.get('args'), 'thread', None) or context.get('state', {}).get('reply_parent')
+        # FUTURE TODO: temp bypass agent as middel-layer, would be elegant when treat SoP sys as first class member role to speak in an issue
+        for filename, content in artifacts.items():
+            write_artifact({'issue_id': context['issue_id'], 'filename': filename}, content, parent)
     except Exception as error:
         print(redact('Live artifact update failed: ' + str(error)), file=sys.stderr)
 
@@ -659,6 +649,9 @@ def main(argv=None):
     if controller and context.get('state'):
         state = context['state']
         state['output'] = output
+        if not getattr(controller, 'CACHE_VIEW', True):
+            state['output'] = {'status': state.get('status'), 'instruction': controller.workflow.states.get(
+                state.get('status'), controller.workflow.states[controller.workflow.initial]).description}
         if not context.get('state_deleted') and not context.get('state_write_failed'):
             try:
                 save_state(context, state)
@@ -667,7 +660,7 @@ def main(argv=None):
                 output = redact(response(result))
     context['output'] = output
     publish_artifacts(context, controller, result)
-    print(json.dumps(output, allow_nan=False))
+    print(redact(context['handoff']) if result['ok'] and context.get('handoff') else json.dumps(output, allow_nan=False))
     return 0 if result["ok"] else result.get("returncode", 1)
 
 

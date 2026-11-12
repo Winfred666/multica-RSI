@@ -4,7 +4,7 @@ description: Create or revise a working symbolic SoP by copying the runtime and 
 ---
 
 Copy [assets/template/](assets/template/) into the new skill directory. Keep
-`sop.py`, `wrapper.py` and `monitor.py` unchanged; replace the example
+`sop.py`, `wrapper.py`, `common.py` and `monitor.py` unchanged; replace the example
 `controller.py` with the procedure. Keep the copied `config.json`; set `DEBUG`
 to `true` when you want the compiled HTML preview.
 
@@ -16,7 +16,7 @@ error guidance. Follow recalls in the same turn; reconcile writes before retryin
 and use a returned `repaired` command once for a failed assertion.
 
 Export `workflow = Workflow(...)` from `controller.py`. Declare one initial
-state and at least one final state; final states have no options. Each option
+state. Complete through `FINISHED` (imported from `sop`) or a final state with no options. Each option
 names its target, prompt, action and inputs. Script fixed work; leave judgment
 at explicit choices. For example:
 
@@ -45,18 +45,25 @@ identifies the current issue; `context['cli'](*words, write=False)` runs
 `multica issue <words> --output json`. Pass separate arguments and mark writes
 with `write=True`; use native Multica SoPs for platform workflows.
 The runtime stores status and recovery in `issue.metadata["sop.<skill-name>"]`.
-Keep controller `data` internal; expose needed facts through instructions/options. Store only small procedure-specific
-settings in issue metadata when needed; keep delivery/review records in comments.
-When revising a procedure, preserve its checks, side effects, completion rules
-and live state.
+Keep controller `data` internal; expose needed facts through instructions/options.
+Transient execution/recovery state stays in that metadata key. Shared configuration
+payloads belong in JSON attachments, not issue metadata; retain only small references
+for existing readers. Follow [configuration artifacts](references/config-artifacts.md)
+for the master/delegation pattern and canonical attachment identity.
 
-Live HTML publication uses explicit independent resource IDs, not issue/comment/task
-ownership or filename grouping. Follow [independent publication](references/independent-publication.md)
-for the canonical create/read/replace/link/unlink contract and CLI spelling.
-The template retains publication IDs in `sop_artifacts` and issue links in
-`deliverables`, separate from transient SoP state. Ordinary comment attachments
-stay unchanged. Change this creator/template first; obtain human approval before
-propagating the protocol to other symbolic SoPs or installed distributions.
+The shared runtime follows [R-328's accepted protocol](https://github.com/Winfred666/multica-featssship/tree/c396c654f245e2dd4d0686f70a16a73101ac4188/installation).
+A state may declare `owner={"id": ..., "name": ...}` (or a callable). The runtime
+checks that owner before actions, uses `Workflow(handoff=...)` for the existing
+scripted handoff, and synchronizes accepted destination ownership with
+`issue assign --to-id ... --no-start`. Help and rejected transitions do not hand off.
+`FINISHED` clears transient state and returns re-entry guidance.
+When revising a procedure, preserve its checks, side effects, completion rules
+and live state. Keep delivery/review records in comments.
+
+HTML debug/controller artifacts use ordinary comment attachments through
+`common.write_artifact`; do not turn them into ownerless configuration resources.
+Change this creator/template first; obtain human approval before propagating to
+other symbolic SoPs or installed distributions.
 
 The preview derives the state graph from `Workflow`; use `Branch` for automatic
 script-selected transitions. Optional action docstrings can explain local logic.

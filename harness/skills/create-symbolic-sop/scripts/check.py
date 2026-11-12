@@ -22,8 +22,11 @@ class SymbolicProtocol(unittest.TestCase):
         self.root = Path(temporary.name)
         self.package = self.root / 'skill'
         shutil.copytree(TEMPLATE, self.package)
-        for name in ('sop.py', 'wrapper.py', 'monitor.py'):
+        for name in ('sop.py', 'wrapper.py', 'monitor.py', 'common.py'):
             shutil.copy2(PACKAGE / name, self.package / name)
+        self.enterContext(patch.object(sys, 'path', [str(self.package), *sys.path]))
+        self.enterContext(patch.dict(sys.modules))
+        sys.modules.pop('common', None)
         self.metadata = self.root / 'metadata'
         binary = self.root / 'bin'
         binary.mkdir()
@@ -336,48 +339,39 @@ workflow = Workflow(
         self.assertEqual(second['reason'], 'exit')
         self.assertEqual(second['new_output'], {})
 
-    def test_independent_publication_reuses_identity_and_preserves_links(self):
-        import io
-        spec = importlib.util.spec_from_file_location('protocol_wrapper', self.package / 'wrapper.py')
-        wrapper = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(wrapper)
-        existing = '00000000-0000-4000-8000-000000000001'
-        resource_id = '00000000-0000-4000-8000-000000000002'
-        metadata = {'deliverables': json.dumps([existing])}
-        requests = []
-        fail_link = True
+    def test_config_payload_is_uploaded_and_returned_id_is_shared(self):
+        import common
+        reference = {'issue_id': 'installer', 'filename': 'master.json'}
+        uploads = []
 
-        def cli(*args):
-            if args[0] == 'get':
-                return {'metadata': metadata.copy()}
-            key = args[args.index('--key') + 1]
-            if key == 'deliverables' and fail_link:
-                raise ValueError('Link unavailable')
-            metadata[key] = args[args.index('--value') + 1]
-            return {'metadata': metadata}
+        def request(path, body, content_type):
+            uploads.append(body)
+            return {'id': 'first' if len(uploads) == 1 else 'replacement', 'markdown_url': '/stable'}
 
-        def upload(request, timeout):
-            requests.append(request.data)
-            return io.BytesIO(json.dumps({'id': resource_id, 'independent': True,
-                                         'markdown_url': 'http://fixture.invalid/stable'}).encode())
-
-        with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue', MULTICA_WORKSPACE_ID='fixture-workspace',
-                        MULTICA_TOKEN='fixture-token', MULTICA_SERVER_URL='http://fixture.invalid'), \
-                patch.object(wrapper, 'multica', side_effect=cli), patch.object(wrapper, 'urlopen', side_effect=upload), \
-                patch('sys.stderr', new_callable=io.StringIO) as warnings:
-            self.assertIsNone(wrapper.upload_artifact('state.html', 'first', issue_id='fixture-issue', skill='fixture'))
-            self.assertIn(resource_id, warnings.getvalue())
-            fail_link = False
-            result = wrapper.upload_artifact('state.html', 'second', issue_id='fixture-issue', skill='fixture')
-            self.assertEqual(result['id'], resource_id)
-        self.assertNotIn(b'name="attachment_id"', requests[0])
-        self.assertIn(b'name="attachment_id"\r\n\r\n' + resource_id.encode(), requests[1])
-        for body in requests:
-            self.assertIn(b'name="independent"\r\n\r\ntrue', body)
-            for owner in ('issue_id', 'comment_id', 'task_id', 'chat_session_id', 'chat_message_id', 'source_context_id'):
-                self.assertNotIn(('name="' + owner + '"').encode(), body)
-        self.assertEqual(json.loads(metadata['sop_artifacts']), {'fixture': {'state.html': resource_id}})
-        self.assertEqual(json.loads(metadata['deliverables']), [existing, resource_id])
+        with patch.object(common, 'request', side_effect=request), patch.object(common, 'cli', return_value={'id': 'comment'}) as cli:
+            self.assertEqual(common.write_config(reference, {'setting': 1}, 'thread'), {'id': 'comment'})
+            self.assertEqual(reference['attachment_id'], 'first')
+            common.write_config(reference, {'setting': 2}, 'thread')
+            self.assertEqual(reference['attachment_id'], 'replacement')
+            self.assertNotIn('--attachment', cli.call_args.args)
+            common.link_config('MAIN', reference)
+            common.link_config('developer', reference, common.DELEGATION_KEY)
+            common.link_config('reviewer', reference, common.DELEGATION_KEY)
+            for call in cli.call_args_list[-3:]:
+                value = json.loads(call.args[call.args.index('--value') + 1])
+                self.assertEqual(value['attachment_id'], 'replacement')
+                self.assertNotIn('setting', value)
+            cli.side_effect = ValueError('Announcement unavailable')
+            failed = {'issue_id': 'installer', 'filename': 'master.json'}
+            with self.assertRaisesRegex(ValueError, 'Configuration uploaded as replacement'):
+                common.write_config(failed, {'setting': 3})
+            self.assertEqual(failed['attachment_id'], 'replacement')
+        self.assertNotIn(b'name="attachment_id"', uploads[0])
+        self.assertIn(b'name="attachment_id"\r\n\r\nfirst', uploads[1])
+        for body in uploads:
+            self.assertIn(b'Content-Type: application/json', body)
+            for name in ('independent', 'issue_id', 'comment_id', 'task_id'):
+                self.assertNotIn(('name="' + name + '"').encode(), body)
 
     def test_configured_preview_uses_actual_workflow(self):
         script = self.root / 'test_solution.py'
@@ -400,10 +394,12 @@ workflow = Workflow(
         result = {'status': 'variant', 'state_changed': True, 'accepted': True}
         with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue',
                         MULTICA_WORKSPACE_ID='fixture-workspace', MULTICA_TOKEN='fixture-token',
-                        MULTICA_SERVER_URL='http://fixture.invalid'), patch.object(wrapper, 'upload_artifact') as upload:
+                        MULTICA_SERVER_URL='http://fixture.invalid'), patch.object(wrapper, 'write_artifact') as upload:
             wrapper.publish_artifacts(context, controller, result)
-        filename, html = upload.call_args.args
-        self.assertEqual(upload.call_args.kwargs, {'issue_id': 'fixture-issue', 'skill': controller.SOP_NAME})
+        reference, html, parent = upload.call_args.args
+        self.assertEqual(reference['issue_id'], 'fixture-issue')
+        self.assertIsNone(parent)
+        filename = reference['filename']
         self.assertEqual(filename, 'multica-parallel-refinement-state.html')
         self.assertIn('fixture-issue', html)
         self.assertNotIn('task_id', html)
