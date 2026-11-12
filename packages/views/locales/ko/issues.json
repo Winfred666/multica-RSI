@@ -1474,7 +1474,6 @@
   },
   "deliverables": {
     "linked_title": "연결된 결과물",
-    "independent_title": "독립 결과물",
     "section_title": "산출물",
     "view_all_other": "산출물 {{count}}개 모두 보기",
     "name_with_version": "{{name}}, 버전 {{version}}",

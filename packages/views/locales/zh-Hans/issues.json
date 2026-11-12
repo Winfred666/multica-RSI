@@ -1474,7 +1474,6 @@
   },
   "deliverables": {
     "linked_title": "关联交付物",
-    "independent_title": "独立交付物",
     "section_title": "产物",
     "view_all_other": "查看全部 {{count}} 个产物",
     "name_with_version": "{{name}}，第 {{version}} 版",

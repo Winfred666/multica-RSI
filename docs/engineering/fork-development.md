@@ -252,6 +252,7 @@ including unlinked objects. Same-name independent IDs are never filename version
 Issue cards and the detail sidebar show **Linked deliverables** separately from
 comment outputs; dashed tree connectors represent the metadata relationship.
 Missing resources are omitted. Removing links or issues leaves free nodes intact.
+Free nodes reuse the common preview tiles without extra titles or filename headers.
 The existing attachment viewer opens both surfaces. While these views are open,
 workspace discovery refreshes every 30 seconds and invalidates independent preview
 caches so replacement serves current bytes. Ordinary comment outputs retain their

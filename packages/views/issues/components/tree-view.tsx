@@ -450,13 +450,8 @@ function TreeIndependentDeliverable({ file, onSizeChange }: {
   file: Attachment;
   onSizeChange: (id: string, size: IssueTreeSize) => void;
 }) {
-  const { t } = useT("issues");
   const ref = useTreeNodeSize(`deliverable:${file.id}`, onSizeChange);
-  return <div ref={ref} data-independent-deliverable={file.id} className="rounded-lg border border-surface-border bg-surface shadow-sm">
-    <div className="min-w-0 px-4 pt-3">
-      <div className="text-micro text-muted-foreground">{t(($) => $.deliverables.independent_title)}</div>
-      <div className="truncate text-caption font-medium" title={file.filename}>{file.filename}</div>
-    </div>
+  return <div ref={ref} data-independent-deliverable={file.id}>
     <TreeDeliverables files={[{ key: file.id, latest: file, versions: [file] }]} />
   </div>;
 }
