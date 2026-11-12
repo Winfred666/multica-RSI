@@ -3300,18 +3300,18 @@ describe("ApiClient shared credential across windows", () => {
   });
 });
 
-describe("workspace independent deliverable discovery", () => {
-  it("opts in with workspace context, defaults old servers to false, and rejects malformed resources", async () => {
+describe("workspace attachment discovery", () => {
+  it("opts in with workspace context, preserves both owners, and rejects malformed resources", async () => {
     const file = { id: "file", filename: "report.html", url: "/file", download_url: "/download" };
-    const fetchMock = vi.fn().mockImplementation(async () => Response.json({ deliverables: [file, { ...file, id: "independent", independent: true }] }));
+    const fetchMock = vi.fn().mockImplementation(async () => Response.json({ attachments: [file, { ...file, id: "owned", issue_id: "issue", comment_id: "comment" }] }));
     vi.stubGlobal("fetch", fetchMock);
     const client = new ApiClient("https://api.example.test");
-    expect(await client.getWorkspaceDeliverables("ws")).toMatchObject([{ independent: false }, { independent: true }]);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.example.test/api/workspaces/ws?include=deliverables");
+    expect(await client.getWorkspaceAttachments("ws")).toMatchObject([{ issue_id: null, comment_id: null }, { issue_id: "issue", comment_id: "comment" }]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.example.test/api/workspaces/ws?include=attachments");
     expect(fetchMock.mock.calls[0]?.[1].headers["X-Workspace-ID"]).toBe("ws");
-    for (const body of [{}, { deliverables: "bad" }, { deliverables: [{ ...file, download_url: null }] }]) {
+    for (const body of [{}, { attachments: "bad" }, { attachments: [{ ...file, download_url: null }] }, { attachments: [{ ...file, comment_id: 123 }] }]) {
       fetchMock.mockImplementation(async () => Response.json(body));
-      expect(await client.getWorkspaceDeliverables("ws")).toEqual([]);
+      expect(await client.getWorkspaceAttachments("ws")).toEqual([]);
     }
   });
 });

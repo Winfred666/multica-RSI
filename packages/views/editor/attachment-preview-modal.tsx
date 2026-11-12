@@ -757,6 +757,7 @@ function PreviewPanel({
     state.attachmentId ?? undefined,
     state.mediaUrl,
     kind === "image",
+    source.kind === "full" && !source.attachment.issue_id && !source.attachment.comment_id,
   );
   // Until that upgrade lands the picked URL may be one this client cannot
   // load natively (desktop, split-origin web); handed to <img> it would fail

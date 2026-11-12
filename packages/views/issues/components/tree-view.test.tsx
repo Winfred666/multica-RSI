@@ -63,7 +63,7 @@ function setup(rows: Issue[], tasks: AgentTask[] = [], timeline: TimelineEntry[]
   const api = {
     listTimeline: vi.fn<() => Promise<TimelineEntry[]>>(async () => timeline),
     listAttachments: vi.fn(async () => []),
-    getWorkspaceDeliverables: vi.fn(async () => []),
+    getWorkspaceAttachments: vi.fn(async () => []),
     getAgentTaskSnapshot: vi.fn(async () => tasks),
     listTasksByIssue: vi.fn(async () => tasks),
     listTaskMessages: vi.fn<() => Promise<TaskMessagePayload[]>>(async () => []),

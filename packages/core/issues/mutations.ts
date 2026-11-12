@@ -91,7 +91,7 @@ export function useDeleteAttachments() {
       for (const file of files) for (const id of file.ids) await api.deleteAttachment(id);
     },
     onSettled: (_data, _error, files) => Promise.all([
-      qc.invalidateQueries({ queryKey: workspaceKeys.deliverables(wsId) }),
+      qc.invalidateQueries({ queryKey: workspaceKeys.attachments(wsId) }),
       ...[...new Set(files.flatMap((file) => file.issueId ? [file.issueId] : []))].flatMap((id) => [
         qc.invalidateQueries({ queryKey: issueKeys.attachments(id) }),
         qc.invalidateQueries({ queryKey: issueKeys.timeline(id) }),
