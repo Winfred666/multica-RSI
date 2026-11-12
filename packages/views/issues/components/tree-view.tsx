@@ -275,10 +275,12 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
             const dx = position.x - parent.x;
             const radius = Math.min(12, Math.abs(dx) / 2);
             const direction = Math.sign(dx);
-            const path = dx === 0
+            const relationship = "relationship" in position && position.relationship === "deliverable";
+            const path = relationship
+              ? `M ${parent.x + parent.width / 2} ${parent.y + parent.height / 2} L ${position.x - position.width / 2} ${position.y + position.height / 2}`
+              : dx === 0
               ? `M ${parent.x} ${startY} V ${endY}`
               : `M ${parent.x} ${startY} V ${midY - radius} Q ${parent.x} ${midY} ${parent.x + direction * radius} ${midY} H ${position.x - direction * radius} Q ${position.x} ${midY} ${position.x} ${midY + radius} V ${endY}`;
-            const relationship = "relationship" in position && position.relationship === "deliverable";
             const tone = relationship || isWorkspaceNode(position.node) ? { className: "text-muted-foreground", color: undefined } : color(position.node.issues[0]!);
             return <path key={`${position.parentId}:${position.node.id}`} d={path} fill="none" stroke="currentColor" strokeWidth={1.5} strokeDasharray={relationship ? "5 4" : undefined} data-deliverable-relationship={relationship ? position.node.deliverable?.id : undefined} strokeLinecap="round" className={tone.className} style={{ color: tone.color, opacity: 0.65 }} />;
           })}
