@@ -264,3 +264,16 @@ no table/index and changes no file IDs, ownership, metadata, history or bytes.
 Regenerate query bindings after SQL changes with `make sqlc`.
 
 Plan: [Backend P1 #50](https://github.com/Winfred666/multica-RSI/issues/50).
+
+### CLI
+
+`attachment upload FILE [--attachment-id ID]` uses the ordinary upload route
+without a required task or independent mode. Existing explicit/ambient task
+binding and the upload's markdown output remain; the server's returned ID is
+authoritative for both renewal and preserved versions. `attachment get` returns
+metadata; `attachment download` saves bytes. Workspace discovery uses
+`workspace get --include attachments --output json`. Existing issue create
+`--attachment-id` binds uploaded IDs; issue update accepts `--attachment-id`
+and `--remove-attachment-id` for the backend's attach/paired-detach operations.
+Normal issue/comment `--attachment` paths are unchanged. No metadata protocol,
+client history mode, separate link/unlink commands or independent-only list.

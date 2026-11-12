@@ -521,7 +521,7 @@ func (c *APIClient) UploadIssueAttachment(ctx context.Context, fileData []byte, 
 
 	// Honor a longer context deadline for large files: callers widen the
 	// context for uploads, which the default client timeout would shadow.
-	// Same shape as UploadChatAttachment / UploadFileWithURL.
+	// Same shape as UploadAttachment / UploadFileWithURL.
 	httpClient := c.HTTPClient
 	if deadline, ok := ctx.Deadline(); ok {
 		remaining := time.Until(deadline)
@@ -553,14 +553,15 @@ func (c *APIClient) UploadIssueAttachment(ctx context.Context, fileData []byte, 
 	return result, nil
 }
 
-// UploadChatAttachment uploads a file via multipart form to /api/upload-file
-// tagged with a chat task (task_id). The server binds the row to the assistant
-// reply that task produces on completion. Returns the full AttachmentResponse
-// (id + markdown_url) so the agent can embed the image inline in its reply.
-func (c *APIClient) UploadChatAttachment(ctx context.Context, fileData []byte, filename, taskID string) (AttachmentResponse, error) {
+// UploadAttachment forwards optional task and replacement IDs. The server's
+// response determines the resulting attachment identity.
+func (c *APIClient) UploadAttachment(ctx context.Context, fileData []byte, filename, taskID, attachmentID string) (AttachmentResponse, error) {
 	fields := map[string]string{}
 	if taskID != "" {
 		fields["task_id"] = taskID
+	}
+	if attachmentID != "" {
+		fields["attachment_id"] = attachmentID
 	}
 	var result AttachmentResponse
 	if err := c.uploadAttachment(ctx, fileData, filename, fields, &result); err != nil {
@@ -568,28 +569,6 @@ func (c *APIClient) UploadChatAttachment(ctx context.Context, fileData []byte, f
 	}
 	if result.ID == "" {
 		return AttachmentResponse{}, fmt.Errorf("upload response missing attachment id")
-	}
-	return result, nil
-}
-
-// UploadIndependentAttachment creates or replaces an ownerless resource and
-// returns the canonical server response without dropping attachment fields.
-func (c *APIClient) UploadIndependentAttachment(ctx context.Context, fileData []byte, filename, attachmentID string) (map[string]any, error) {
-	fields := map[string]string{"independent": "true"}
-	if attachmentID != "" {
-		fields["attachment_id"] = attachmentID
-	}
-	var result map[string]any
-	if err := c.uploadAttachment(ctx, fileData, filename, fields, &result); err != nil {
-		return nil, err
-	}
-	id, _ := result["id"].(string)
-	markdownURL, _ := result["markdown_url"].(string)
-	if id == "" || result["independent"] != true || markdownURL == "" {
-		return nil, fmt.Errorf("upload response missing independent attachment identity or markdown_url")
-	}
-	if attachmentID != "" && id != attachmentID {
-		return nil, fmt.Errorf("upload response attachment id %q does not match %q", id, attachmentID)
 	}
 	return result, nil
 }

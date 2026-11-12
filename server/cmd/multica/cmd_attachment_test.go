@@ -169,12 +169,12 @@ func TestRunAttachmentDownloadCreatesMissingOutputDir(t *testing.T) {
 func newAttachmentUploadTestCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "upload"}
 	cmd.Flags().String("task", "", "")
-	cmd.Flags().Bool("independent", false, "")
 	cmd.Flags().String("attachment-id", "", "")
 	return cmd
 }
 
 func TestRunAttachmentUploadSendsTaskIDAndPrintsContract(t *testing.T) {
+	t.Setenv("MULTICA_TASK_ID", "ambient-task")
 	const taskID = "task-abc"
 	var gotTaskID string
 	var gotFile string
@@ -322,27 +322,6 @@ func TestRunAttachmentUploadEscapesFilename(t *testing.T) {
 	}
 }
 
-func TestRunAttachmentUploadRequiresTask(t *testing.T) {
-	t.Setenv("MULTICA_TASK_ID", "")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-	setCLITestServerEnv(t, srv.URL)
-	t.Setenv("MULTICA_TOKEN", "mat_test-token")
-
-	dir := t.TempDir()
-	imgPath := filepath.Join(dir, "chart.png")
-	if err := os.WriteFile(imgPath, []byte("bytes"), 0o644); err != nil {
-		t.Fatalf("write temp image: %v", err)
-	}
-
-	cmd := newAttachmentUploadTestCmd() // no --task, no MULTICA_TASK_ID
-	if err := runAttachmentUpload(cmd, []string{imgPath}); err == nil || !strings.Contains(err.Error(), "no chat task in context") {
-		t.Fatalf("runAttachmentUpload error = %v, want no-chat-task error", err)
-	}
-}
-
 func TestRunAttachmentDownloadRequiresDownloadURL(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/attachments/att-no-url" {
@@ -363,59 +342,49 @@ func TestRunAttachmentDownloadRequiresDownloadURL(t *testing.T) {
 	}
 }
 
-func TestRunAttachmentUploadIndependent(t *testing.T) {
-	const id = "independent-id"
-	replace := false
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/api/upload-file" || r.Header.Get("X-Workspace-ID") != "workspace-id" {
-			t.Errorf("unexpected request: %s %s workspace=%q", r.Method, r.URL, r.Header.Get("X-Workspace-ID"))
-		}
-		if err := r.ParseMultipartForm(1 << 20); err != nil {
-			t.Fatal(err)
-		}
-		wantFields := 1
-		if replace {
-			wantFields = 2
-			if r.FormValue("attachment_id") != id {
-				t.Errorf("replacement ID = %q", r.FormValue("attachment_id"))
+func TestRunAttachmentUploadForwardsIDs(t *testing.T) {
+	for _, tc := range []struct{ name, target, returned, task string }{
+		{"taskless create", "", "created", ""},
+		{"renew", "original", "original", ""},
+		{"server version", "original", "new-version", ""},
+		{"ambient task", "", "task-file", "ambient-task"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost || r.URL.Path != "/api/upload-file" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL)
+				}
+				if err := r.ParseMultipartForm(1 << 20); err != nil {
+					t.Fatal(err)
+				}
+				wantFields := 0
+				for key, want := range map[string]string{"attachment_id": tc.target, "task_id": tc.task} {
+					if want != "" {
+						wantFields++
+					}
+					if r.FormValue(key) != want {
+						t.Errorf("%s = %q, want %q", key, r.FormValue(key), want)
+					}
+				}
+				if len(r.MultipartForm.Value) != wantFields {
+					t.Errorf("unexpected owner/mode fields: %v", r.MultipartForm.Value)
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"id": tc.returned, "content_type": "text/html",
+					"markdown_url": "/api/attachments/" + tc.returned + "/download",
+				})
+			}))
+			defer srv.Close()
+			setCLITestServerEnv(t, srv.URL)
+			t.Setenv("MULTICA_TOKEN", "mat_test-token")
+			t.Setenv("MULTICA_TASK_ID", tc.task)
+			path := filepath.Join(t.TempDir(), "preview.html")
+			if err := os.WriteFile(path, []byte("preview"), 0o600); err != nil {
+				t.Fatal(err)
 			}
-		}
-		if r.FormValue("independent") != "true" || len(r.MultipartForm.Value) != wantFields {
-			t.Errorf("unexpected fields or ambient owners: %v", r.MultipartForm.Value)
-		}
-		file, _, err := r.FormFile("file")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer file.Close()
-		data, _ := io.ReadAll(file)
-		if string(data) != "preview" {
-			t.Errorf("file = %q", data)
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id": id, "independent": true, "filename": "preview.html",
-			"markdown_url": "/api/attachments/" + id + "/download",
-			"workspace_id": "workspace-id", "task_id": nil, "size_bytes": 7,
-		})
-	}))
-	defer srv.Close()
-	setCLITestServerEnv(t, srv.URL)
-	t.Setenv("MULTICA_TOKEN", "mat_test-token")
-	t.Setenv("MULTICA_WORKSPACE_ID", "workspace-id")
-	t.Setenv("MULTICA_TASK_ID", "ambient-task")
-	t.Setenv("MULTICA_ISSUE_ID", "ambient-issue")
-	t.Setenv("MULTICA_CHAT_SESSION_ID", "ambient-chat")
-	path := filepath.Join(t.TempDir(), "preview.html")
-	if err := os.WriteFile(path, []byte("preview"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, operation := range []string{"create", "replace"} {
-		t.Run(operation, func(t *testing.T) {
-			replace = operation == "replace"
 			cmd := newAttachmentUploadTestCmd()
-			_ = cmd.Flags().Set("independent", "true")
-			if replace {
-				_ = cmd.Flags().Set("attachment-id", id)
+			if tc.target != "" {
+				_ = cmd.Flags().Set("attachment-id", tc.target)
 			}
 			out, err := captureStdout(t, func() error { return runAttachmentUpload(cmd, []string{path}) })
 			if err != nil {
@@ -425,33 +394,8 @@ func TestRunAttachmentUploadIndependent(t *testing.T) {
 			if err := json.Unmarshal([]byte(out), &att); err != nil {
 				t.Fatal(err)
 			}
-			if att["id"] != id || att["independent"] != true || att["markdown_url"] != "/api/attachments/"+id+"/download" || att["workspace_id"] != "workspace-id" || att["size_bytes"] != float64(7) {
-				t.Errorf("canonical response lost fields: %s", out)
-			}
-		})
-	}
-}
-
-func TestRunAttachmentUploadRejectsIndependentFlagConflicts(t *testing.T) {
-	for _, tc := range []struct {
-		name, task, id, want string
-		independent          bool
-	}{
-		{"explicit task", "task", "", "--independent cannot be combined with --task", true},
-		{"explicit empty task", "", "", "--independent cannot be combined with --task", true},
-		{"replacement without independent", "", "id", "--attachment-id requires --independent", false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cmd := newAttachmentUploadTestCmd()
-			if tc.independent {
-				_ = cmd.Flags().Set("independent", "true")
-				_ = cmd.Flags().Set("task", tc.task)
-			} else {
-				_ = cmd.Flags().Set("attachment-id", tc.id)
-			}
-			err := runAttachmentUpload(cmd, []string{"not-read"})
-			if err == nil || err.Error() != tc.want {
-				t.Fatalf("error = %v, want %s", err, tc.want)
+			if len(att) != 4 || att["id"] != tc.returned || att["markdown_url"] != "/api/attachments/"+tc.returned+"/download" || att["markdown"] != "!file[preview.html](/api/attachments/"+tc.returned+"/download)" {
+				t.Errorf("upload output = %s", out)
 			}
 		})
 	}
