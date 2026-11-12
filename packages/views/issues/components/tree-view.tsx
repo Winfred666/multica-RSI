@@ -276,8 +276,9 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
             const radius = Math.min(12, Math.abs(dx) / 2);
             const direction = Math.sign(dx);
             const relationship = "relationship" in position && position.relationship === "deliverable";
+            const linkMidX = (parent.x + parent.width / 2 + position.x - position.width / 2) / 2;
             const path = relationship
-              ? `M ${parent.x + parent.width / 2} ${parent.y + parent.height / 2} L ${position.x - position.width / 2} ${position.y + position.height / 2}`
+              ? `M ${parent.x + parent.width / 2} ${parent.y + parent.height / 2} C ${linkMidX} ${parent.y + parent.height / 2} ${linkMidX} ${position.y + position.height / 2} ${position.x - position.width / 2} ${position.y + position.height / 2}`
               : dx === 0
               ? `M ${parent.x} ${startY} V ${endY}`
               : `M ${parent.x} ${startY} V ${midY - radius} Q ${parent.x} ${midY} ${parent.x + direction * radius} ${midY} H ${position.x - direction * radius} Q ${position.x} ${midY} ${position.x} ${midY + radius} V ${endY}`;
