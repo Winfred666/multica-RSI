@@ -244,6 +244,19 @@ resource deletion still uses the existing attachment deletion endpoint and is
 separate from unlinking; it does not rewrite issue metadata. The Frontend and CLI
 slices own their client/schema changes. Plan: [P1 #50](https://github.com/Winfred666/multica-RSI/issues/50).
 
+### Independent deliverables in web and desktop
+
+The shared issue tree discovers workspace resources through `?include=deliverables`.
+Only explicit `independent:true` objects become free root nodes, one per ID,
+including unlinked objects. Same-name independent IDs are never filename versions.
+Issue cards and the detail sidebar show **Linked deliverables** separately from
+comment outputs; dashed tree connectors represent the metadata relationship.
+Missing resources are omitted. Removing links or issues leaves free nodes intact.
+The existing attachment viewer opens both surfaces. While these views are open,
+workspace discovery refreshes every 30 seconds and invalidates independent preview
+caches so replacement serves current bytes. Ordinary comment outputs retain their
+existing grouping and version history.
+
 
 ## Independent deliverables (SoP template)
 

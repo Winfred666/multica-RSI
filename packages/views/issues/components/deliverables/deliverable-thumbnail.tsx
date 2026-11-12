@@ -90,6 +90,7 @@ function ImageThumbnail({
     attachment.id,
     resolvePublicFileUrl(picked) ?? picked,
     true,
+    attachment.independent === true,
   );
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
 

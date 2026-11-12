@@ -81,6 +81,7 @@ export function useResignedInlineMedia(
   attachmentId: string | undefined,
   pickedUrl: string,
   blobFallback: boolean,
+  independent = false,
 ): { url: string; pending: boolean } {
   const idFromPickedUrl = attachmentIdFromDownloadURL(pickedUrl);
   const resignAttachmentId = attachmentId ?? idFromPickedUrl;
@@ -99,7 +100,7 @@ export function useResignedInlineMedia(
     !!resignAttachmentId &&
     !!pickedUrl &&
     idFromPickedUrl !== undefined &&
-    ((api.getBaseUrl?.() ?? "") !== "" || isCrossOriginWebURL);
+    (independent || (api.getBaseUrl?.() ?? "") !== "" || isCrossOriginWebURL);
 
   const { data: fresh, isError: freshFailed } = useQuery({
     queryKey: ["attachment-inline-resign", resignAttachmentId],

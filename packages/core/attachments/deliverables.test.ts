@@ -5,6 +5,9 @@ import {
   collectDeliverableFiles,
   deliverableKey,
   findDeliverableVersion,
+  independentDeliverables,
+  linkedDeliverableIds,
+  linkedDeliverables,
 } from "./deliverables";
 
 function attachment(over: Partial<Attachment> & { id: string }): Attachment {
@@ -112,4 +115,15 @@ describe("findDeliverableVersion", () => {
     expect(findDeliverableVersion(files, "description-file")).toBeUndefined();
     expect(findDeliverableVersion(files, "")).toBeUndefined();
   });
+});
+
+it("resolves distinct independent IDs, not filenames, owners or stale metadata links", () => {
+  const id = "01921b25-f9e1-7000-8000-000000000001";
+  const other = "01921b25-f9e1-7000-8000-000000000002";
+  const free = attachment({ id, independent: true, issue_id: null, comment_id: null });
+  const sameName = attachment({ id: other, independent: true });
+  const ordinary = attachment({ id: "ordinary", issue_id: null, comment_id: null });
+  expect(independentDeliverables([free, free, sameName, ordinary])).toEqual([free, sameName]);
+  expect(linkedDeliverables(JSON.stringify([id, id, "01921b25-f9e1-7000-8000-000000000003"]), [free, ordinary])).toEqual([free]);
+  for (const value of [undefined, [id], "bad", '{"id":"bad"}', '["not-a-uuid"]']) expect(linkedDeliverableIds(value)).toEqual([]);
 });

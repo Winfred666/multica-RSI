@@ -1,9 +1,10 @@
-import type { Issue, TimelineEntry } from "../../types";
+import type { Attachment, Issue, TimelineEntry } from "../../types";
 
 export interface IssueTreeNode {
   id: string;
   issues: Issue[];
   collapsed: boolean;
+  deliverable?: Attachment;
   children: IssueTreeNode[];
 }
 

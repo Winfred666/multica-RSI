@@ -5,6 +5,7 @@ import type { Agent, Squad, Workspace } from "../types";
 export const workspaceKeys = {
   all: (wsId: string) => ["workspaces", wsId] as const,
   list: () => ["workspaces", "list"] as const,
+  deliverables: (wsId: string) => ["workspaces", wsId, "deliverables"] as const,
   members: (wsId: string) => ["workspaces", wsId, "members"] as const,
   invitations: (wsId: string) => ["workspaces", wsId, "invitations"] as const,
   shareLinks: (wsId: string) => ["workspaces", wsId, "share-links"] as const,
@@ -35,6 +36,25 @@ export function workspaceBySlugOptions(slug: string) {
   return queryOptions({
     ...workspaceListOptions(),
     select: (list: Workspace[]) => list.find((w) => w.slug === slug) ?? null,
+  });
+}
+
+export function workspaceDeliverablesOptions(wsId: string) {
+  return queryOptions({
+    queryKey: workspaceKeys.deliverables(wsId),
+    queryFn: async ({ client }) => {
+      const files = await api.getWorkspaceDeliverables(wsId);
+      for (const file of files) {
+        if (file.independent !== true) continue;
+        for (const key of ["attachment-content", "attachment-inline-resign", "attachment-inline-blob"]) {
+          void client.invalidateQueries({ queryKey: [key, file.id] });
+        }
+      }
+      return files;
+    },
+    enabled: !!wsId,
+    // Independent uploads have no issue attachment event in Backend P1.
+    refetchInterval: 30_000,
   });
 }
 

@@ -3299,3 +3299,19 @@ describe("ApiClient shared credential across windows", () => {
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("workspace independent deliverable discovery", () => {
+  it("opts in with workspace context, defaults old servers to false, and rejects malformed resources", async () => {
+    const file = { id: "file", filename: "report.html", url: "/file", download_url: "/download" };
+    const fetchMock = vi.fn().mockImplementation(async () => Response.json({ deliverables: [file, { ...file, id: "independent", independent: true }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://api.example.test");
+    expect(await client.getWorkspaceDeliverables("ws")).toMatchObject([{ independent: false }, { independent: true }]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.example.test/api/workspaces/ws?include=deliverables");
+    expect(fetchMock.mock.calls[0]?.[1].headers["X-Workspace-ID"]).toBe("ws");
+    for (const body of [{}, { deliverables: "bad" }, { deliverables: [{ ...file, download_url: null }] }]) {
+      fetchMock.mockImplementation(async () => Response.json(body));
+      expect(await client.getWorkspaceDeliverables("ws")).toEqual([]);
+    }
+  });
+});

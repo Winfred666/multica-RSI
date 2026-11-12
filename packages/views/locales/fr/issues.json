@@ -1524,6 +1524,8 @@
     "issue_disabled_action": "Réactiver"
   },
   "deliverables": {
+    "linked_title": "Livrables liés",
+    "independent_title": "Livrable indépendant",
     "section_title": "Livrables",
     "view_all_one": "Voir le livrable",
     "view_all_other": "Voir les {{count}} livrables",
