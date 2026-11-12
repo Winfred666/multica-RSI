@@ -169,6 +169,8 @@ func TestRunAttachmentDownloadCreatesMissingOutputDir(t *testing.T) {
 func newAttachmentUploadTestCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "upload"}
 	cmd.Flags().String("task", "", "")
+	cmd.Flags().Bool("independent", false, "")
+	cmd.Flags().String("attachment-id", "", "")
 	return cmd
 }
 
@@ -358,5 +360,99 @@ func TestRunAttachmentDownloadRequiresDownloadURL(t *testing.T) {
 	cmd := newAttachmentDownloadTestCmd()
 	if err := runAttachmentDownload(cmd, []string{"att-no-url"}); err == nil || !strings.Contains(err.Error(), "no download URL") {
 		t.Fatalf("runAttachmentDownload error = %v, want missing download URL", err)
+	}
+}
+
+func TestRunAttachmentUploadIndependent(t *testing.T) {
+	const id = "independent-id"
+	replace := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/upload-file" || r.Header.Get("X-Workspace-ID") != "workspace-id" {
+			t.Errorf("unexpected request: %s %s workspace=%q", r.Method, r.URL, r.Header.Get("X-Workspace-ID"))
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatal(err)
+		}
+		wantFields := 1
+		if replace {
+			wantFields = 2
+			if r.FormValue("attachment_id") != id {
+				t.Errorf("replacement ID = %q", r.FormValue("attachment_id"))
+			}
+		}
+		if r.FormValue("independent") != "true" || len(r.MultipartForm.Value) != wantFields {
+			t.Errorf("unexpected fields or ambient owners: %v", r.MultipartForm.Value)
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Close()
+		data, _ := io.ReadAll(file)
+		if string(data) != "preview" {
+			t.Errorf("file = %q", data)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": id, "independent": true, "filename": "preview.html",
+			"markdown_url": "/api/attachments/" + id + "/download",
+			"workspace_id": "workspace-id", "task_id": nil, "size_bytes": 7,
+		})
+	}))
+	defer srv.Close()
+	setCLITestServerEnv(t, srv.URL)
+	t.Setenv("MULTICA_TOKEN", "mat_test-token")
+	t.Setenv("MULTICA_WORKSPACE_ID", "workspace-id")
+	t.Setenv("MULTICA_TASK_ID", "ambient-task")
+	t.Setenv("MULTICA_ISSUE_ID", "ambient-issue")
+	t.Setenv("MULTICA_CHAT_SESSION_ID", "ambient-chat")
+	path := filepath.Join(t.TempDir(), "preview.html")
+	if err := os.WriteFile(path, []byte("preview"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range []string{"create", "replace"} {
+		t.Run(operation, func(t *testing.T) {
+			replace = operation == "replace"
+			cmd := newAttachmentUploadTestCmd()
+			_ = cmd.Flags().Set("independent", "true")
+			if replace {
+				_ = cmd.Flags().Set("attachment-id", id)
+			}
+			out, err := captureStdout(t, func() error { return runAttachmentUpload(cmd, []string{path}) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			var att map[string]any
+			if err := json.Unmarshal([]byte(out), &att); err != nil {
+				t.Fatal(err)
+			}
+			if att["id"] != id || att["independent"] != true || att["markdown_url"] != "/api/attachments/"+id+"/download" || att["workspace_id"] != "workspace-id" || att["size_bytes"] != float64(7) {
+				t.Errorf("canonical response lost fields: %s", out)
+			}
+		})
+	}
+}
+
+func TestRunAttachmentUploadRejectsIndependentFlagConflicts(t *testing.T) {
+	for _, tc := range []struct {
+		name, task, id, want string
+		independent          bool
+	}{
+		{"explicit task", "task", "", "--independent cannot be combined with --task", true},
+		{"explicit empty task", "", "", "--independent cannot be combined with --task", true},
+		{"replacement without independent", "", "id", "--attachment-id requires --independent", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newAttachmentUploadTestCmd()
+			if tc.independent {
+				_ = cmd.Flags().Set("independent", "true")
+				_ = cmd.Flags().Set("task", tc.task)
+			} else {
+				_ = cmd.Flags().Set("attachment-id", tc.id)
+			}
+			err := runAttachmentUpload(cmd, []string{"not-read"})
+			if err == nil || err.Error() != tc.want {
+				t.Fatalf("error = %v, want %s", err, tc.want)
+			}
+		})
 	}
 }
