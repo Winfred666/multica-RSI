@@ -97,19 +97,19 @@ func normalizeIssuePrefix(raw string) (string, bool) {
 const issuePrefixFormatError = "issue prefix must be 1-10 uppercase letters or digits"
 
 type WorkspaceResponse struct {
-	Deliverables *[]AttachmentResponse `json:"deliverables,omitempty"`
-	ID           string                `json:"id"`
-	Name         string                `json:"name"`
-	Slug         string                `json:"slug"`
-	Description  *string               `json:"description"`
-	Context      *string               `json:"context"`
-	Settings     any                   `json:"settings"`
-	Repos        any                   `json:"repos"`
-	IssuePrefix  string                `json:"issue_prefix"`
-	AvatarURL    *string               `json:"avatar_url"`
-	CreatedAt    string                `json:"created_at"`
-	UpdatedAt    string                `json:"updated_at"`
-	PinnedAt     *string               `json:"pinned_at,omitempty"`
+	Attachments *[]AttachmentResponse `json:"attachments,omitempty"`
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	Slug        string                `json:"slug"`
+	Description *string               `json:"description"`
+	Context     *string               `json:"context"`
+	Settings    any                   `json:"settings"`
+	Repos       any                   `json:"repos"`
+	IssuePrefix string                `json:"issue_prefix"`
+	AvatarURL   *string               `json:"avatar_url"`
+	CreatedAt   string                `json:"created_at"`
+	UpdatedAt   string                `json:"updated_at"`
+	PinnedAt    *string               `json:"pinned_at,omitempty"`
 }
 
 func (h *Handler) workspaceToResponse(w db.Workspace) WorkspaceResponse {
@@ -238,17 +238,17 @@ func (h *Handler) GetWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := h.workspaceToResponse(ws)
-	if r.URL.Query().Get("include") == "deliverables" {
-		attachments, err := h.Queries.ListIndependentAttachments(r.Context(), ws.ID)
+	if r.URL.Query().Get("include") == "attachments" {
+		attachments, err := h.Queries.ListWorkspaceAttachments(r.Context(), ws.ID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to list independent resources")
+			writeError(w, http.StatusInternalServerError, "failed to list attachments")
 			return
 		}
-		deliverables := make([]AttachmentResponse, len(attachments))
+		files := make([]AttachmentResponse, len(attachments))
 		for i, a := range attachments {
-			deliverables[i] = h.attachmentToResponse(a, attachmentURLModeFromRequest(r))
+			files[i] = h.attachmentToResponse(a, attachmentURLModeFromRequest(r))
 		}
-		resp.Deliverables = &deliverables
+		resp.Attachments = &files
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
