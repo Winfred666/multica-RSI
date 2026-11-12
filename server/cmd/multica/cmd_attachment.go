@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,30 +35,50 @@ var attachmentDownloadCmd = &cobra.Command{
 
 var attachmentUploadCmd = &cobra.Command{
 	Use:   "upload <path>",
-	Short: "Upload a file to attach to your chat reply",
-	Long: `Upload a local file so it is attached to the reply of the current chat task.
-
-Intended for agents running inside a chat task: the file is tagged with the
-task and, when the task completes, the server binds it to the assistant reply
-it produces — it appears as an attachment card below your reply even if you
-paste nothing. The command also returns a markdown snippet you may paste on its
-own line to place the item: files use !file[name](url) (a card), images use
-![name](url) (inline).
-
-The task id is read from MULTICA_TASK_ID (set by the daemon inside a task);
-override it with --task when needed.`,
-	Example: `  # Attach an image to the current chat reply
-  $ multica attachment upload ./chart.png`,
+	Short: "Upload an ownerless file or renew an existing attachment",
+	Long: `Upload a local file without an owner, even inside an issue or chat task.
+Use --attachment-id to renew an ownerless attachment, preserving its ID.
+Use --task explicitly to attach a new upload to a chat task's reply.`,
+	Example: `  $ multica attachment upload ./report.html
+  $ multica attachment upload ./report.html --attachment-id UUID
+  $ multica attachment upload ./chart.png --task TASK_UUID`,
 	Args: exactArgs(1),
 	RunE: runAttachmentUpload,
 }
 
+var attachmentGetCmd = &cobra.Command{
+	Use:   "get <attachment-id>",
+	Short: "Get attachment metadata and download URLs",
+	Args:  exactArgs(1),
+	RunE:  runAttachmentGet,
+}
+
+var attachmentAttachCmd = &cobra.Command{
+	Use:   "attach <attachment-id>",
+	Short: "Attach a file to an issue, or soft-link an ownerless file",
+	Args:  exactArgs(1),
+	RunE:  runAttachmentLink,
+}
+
+var attachmentDetachCmd = &cobra.Command{
+	Use:   "detach <attachment-id>",
+	Short: "Detach a file from an issue, or remove its soft link, without deleting it",
+	Args:  exactArgs(1),
+	RunE:  runAttachmentLink,
+}
+
 func init() {
 	attachmentCmd.AddCommand(attachmentDownloadCmd)
-	attachmentCmd.AddCommand(attachmentUploadCmd)
+	attachmentCmd.AddCommand(attachmentUploadCmd, attachmentGetCmd, attachmentAttachCmd, attachmentDetachCmd)
+	for _, cmd := range []*cobra.Command{attachmentAttachCmd, attachmentDetachCmd} {
+		cmd.Flags().String("issue", "", "Issue key or UUID (required)")
+		cmd.Flags().Bool("soft", false, "Only update the issue's independent_artifacts metadata; requires an ownerless file")
+	}
 
 	attachmentDownloadCmd.Flags().StringP("output-dir", "o", ".", "Directory to save the downloaded file")
-	attachmentUploadCmd.Flags().String("task", "", "Chat task id to attach to (defaults to MULTICA_TASK_ID)")
+	attachmentUploadCmd.Flags().String("task", "", "Explicit chat task ID for a new upload")
+	attachmentUploadCmd.Flags().String("attachment-id", "", "Ownerless attachment ID to renew")
+	attachmentUploadCmd.MarkFlagsMutuallyExclusive("task", "attachment-id")
 }
 
 func runAttachmentUpload(cmd *cobra.Command, args []string) error {
@@ -67,11 +88,9 @@ func runAttachmentUpload(cmd *cobra.Command, args []string) error {
 	}
 
 	taskID, _ := cmd.Flags().GetString("task")
-	if taskID == "" {
-		taskID = client.TaskID
-	}
-	if taskID == "" {
-		return fmt.Errorf("no chat task in context: run inside a chat task (MULTICA_TASK_ID set) or pass --task <id>")
+	attachmentID, _ := cmd.Flags().GetString("attachment-id")
+	if taskID != "" && attachmentID != "" {
+		return fmt.Errorf("--task and --attachment-id are mutually exclusive")
 	}
 
 	path := args[0]
@@ -86,7 +105,12 @@ func runAttachmentUpload(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), cli.AtLeastAPITimeout(60*time.Second))
 	defer cancel()
 
-	att, err := client.UploadChatAttachment(ctx, data, path, taskID)
+	var att cli.AttachmentResponse
+	if taskID != "" {
+		att, err = client.UploadChatAttachment(ctx, data, path, taskID)
+	} else {
+		att, err = client.UploadAttachment(ctx, data, path, attachmentID)
+	}
 	if err != nil {
 		return fmt.Errorf("upload attachment: %w", err)
 	}
@@ -192,4 +216,89 @@ func runAttachmentDownload(cmd *cobra.Command, args []string) error {
 		"path":     abs,
 		"size":     strVal(att, "size_bytes"),
 	})
+}
+
+func runAttachmentGet(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+	var att map[string]any
+	if err := client.GetJSON(ctx, "/api/attachments/"+args[0], &att); err != nil {
+		return fmt.Errorf("get attachment: %w", err)
+	}
+	return cli.PrintJSON(os.Stdout, att)
+}
+
+func runAttachmentLink(cmd *cobra.Command, args []string) error {
+	issue, _ := cmd.Flags().GetString("issue")
+	if issue == "" {
+		return fmt.Errorf("--issue is required")
+	}
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+	issueRef, err := resolveIssueRef(ctx, client, issue)
+	if err != nil {
+		return fmt.Errorf("resolve issue: %w", err)
+	}
+	soft, _ := cmd.Flags().GetBool("soft")
+	var result map[string]any
+	if !soft {
+		if err := client.PostJSON(ctx, "/api/attachments/"+args[0]+"/"+cmd.Name(), map[string]any{"issue_id": issueRef.ID}, &result); err != nil {
+			return fmt.Errorf("%s attachment: %w", cmd.Name(), err)
+		}
+		return cli.PrintJSON(os.Stdout, result)
+	}
+
+	var att map[string]any
+	if err := client.GetJSON(ctx, "/api/attachments/"+args[0], &att); err != nil {
+		return fmt.Errorf("get attachment: %w", err)
+	}
+	for _, field := range []string{"issue_id", "comment_id", "chat_session_id", "chat_message_id"} {
+		if att[field] != nil && att[field] != "" {
+			return fmt.Errorf("soft links require an ownerless attachment (%s is set)", field)
+		}
+	}
+	attachmentID := strVal(att, "id")
+	if attachmentID == "" {
+		return fmt.Errorf("attachment response missing id")
+	}
+	path := "/api/issues/" + issueRef.ID + "/metadata"
+	if err := client.GetJSON(ctx, path, &result); err != nil {
+		return fmt.Errorf("get metadata: %w", err)
+	}
+	metadata, _ := result["metadata"].(map[string]any)
+	var ids []string
+	if value, exists := metadata["independent_artifacts"]; exists {
+		raw, ok := value.(string)
+		if !ok || json.Unmarshal([]byte(raw), &ids) != nil || ids == nil {
+			return fmt.Errorf("independent_artifacts must be a JSON-string ID list")
+		}
+	}
+	linked := make([]string, 0, len(ids)+1)
+	seen := make(map[string]bool)
+	if cmd.Name() == "attach" {
+		ids = append(ids, attachmentID)
+	}
+	for _, id := range ids {
+		if seen[id] || (cmd.Name() == "detach" && id == attachmentID) {
+			continue
+		}
+		seen[id] = true
+		linked = append(linked, id)
+	}
+	encoded, err := json.Marshal(linked)
+	if err != nil {
+		return err
+	}
+	if err := client.PutJSON(ctx, path+"/independent_artifacts", map[string]any{"value": string(encoded)}, &result); err != nil {
+		return fmt.Errorf("set independent_artifacts: %w", err)
+	}
+	return cli.PrintJSON(os.Stdout, result["metadata"])
 }

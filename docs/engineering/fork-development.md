@@ -105,6 +105,17 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## CLI and daemon
 
+- **Attachment commands.** `attachment upload PATH` creates an ownerless file,
+  ignoring ambient issue/task ownership; `--attachment-id UUID` renews it using
+  the same server-returned ID. `--task TASK_UUID` explicitly keeps chat-reply
+  upload behavior and cannot be combined with renewal. `attachment get ID` and
+  `attachment download ID` read the current file.
+  `attachment attach ID --issue KEY_OR_UUID` and `attachment detach ID --issue
+  KEY_OR_UUID` change actual issue ownership. Add `--soft` to validate that the
+  file is ownerless and only update the issue's `independent_artifacts` metadata
+  as a JSON-string ID list, deduplicating IDs and preserving other entries and
+  metadata. Neither detach mode deletes the file; the server owns history policy.
+
 - **Workspace operations.** Workspace commands require a member context. Ordinary
   daemon tasks and task tokens are refused with a plain permission error.
   The local daemon has no workspace PAT

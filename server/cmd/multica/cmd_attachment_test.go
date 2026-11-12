@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -169,6 +170,7 @@ func TestRunAttachmentDownloadCreatesMissingOutputDir(t *testing.T) {
 func newAttachmentUploadTestCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "upload"}
 	cmd.Flags().String("task", "", "")
+	cmd.Flags().String("attachment-id", "", "")
 	return cmd
 }
 
@@ -320,24 +322,95 @@ func TestRunAttachmentUploadEscapesFilename(t *testing.T) {
 	}
 }
 
-func TestRunAttachmentUploadRequiresTask(t *testing.T) {
-	t.Setenv("MULTICA_TASK_ID", "")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
+func TestRunAttachmentUploadOwnerlessAndRenewal(t *testing.T) {
+	for _, renewalID := range []string{"", "att-current"} {
+		t.Run("attachment-id="+renewalID, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost || r.URL.Path != "/api/upload-file" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+				if err := r.ParseMultipartForm(1 << 20); err != nil {
+					t.Fatal(err)
+				}
+				want := map[string][]string{}
+				if renewalID != "" {
+					want["attachment_id"] = []string{renewalID}
+				}
+				if !reflect.DeepEqual(r.MultipartForm.Value, want) {
+					t.Errorf("multipart fields = %v, want %v (no ambient owners)", r.MultipartForm.Value, want)
+				}
+				f, _, err := r.FormFile("file")
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer f.Close()
+				data, _ := io.ReadAll(f)
+				if string(data) != "current bytes" {
+					t.Errorf("file = %q", data)
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"id": "att-current", "markdown_url": "/download"})
+			}))
+			defer srv.Close()
+			setCLITestServerEnv(t, srv.URL)
+			t.Setenv("MULTICA_TOKEN", "mat_test-token")
+			t.Setenv("MULTICA_TASK_ID", "ambient-task")
+			t.Setenv("MULTICA_ISSUE_ID", "ambient-issue")
+			path := filepath.Join(t.TempDir(), "report.txt")
+			if err := os.WriteFile(path, []byte("current bytes"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cmd := newAttachmentUploadTestCmd()
+			_ = cmd.Flags().Set("attachment-id", renewalID)
+			out, err := captureStdout(t, func() error { return runAttachmentUpload(cmd, []string{path}) })
+			if err != nil || !strings.Contains(out, `"id": "att-current"`) {
+				t.Fatalf("upload: %v, stdout=%s", err, out)
+			}
+		})
+	}
+}
+
+func TestRunAttachmentSoftLinksOnlyUpdateMetadata(t *testing.T) {
+	metadata := map[string]any{"independent_artifacts": `["other","att-1","other","att-1"]`, "keep": "untouched"}
+	var methods []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method+" "+r.URL.Path)
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/attachments/att-1":
+			// Hard detach clears owners but retains the producing task.
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "att-1", "issue_id": nil, "comment_id": nil,
+				"chat_session_id": nil, "chat_message_id": nil, "task_id": "producing-task",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/issues/"+testIssueUUID+"/metadata":
+			_ = json.NewEncoder(w).Encode(map[string]any{"metadata": metadata})
+		case r.Method == http.MethodPut && r.URL.Path == "/api/issues/"+testIssueUUID+"/metadata/independent_artifacts":
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if len(body) != 1 {
+				t.Errorf("only the value should be sent: %v", body)
+			}
+			metadata["independent_artifacts"] = body["value"]
+			_ = json.NewEncoder(w).Encode(map[string]any{"metadata": metadata})
+		default:
+			t.Errorf("soft link must not mutate ownership or delete bytes: %s %s", r.Method, r.URL.Path)
+		}
 	}))
 	defer srv.Close()
 	setCLITestServerEnv(t, srv.URL)
 	t.Setenv("MULTICA_TOKEN", "mat_test-token")
-
-	dir := t.TempDir()
-	imgPath := filepath.Join(dir, "chart.png")
-	if err := os.WriteFile(imgPath, []byte("bytes"), 0o644); err != nil {
-		t.Fatalf("write temp image: %v", err)
-	}
-
-	cmd := newAttachmentUploadTestCmd() // no --task, no MULTICA_TASK_ID
-	if err := runAttachmentUpload(cmd, []string{imgPath}); err == nil || !strings.Contains(err.Error(), "no chat task in context") {
-		t.Fatalf("runAttachmentUpload error = %v, want no-chat-task error", err)
+	for _, step := range []struct{ action, want string }{
+		{"attach", `["other","att-1"]`}, {"attach", `["other","att-1"]`},
+		{"detach", `["other"]`}, {"detach", `["other"]`},
+	} {
+		cmd := &cobra.Command{Use: step.action}
+		cmd.Flags().String("issue", testIssueUUID, "")
+		cmd.Flags().Bool("soft", true, "")
+		_, err := captureStdout(t, func() error { return runAttachmentLink(cmd, []string{"att-1"}) })
+		if err != nil || metadata["independent_artifacts"] != step.want || metadata["keep"] != "untouched" {
+			t.Fatalf("%s: %v, metadata=%v, requests=%v", step.action, err, metadata, methods)
+		}
 	}
 }
 

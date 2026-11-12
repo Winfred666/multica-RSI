@@ -491,6 +491,15 @@ func (c *APIClient) UploadFile(ctx context.Context, fileData []byte, filename st
 // issue exists, its `markdown_url` goes into the description, and the create
 // call binds it via `attachment_ids`.
 func (c *APIClient) UploadIssueAttachment(ctx context.Context, fileData []byte, filename string, issueID string) (AttachmentResponse, error) {
+	return c.uploadAttachment(ctx, fileData, filename, "issue_id", issueID)
+}
+
+// UploadAttachment creates an ownerless file or renews attachmentID in place.
+func (c *APIClient) UploadAttachment(ctx context.Context, fileData []byte, filename, attachmentID string) (AttachmentResponse, error) {
+	return c.uploadAttachment(ctx, fileData, filename, "attachment_id", attachmentID)
+}
+
+func (c *APIClient) uploadAttachment(ctx context.Context, fileData []byte, filename, field, value string) (AttachmentResponse, error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
@@ -502,9 +511,9 @@ func (c *APIClient) UploadIssueAttachment(ctx context.Context, fileData []byte, 
 		return AttachmentResponse{}, fmt.Errorf("write file data: %w", err)
 	}
 
-	if issueID != "" {
-		if err := writer.WriteField("issue_id", issueID); err != nil {
-			return AttachmentResponse{}, fmt.Errorf("write issue_id field: %w", err)
+	if value != "" {
+		if err := writer.WriteField(field, value); err != nil {
+			return AttachmentResponse{}, fmt.Errorf("write %s field: %w", field, err)
 		}
 	}
 
@@ -521,7 +530,7 @@ func (c *APIClient) UploadIssueAttachment(ctx context.Context, fileData []byte, 
 
 	// Honor a longer context deadline for large files: callers widen the
 	// context for uploads, which the default client timeout would shadow.
-	// Same shape as UploadChatAttachment / UploadFileWithURL.
+	// Same shape as UploadFileWithURL.
 	httpClient := c.HTTPClient
 	if deadline, ok := ctx.Deadline(); ok {
 		remaining := time.Until(deadline)
@@ -558,62 +567,7 @@ func (c *APIClient) UploadIssueAttachment(ctx context.Context, fileData []byte, 
 // reply that task produces on completion. Returns the full AttachmentResponse
 // (id + markdown_url) so the agent can embed the image inline in its reply.
 func (c *APIClient) UploadChatAttachment(ctx context.Context, fileData []byte, filename, taskID string) (AttachmentResponse, error) {
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-
-	part, err := writer.CreateFormFile("file", filepath.Base(filename))
-	if err != nil {
-		return AttachmentResponse{}, fmt.Errorf("create form file: %w", err)
-	}
-	if _, err := part.Write(fileData); err != nil {
-		return AttachmentResponse{}, fmt.Errorf("write file data: %w", err)
-	}
-	if taskID != "" {
-		if err := writer.WriteField("task_id", taskID); err != nil {
-			return AttachmentResponse{}, fmt.Errorf("write task_id field: %w", err)
-		}
-	}
-	if err := writer.Close(); err != nil {
-		return AttachmentResponse{}, fmt.Errorf("close multipart writer: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/api/upload-file", &body)
-	if err != nil {
-		return AttachmentResponse{}, err
-	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	c.setHeaders(req)
-
-	// Honor a longer context deadline for large images, same as UploadFileWithURL.
-	httpClient := c.HTTPClient
-	if deadline, ok := ctx.Deadline(); ok {
-		remaining := time.Until(deadline)
-		if remaining > httpClient.Timeout {
-			clientCopy := *httpClient
-			clientCopy.Timeout = remaining
-			httpClient = &clientCopy
-		}
-	}
-
-	resp, err := httpClient.Do(req)
-	err = wrapTransport(req, err)
-	if err != nil {
-		return AttachmentResponse{}, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return AttachmentResponse{}, newHTTPError(http.MethodPost, "/api/upload-file", resp)
-	}
-
-	var result AttachmentResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return AttachmentResponse{}, fmt.Errorf("decode upload response: %w", wrapBodyRead(req, err))
-	}
-	if result.ID == "" {
-		return AttachmentResponse{}, fmt.Errorf("upload response missing attachment id")
-	}
-	return result, nil
+	return c.uploadAttachment(ctx, fileData, filename, "task_id", taskID)
 }
 
 // UploadFileWithURL uploads a file via multipart form to /api/upload-file
