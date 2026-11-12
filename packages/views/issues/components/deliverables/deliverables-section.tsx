@@ -2,7 +2,7 @@
 
 import { IssueSidebarSectionHeader } from "../issue-sidebar-section";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { LayoutGrid } from "@multica/ui/icons";
 import type { DeliverableFile } from "@multica/core/attachments/deliverables";
 import { IconButton } from "@multica/ui/components/common/icon-button";
@@ -22,10 +22,10 @@ const RECENT_FILES = 4;
 
 /**
  * "Deliverables" in the issue sidebar (MUL-7649): the files this issue's
- * comments delivered, as a whole — not grouped by run; each comment still
+ * metadata links or comments delivered, as a whole — not grouped by run; each comment still
  * shows its own files. Pull requests keep their own section above: linking
  * one and PR auto-complete are issue workflow, not output. Renders nothing
- * until a comment delivers a file.
+ * until a linked file or dependent deliverable exists.
  */
 export function DeliverablesSection({
   files,
@@ -56,34 +56,41 @@ export function DeliverablesSection({
       } />
       {open && (
         <div className="px-2">
-          {images.length > 0 && (
-            <div className="mx-2 mb-1.5 grid grid-cols-3 gap-1.5">
-              {images.map((file) => (
-                <TooltipHint key={file.key} label={file.latest.filename}>
-                  <button
-                    type="button"
-                    className="relative aspect-[4/3] overflow-hidden rounded-md ring-1 ring-border transition-shadow hover:ring-foreground/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label={versionedName(file, t)}
-                    onClick={() => openAttachment(file.latest)}
-                  >
-                    <DeliverableThumbnail
-                      attachment={file.latest}
-                      showTypeLabel={false}
-                      className="size-full"
-                    />
-                  </button>
-                </TooltipHint>
-              ))}
-            </div>
-          )}
-          {others.map((file) => (
-            <FileRow
-              key={file.key}
-              file={file}
-              onOpen={() => openAttachment(file.latest)}
-            />
-          ))}
-
+          {[true, false].map((independent) => {
+            const groupImages = images.filter((file) => !!file.independent === independent);
+            const groupOthers = others.filter((file) => !!file.independent === independent);
+            return (
+              <Fragment key={String(independent)}>
+                {groupImages.length > 0 && (
+                  <div className="mx-2 mb-1.5 grid grid-cols-3 gap-1.5">
+                    {groupImages.map((file) => (
+                      <TooltipHint key={file.key} label={file.latest.filename}>
+                        <button
+                          type="button"
+                          className="relative aspect-[4/3] overflow-hidden rounded-md ring-1 ring-border transition-shadow hover:ring-foreground/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={versionedName(file, t)}
+                          onClick={() => openAttachment(file.latest)}
+                        >
+                          <DeliverableThumbnail
+                            attachment={file.latest}
+                            showTypeLabel={false}
+                            className="size-full"
+                          />
+                        </button>
+                      </TooltipHint>
+                    ))}
+                  </div>
+                )}
+                {groupOthers.map((file) => (
+                  <FileRow
+                    key={file.key}
+                    file={file}
+                    onOpen={() => openAttachment(file.latest)}
+                  />
+                ))}
+              </Fragment>
+            );
+          })}
         </div>
       )}
       {modal}

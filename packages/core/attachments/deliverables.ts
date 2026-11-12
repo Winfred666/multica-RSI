@@ -1,7 +1,8 @@
 /**
  * Issue deliverables — the files an issue as a whole has produced (MUL-7649).
  *
- * A deliverable file is uploaded by an issue task or in a comment. Files on the
+ * A deliverable file is soft-linked in metadata, uploaded by an issue task or
+ * in a comment. Files on the
  * issue description are inputs (the brief, reference material), not output,
  * so they never count.
  *
@@ -26,12 +27,28 @@ export interface DeliverableSourceComment {
 }
 
 export interface DeliverableFile {
-  /** Identity shared by every version: normalized content type + filename. */
+  /** Independent attachment ID, or normalized content type + filename for versions. */
   key: string;
+  /** Metadata-linked ownerless files keep identity by ID, not filename. */
+  independent?: boolean;
   /** Every upload of this file, oldest first. Never empty. */
   versions: Attachment[];
   /** The newest upload — what lists show and open. */
   latest: Attachment;
+}
+
+/** Only the canonical JSON-string ID list defines soft links. */
+export function independentArtifactIds(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+  try {
+    const ids: unknown = JSON.parse(value);
+    if (!Array.isArray(ids)) return [];
+    return [...new Set(ids.filter((id): id is string =>
+      typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id),
+    ).map((id) => id.toLowerCase()))];
+  } catch {
+    return [];
+  }
 }
 
 function normalizeContentType(contentType: string): string {
@@ -61,15 +78,24 @@ function compareUploadOrder(a: Attachment, b: Attachment): number {
 }
 
 /**
- * Group every file uploaded in `comments` into deliverables, newest first
+ * Put independent IDs first, then group ordinary uploads newest first
  * (by each file's latest version).
  */
 export function collectDeliverableFiles(
   comments: ReadonlyArray<DeliverableSourceComment | null | undefined>,
   attachments: ReadonlyArray<Attachment> = [],
+  independentAttachments: ReadonlyArray<Attachment> = [],
 ): DeliverableFile[] {
   const byKey = new Map<string, Attachment[]>();
   const seen = new Set<string>();
+
+  const independent: DeliverableFile[] = [];
+  for (const attachment of independentAttachments) {
+    if (!attachment?.id || seen.has(attachment.id) || attachment.issue_id || attachment.comment_id ||
+      attachment.chat_session_id || attachment.chat_message_id) continue;
+    seen.add(attachment.id);
+    independent.push({ key: attachment.id, independent: true, versions: [attachment], latest: attachment });
+  }
 
   const delivered = comments.flatMap((comment) =>
     comment && !comment.deleted_at && (comment.type === undefined || comment.type === "comment")
@@ -88,7 +114,7 @@ export function collectDeliverableFiles(
     versions.sort(compareUploadOrder);
     files.push({ key, versions, latest: versions[versions.length - 1]! });
   }
-  return files.sort((a, b) => compareUploadOrder(b.latest, a.latest));
+  return [...independent, ...files.sort((a, b) => compareUploadOrder(b.latest, a.latest))];
 }
 
 /**

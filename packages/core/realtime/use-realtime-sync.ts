@@ -1190,7 +1190,7 @@ export function useRealtimeSync(
       if (!issue_id) return;
       qc.invalidateQueries({ queryKey: issueKeys.attachments(issue_id) });
       if (attachment_id) {
-        for (const key of ["attachment-content", "attachment-inline-resign", "attachment-inline-blob"]) {
+        for (const key of ["attachment-content", "attachment-inline-resign", "attachment-inline-blob", "attachment-metadata"]) {
           qc.invalidateQueries({ queryKey: [key, attachment_id] });
         }
       }

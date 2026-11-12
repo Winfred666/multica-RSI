@@ -129,6 +129,7 @@ import {
   useDeliverableDetails,
   type DeliverableOrigin,
 } from "./deliverables/deliverable-details";
+import { useIndependentArtifacts } from "@multica/core/attachments";
 import { collectDeliverableFiles } from "@multica/core/attachments/deliverables";
 import { AttachmentVersionsProvider } from "./deliverables/attachment-versions";
 import { useQuery } from "@tanstack/react-query";
@@ -2543,7 +2544,8 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   // The files this issue has delivered as a whole: the sidebar section, the
   // overview grid, the viewer's info panel and the comments' version badges
   // all read this (MUL-7649).
-  const deliverableFiles = useMemo(() => collectDeliverableFiles(timeline, issueAttachments), [timeline, issueAttachments]);
+  const independent = useIndependentArtifacts(issue?.metadata?.independent_artifacts);
+  const deliverableFiles = useMemo(() => collectDeliverableFiles(timeline, issueAttachments, independent), [timeline, issueAttachments, independent]);
   const commentById = useMemo(
     () =>
       new Map(
@@ -3150,7 +3152,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
         />
       )}
 
-      {/* Deliverables — the files this issue's comments delivered. Hidden
+      {/* Deliverables — metadata-linked files and this issue's output. Hidden
           while there are none. */}
       <DeliverablesSection files={deliverableFiles} onOpenOverview={openOverview} />
 

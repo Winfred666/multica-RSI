@@ -14,6 +14,7 @@ import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { isBuiltInIssueStatus } from "@multica/core/issue-statuses";
 import { agentTaskSnapshotOptions } from "@multica/core/agents";
 import { issueAttachmentsOptions, issueTimelineOptions } from "@multica/core/issues/queries";
+import { useIndependentArtifacts } from "@multica/core/attachments";
 import { collectDeliverableFiles } from "@multica/core/attachments/deliverables";
 import { issueStatusCategory, statusColumnKeys } from "@multica/core/issues";
 import { STATUS_CONFIG } from "@multica/core/issues/config";
@@ -384,7 +385,8 @@ function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, on
   // shortcut: one cached timeline per displayed issue; batch collaborators if large trees need it.
   const timeline = useIssueTimelineQuery(issue.id);
   const attachments = useQuery({ ...issueAttachmentsOptions(issue.id), enabled: !collapsed });
-  const files = useMemo(() => collectDeliverableFiles(timeline.data ?? [], attachments.data), [timeline.data, attachments.data]);
+  const independent = useIndependentArtifacts(issue.metadata?.independent_artifacts, !collapsed);
+  const files = useMemo(() => collectDeliverableFiles(timeline.data ?? [], attachments.data, independent), [timeline.data, attachments.data, independent]);
   const collaborators = useMemo(() => issueTreeCollaborators(timeline.data ?? []), [timeline.data]);
   const report = collaborators.filter((actor) => actor.actorType === "agent").flatMap((actor) => actor.messages)
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];

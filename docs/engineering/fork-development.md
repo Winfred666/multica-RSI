@@ -77,6 +77,14 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## Frontend
 
+- **Soft-linked deliverables.** The issue's `independent_artifacts` metadata is a
+  JSON-string attachment ID list. Existing attachment reads resolve unique IDs;
+  ownerless files appear before dependent deliverables in the tree and existing
+  Deliverables sidebar, using the same previews. Task provenance is not ownership;
+  issue, comment and private-chat owners exclude a soft target. Text links do not
+  define this relationship. Independent IDs stay separate even with matching names;
+  ordinary comment versions remain grouped as before.
+
 - **Issue tree.** You can inspect parent/child issues, expand collapsed stacks,
   and preview collaborators' messages and runs, with context-usage rings,
   compression counts and saved pan/zoom. Issue-owned sub-workspaces appear as
