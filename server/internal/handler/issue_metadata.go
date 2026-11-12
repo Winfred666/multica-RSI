@@ -182,6 +182,10 @@ func (h *Handler) SetIssueMetadataKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if key == "deliverables" && !h.validateDeliverablesMetadata(w, r, issue.WorkspaceID, req.Value) {
+		return
+	}
+
 	// Enforce the key-count cap in the handler. The DB only guards size,
 	// and a clear 4xx for "too many keys" beats a CHECK violation that
 	// happens to fire on the size cap once enough keys accumulate.

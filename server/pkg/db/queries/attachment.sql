@@ -3,12 +3,12 @@ WITH inserted AS (
   INSERT INTO attachment (
     id, workspace_id, issue_id, comment_id, chat_session_id, task_id, source_context_id,
     uploader_type, uploader_id, filename, url, content_type, size_bytes,
-    width, height
+    width, height, independent
   )
   VALUES (
     $1, $2, sqlc.narg(issue_id), sqlc.narg(comment_id), sqlc.narg(chat_session_id), sqlc.narg(task_id), sqlc.narg(source_context_id),
     $3, $4, $5, $6, $7, $8,
-    sqlc.narg(width), sqlc.narg(height)
+    sqlc.narg(width), sqlc.narg(height), sqlc.arg(independent)
   )
   RETURNING *
 ), bumped_issue AS (
@@ -122,6 +122,7 @@ SET comment_id = $1
 WHERE issue_id = $2
   AND comment_id IS NULL
   AND source_context_id IS NULL
+  AND NOT independent
   AND id = ANY($3::uuid[]);
 
 -- name: ReplaceCommentAttachments :execrows
@@ -132,6 +133,7 @@ SET comment_id = CASE
 END
 WHERE issue_id = $2
   AND source_context_id IS NULL
+  AND NOT independent
   AND (
     (comment_id = $1 AND NOT id = ANY(sqlc.arg(attachment_ids)::uuid[]))
     OR (comment_id IS NULL AND id = ANY(sqlc.arg(attachment_ids)::uuid[]))
@@ -146,6 +148,7 @@ WHERE workspace_id = sqlc.arg(workspace_id)
   AND comment_id IS NULL
   AND chat_message_id IS NULL
   AND source_context_id IS NULL
+  AND NOT independent
   AND (
     chat_session_id IS NULL
     OR chat_session_id = sqlc.arg(chat_session_id)
@@ -216,6 +219,7 @@ SELECT id FROM attachment
 WHERE workspace_id = sqlc.arg(workspace_id)
   AND issue_id IS NULL
   AND source_context_id IS NULL
+  AND NOT independent
   AND id = ANY(sqlc.arg(attachment_ids)::uuid[])
 ORDER BY id
 FOR UPDATE;
@@ -232,6 +236,7 @@ WHERE workspace_id = sqlc.arg(workspace_id)
   AND issue_id = sqlc.arg(issue_id)
   AND comment_id IS NULL
   AND source_context_id IS NULL
+  AND NOT independent
   AND id = ANY(sqlc.arg(attachment_ids)::uuid[])
 ORDER BY id
 FOR UPDATE;
@@ -252,6 +257,7 @@ WITH linked AS (
   WHERE attachment.workspace_id = sqlc.arg(workspace_id)
     AND attachment.issue_id IS NULL
     AND attachment.source_context_id IS NULL
+    AND NOT attachment.independent
     AND attachment.id = ANY(sqlc.arg(attachment_ids)::uuid[])
   RETURNING attachment.issue_id
 ), bumped_issue AS (
@@ -326,3 +332,8 @@ ORDER BY id;
 DELETE FROM attachment
 WHERE workspace_id = sqlc.arg(workspace_id)
   AND source_context_id IS NOT NULL;
+
+-- name: ListIndependentAttachments :many
+SELECT * FROM attachment
+WHERE workspace_id = $1 AND independent
+ORDER BY created_at ASC, id ASC;

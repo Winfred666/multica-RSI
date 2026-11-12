@@ -196,3 +196,50 @@ See [self-hosting](../../SELF_HOSTING.md) for deployment and
 See the [Multica License](../../LICENSE) and [NOTICE](../../NOTICE) for terms and upstream
 attribution. Index Labs develops the original
 [Multica repository](https://github.com/multica-ai/multica).
+
+## Independent deliverables (Backend P1)
+
+Independent deliverables reuse attachment rows and storage, with an explicit
+`independent` boolean, default false. They have no issue, comment, task, chat or
+source-context owner. Existing uploads are not converted. Uploader fields record
+provenance only. Ordinary attachment operations keep their existing behavior.
+
+Use these existing endpoints with the resource's workspace context:
+
+- Create: `POST /api/upload-file`, multipart `file` and `independent=true`.
+  All owner fields must be absent. Response is the existing attachment shape with
+  `independent:true`. A new upload without an ID creates a new resource even when
+  its filename matches another resource.
+- Discover, including unlinked resources:
+  `GET /api/workspaces/{workspaceUUID}?include=deliverables` adds
+  `deliverables: AttachmentResponse[]`. Without this opt-in the response is
+  unchanged. Discovery includes all independent resources in that workspace,
+  regardless of issue links; ordinary uploads are excluded.
+- Read: `GET /api/attachments/{id}`; preview and download retain the existing
+  `/{id}/content` and `/{id}/download` routes. Persist `markdown_url`, which always
+  follows the stable ID download route for independent resources. Independent
+  downloads use the existing no-store proxy, including signed download
+  capabilities, so storage/CDN caching cannot serve prior content.
+- Replace: `POST /api/upload-file`, multipart `file`, `independent=true` and
+  `attachment_id={uuid}`. Only an existing independent object in the selected
+  workspace is eligible. The resource row is locked while current bytes overwrite
+  its existing storage key and file metadata is updated. No previous blob,
+  backup, or content-history row is created. Storage must not retain object
+  versions externally if no-history storage is required.
+- Link: `PUT /api/issues/{issue}/metadata/deliverables`, with
+  `{"value":"[\"<independent-uuid>\"]"}`. The `deliverables` value is a primitive
+  **string encoding a JSON array** of distinct canonical UUIDs. The server checks
+  that every ID is an independent resource in the issue's workspace. Share the
+  same ID by recording it on multiple issues. Read through the existing issue
+  metadata API or the issue's `metadata` response.
+- Unlink: write the remaining array (encoded `[]` is valid), or
+  `DELETE /api/issues/{issue}/metadata/deliverables` to remove all links. These
+  operations only change metadata. Deleting an issue likewise removes only its
+  links; resources and other issues' links survive. Existing metadata limits
+  (50 keys, 8KB) and single-key last-writer semantics apply. Clients updating a
+  link set must read/modify/write the entire encoded array.
+
+Clients should omit missing resources when rendering stored links. Explicit
+resource deletion still uses the existing attachment deletion endpoint and is
+separate from unlinking; it does not rewrite issue metadata. The Frontend and CLI
+slices own their client/schema changes. Plan: [P1 #50](https://github.com/Winfred666/multica-RSI/issues/50).

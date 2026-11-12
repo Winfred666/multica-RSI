@@ -53,6 +53,7 @@ const (
 
 type AttachmentResponse struct {
 	ID            string  `json:"id"`
+	Independent   bool    `json:"independent,omitempty"`
 	WorkspaceID   string  `json:"workspace_id"`
 	IssueID       *string `json:"issue_id"`
 	CommentID     *string `json:"comment_id"`
@@ -161,6 +162,7 @@ func (h *Handler) attachmentToResponse(a db.Attachment, mode attachmentURLMode) 
 	id := uuidToString(a.ID)
 	resp := AttachmentResponse{
 		ID:           id,
+		Independent:  a.Independent,
 		WorkspaceID:  uuidToString(a.WorkspaceID),
 		UploaderType: a.UploaderType,
 		UploaderID:   uuidToString(a.UploaderID),
@@ -175,7 +177,7 @@ func (h *Handler) attachmentToResponse(a db.Attachment, mode attachmentURLMode) 
 	// Only CloudFront mode overrides the stable path here; the presign and proxy
 	// modes already leave DownloadURL as the stable path and resolve it at
 	// download time, so stable mode is a no-op for them.
-	if h.CFSigner != nil && mode != attachmentURLModeStable {
+	if !a.Independent && h.CFSigner != nil && mode != attachmentURLModeStable {
 		resp.DownloadURL = h.CFSigner.SignedURL(a.Url, time.Now().Add(h.attachmentDownloadURLTTL()))
 	}
 	if a.Width.Valid && a.Height.Valid {
@@ -241,8 +243,8 @@ func (h *Handler) buildMarkdownURL(a db.Attachment, id string) string {
 	relPath := util.AttachmentDownloadPath(id)
 	publicURL := strings.TrimRight(h.cfg.PublicURL, "/")
 
-	// An issue task deliverable can be replaced; its Markdown link follows the row.
-	if (!a.TaskID.Valid || !a.IssueID.Valid) && h.storageURLIsPubliclyReadable(a.Url) {
+	// Replaceable resources keep Markdown links tied to the row, not the blob.
+	if !a.Independent && (!a.TaskID.Valid || !a.IssueID.Valid) && h.storageURLIsPubliclyReadable(a.Url) {
 		return a.Url
 	}
 
@@ -438,6 +440,32 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	independent := r.FormValue("independent") == "true"
+	if raw := r.FormValue("independent"); raw != "" && raw != "true" && raw != "false" {
+		writeError(w, http.StatusBadRequest, "independent must be true or false")
+		return
+	}
+	if independent {
+		if workspaceID == "" {
+			writeError(w, http.StatusBadRequest, "independent resources require a workspace")
+			return
+		}
+		for _, owner := range []string{"issue_id", "comment_id", "task_id", "chat_session_id", "chat_message_id", "source_context_id"} {
+			if r.FormValue(owner) != "" {
+				writeError(w, http.StatusBadRequest, "independent resources cannot have an owner")
+				return
+			}
+		}
+	}
+	if attachmentID := r.FormValue("attachment_id"); attachmentID != "" {
+		if !independent {
+			writeError(w, http.StatusBadRequest, "attachment_id replacement requires independent=true")
+			return
+		}
+		h.replaceIndependentAttachment(w, r, userID, workspaceID, attachmentID, header.Filename, contentType, data)
+		return
+	}
+
 	// Generate a UUIDv7 to use as both the attachment ID and S3 key.
 	id, err := uuid.NewV7()
 	if err != nil {
@@ -463,6 +491,7 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		uploaderType, uploaderID := h.resolveActor(r, userID, workspaceID)
 
 		params := db.CreateAttachmentParams{
+			Independent:  independent,
 			ID:           pgtype.UUID{Bytes: id, Valid: true},
 			WorkspaceID:  parseUUID(workspaceID),
 			UploaderType: uploaderType,
@@ -633,6 +662,11 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			slog.Error("failed to create attachment record", "error", err)
+			if independent {
+				h.deleteS3Object(r.Context(), link)
+				writeError(w, http.StatusInternalServerError, "failed to create independent resource")
+				return
+			}
 			// S3 upload succeeded but DB record failed — still return the link
 			// so the file is usable. Log the error for investigation.
 		} else {
@@ -747,7 +781,11 @@ func (h *Handler) writeSignedAttachmentMetadata(w http.ResponseWriter, r *http.R
 	// stored Content-Disposition (inline for media, attachment otherwise), which
 	// keeps images renderable inline while preserving the original download
 	// filename.
-	switch mode := h.resolveAttachmentDownloadMode(att.Url); mode {
+	mode := h.resolveAttachmentDownloadMode(att.Url)
+	if att.Independent {
+		mode = attachmentDownloadModeProxy
+	}
+	switch mode {
 	case attachmentDownloadModeCloudFront:
 		// CloudFront mode: attachmentToResponse already set DownloadURL to an
 		// inline-intent signed URL. The download button needs the forced-
@@ -914,6 +952,11 @@ func (h *Handler) DownloadAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := h.Storage.KeyFromURL(att.Url)
+	// Mutable content must bypass the storage/CDN's immutable-object cache.
+	if att.Independent {
+		h.proxyAttachmentDownload(w, r, att, key, false)
+		return
+	}
 	switch h.resolveAttachmentDownloadMode(att.Url) {
 	case attachmentDownloadModeCloudFront:
 		if h.CFSigner == nil {

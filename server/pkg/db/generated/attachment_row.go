@@ -5,6 +5,7 @@ package db
 func (r CreateAttachmentRow) Attachment() Attachment {
 	return Attachment{
 		ID:            r.ID,
+		Independent:   r.Independent,
 		WorkspaceID:   r.WorkspaceID,
 		IssueID:       r.IssueID,
 		CommentID:     r.CommentID,
