@@ -521,7 +521,7 @@ func (c *APIClient) UploadIssueAttachment(ctx context.Context, fileData []byte, 
 
 	// Honor a longer context deadline for large files: callers widen the
 	// context for uploads, which the default client timeout would shadow.
-	// Same shape as UploadChatAttachment / UploadFileWithURL.
+	// Same shape as UploadAttachment / UploadFileWithURL.
 	httpClient := c.HTTPClient
 	if deadline, ok := ctx.Deadline(); ok {
 		remaining := time.Until(deadline)
@@ -553,11 +553,9 @@ func (c *APIClient) UploadIssueAttachment(ctx context.Context, fileData []byte, 
 	return result, nil
 }
 
-// UploadChatAttachment uploads a file via multipart form to /api/upload-file
-// tagged with a chat task (task_id). The server binds the row to the assistant
-// reply that task produces on completion. Returns the full AttachmentResponse
-// (id + markdown_url) so the agent can embed the image inline in its reply.
-func (c *APIClient) UploadChatAttachment(ctx context.Context, fileData []byte, filename, taskID string) (AttachmentResponse, error) {
+// UploadAttachment forwards optional task and replacement IDs. The server's
+// response determines the resulting attachment identity.
+func (c *APIClient) UploadAttachment(ctx context.Context, fileData []byte, filename, taskID, attachmentID string) (AttachmentResponse, error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
@@ -571,6 +569,11 @@ func (c *APIClient) UploadChatAttachment(ctx context.Context, fileData []byte, f
 	if taskID != "" {
 		if err := writer.WriteField("task_id", taskID); err != nil {
 			return AttachmentResponse{}, fmt.Errorf("write task_id field: %w", err)
+		}
+	}
+	if attachmentID != "" {
+		if err := writer.WriteField("attachment_id", attachmentID); err != nil {
+			return AttachmentResponse{}, fmt.Errorf("write attachment_id field: %w", err)
 		}
 	}
 	if err := writer.Close(); err != nil {

@@ -116,7 +116,7 @@ func TestUploadResponseErrorsAreClassified(t *testing.T) {
 			return att.ID, att.URL, err
 		}},
 		{"chat", func(c *APIClient) (string, string, error) {
-			att, err := c.UploadChatAttachment(context.Background(), []byte("file"), "file.txt", "task-1")
+			att, err := c.UploadAttachment(context.Background(), []byte("file"), "file.txt", "task-1", "")
 			return att.ID, att.URL, err
 		}},
 		{"avatar", func(c *APIClient) (string, string, error) {

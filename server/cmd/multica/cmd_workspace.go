@@ -190,6 +190,7 @@ func init() {
 	workspaceCreateCmd.Flags().String("import-file", "", "Import a workspace package after creation")
 	addWorkspaceImportFlags(workspaceCreateCmd)
 	workspaceGetCmd.Flags().String("output", "json", "Output format: table or json")
+	workspaceGetCmd.Flags().String("include", "", "Optional response fields, e.g. attachments (JSON output)")
 	workspaceMemberListCmd.Flags().String("output", "table", "Output format: table or json")
 	workspaceMemberInviteCmd.Flags().String("role", "member", "Member role to grant: member or admin (owner is not allowed)")
 	workspaceMemberInviteCmd.Flags().String("output", "table", "Output format: table or json")
@@ -525,8 +526,12 @@ func runWorkspaceGet(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cli.APIContext(context.Background())
 	defer cancel()
 
+	path := "/api/workspaces/" + wsID
+	if include, _ := cmd.Flags().GetString("include"); include != "" {
+		path += "?include=" + url.QueryEscape(include)
+	}
 	var ws map[string]any
-	if err := client.GetJSON(ctx, "/api/workspaces/"+wsID, &ws); err != nil {
+	if err := client.GetJSON(ctx, path, &ws); err != nil {
 		return fmt.Errorf("get workspace: %w", err)
 	}
 

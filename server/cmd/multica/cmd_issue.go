@@ -690,6 +690,8 @@ func init() {
 	issueUpdateCmd.Flags().String("description-file", "", "Read new description from a UTF-8 file (preserves multi-line content verbatim; use this on Windows when stdin piping mangles non-ASCII bytes). The path must be inside the current working directory unless --allow-external-file is set.")
 	issueUpdateCmd.Flags().Bool("allow-external-file", false, "Allow --description-file / --attachment to read a path outside the current working directory. Off by default so a stale temp file from another run/environment can't be picked up (MUL-4252).")
 	issueUpdateCmd.Flags().StringArray("attachment", nil, "Local file path to attach (one literal path per flag; repeat --attachment for multiple files); references are appended to the end of the description")
+	issueUpdateCmd.Flags().StringSlice("attachment-id", nil, "Existing attachment UUID(s) to bind to this issue (repeatable)")
+	issueUpdateCmd.Flags().StringSlice("remove-attachment-id", nil, "Attachment UUID(s) to detach from this issue and its comments, keeping their bytes (repeatable)")
 	issueUpdateCmd.Flags().String("status", "", "New status")
 	issueUpdateCmd.Flags().String("priority", "", "New priority")
 	issueUpdateCmd.Flags().String("assignee", "", "New assignee name (member, agent, or squad; fuzzy match)")
@@ -1783,9 +1785,9 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 	// The server rejects a mark alongside description or attachment writes,
 	// and attachments upload before the update, so refuse the combination
 	// before anything is uploaded and left unbound.
-	if duplicateOf != "" && (len(attachmentPaths) > 0 || cmd.Flags().Changed("description") ||
+	if duplicateOf != "" && (len(attachmentPaths) > 0 || cmd.Flags().Changed("attachment-id") || cmd.Flags().Changed("remove-attachment-id") || cmd.Flags().Changed("description") ||
 		cmd.Flags().Changed("description-stdin") || cmd.Flags().Changed("description-file")) {
-		return fmt.Errorf("--duplicate-of cannot be combined with --description, --description-stdin, --description-file or --attachment; mark the duplicate first, then change the description in a separate update")
+		return fmt.Errorf("--duplicate-of cannot be combined with --description, --description-stdin, --description-file, --attachment, --attachment-id or --remove-attachment-id; mark the duplicate first, then change the description in a separate update")
 	}
 
 	client, err := newAPIClient(cmd)
@@ -1888,6 +1890,14 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 		body["position"] = v
 	}
 
+	attachmentIDs, _ := cmd.Flags().GetStringSlice("attachment-id")
+	if len(attachmentIDs) > 0 {
+		body["attachment_ids"] = attachmentIDs
+	}
+	if removed, _ := cmd.Flags().GetStringSlice("remove-attachment-id"); len(removed) > 0 {
+		body["remove_attachment_ids"] = removed
+	}
+
 	if len(body) == 0 && len(attachmentPaths) == 0 {
 		return fmt.Errorf("no fields to update; use flags like --title, --status, --priority, --assignee, etc.")
 	}
@@ -1912,7 +1922,6 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 			desc = *issue.Description
 		}
 	}
-	attachmentIDs := make([]string, 0, len(pending))
 	attachmentRefs := make([]cli.AttachmentResponse, 0, len(pending))
 	for _, att := range pending {
 		uploaded, uploadErr := client.UploadIssueAttachment(ctx, att.data, att.path, "")

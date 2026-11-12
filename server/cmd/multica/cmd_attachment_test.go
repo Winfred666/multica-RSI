@@ -169,12 +169,15 @@ func TestRunAttachmentDownloadCreatesMissingOutputDir(t *testing.T) {
 func newAttachmentUploadTestCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "upload"}
 	cmd.Flags().String("task", "", "")
+	cmd.Flags().String("attachment-id", "", "")
 	return cmd
 }
 
 func TestRunAttachmentUploadSendsTaskIDAndPrintsContract(t *testing.T) {
+	t.Setenv("MULTICA_TASK_ID", "ambient-task")
 	const taskID = "task-abc"
 	var gotTaskID string
+	var gotAttachmentID string
 	var gotFile string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -185,6 +188,7 @@ func TestRunAttachmentUploadSendsTaskIDAndPrintsContract(t *testing.T) {
 			t.Fatalf("parse multipart: %v", err)
 		}
 		gotTaskID = r.FormValue("task_id")
+		gotAttachmentID = r.FormValue("attachment_id")
 		if f, _, err := r.FormFile("file"); err == nil {
 			_ = f.Close()
 			gotFile = "present"
@@ -212,6 +216,7 @@ func TestRunAttachmentUploadSendsTaskIDAndPrintsContract(t *testing.T) {
 
 	cmd := newAttachmentUploadTestCmd()
 	_ = cmd.Flags().Set("task", taskID)
+	_ = cmd.Flags().Set("attachment-id", "att-old")
 
 	out, err := captureStdout(t, func() error { return runAttachmentUpload(cmd, []string{imgPath}) })
 	if err != nil {
@@ -219,6 +224,9 @@ func TestRunAttachmentUploadSendsTaskIDAndPrintsContract(t *testing.T) {
 	}
 	if gotTaskID != taskID {
 		t.Fatalf("server task_id = %q, want %q", gotTaskID, taskID)
+	}
+	if gotAttachmentID != "att-old" {
+		t.Fatalf("server attachment_id = %q, want att-old", gotAttachmentID)
 	}
 	if gotFile != "present" {
 		t.Fatalf("server did not receive a file part")
@@ -240,9 +248,13 @@ func TestRunAttachmentUploadSendsTaskIDAndPrintsContract(t *testing.T) {
 // branch: a non-image file emits the block-level `!file[...]( )` card snippet,
 // not image `![...]` markdown.
 func TestRunAttachmentUploadNonImageUsesFileCardMarkdown(t *testing.T) {
+	t.Setenv("MULTICA_TASK_ID", "")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			t.Fatalf("parse multipart: %v", err)
+		}
+		if r.FormValue("task_id") != "" {
+			t.Errorf("taskless upload sent task_id: %q", r.FormValue("task_id"))
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":           "att-doc",
@@ -263,7 +275,6 @@ func TestRunAttachmentUploadNonImageUsesFileCardMarkdown(t *testing.T) {
 	}
 
 	cmd := newAttachmentUploadTestCmd()
-	_ = cmd.Flags().Set("task", "task-abc")
 
 	out, err := captureStdout(t, func() error { return runAttachmentUpload(cmd, []string{docPath}) })
 	if err != nil {
@@ -286,9 +297,13 @@ func TestRunAttachmentUploadNonImageUsesFileCardMarkdown(t *testing.T) {
 // does not truncate — otherwise the card fails to render and the standalone
 // attachment is hidden by the referenced URL, showing nothing.
 func TestRunAttachmentUploadEscapesFilename(t *testing.T) {
+	t.Setenv("MULTICA_TASK_ID", "ambient-task")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			t.Fatalf("parse multipart: %v", err)
+		}
+		if r.FormValue("task_id") != "ambient-task" {
+			t.Errorf("task_id = %q, want ambient-task", r.FormValue("task_id"))
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":           "att-esc",
@@ -308,7 +323,6 @@ func TestRunAttachmentUploadEscapesFilename(t *testing.T) {
 	}
 
 	cmd := newAttachmentUploadTestCmd()
-	_ = cmd.Flags().Set("task", "task-abc")
 
 	out, err := captureStdout(t, func() error { return runAttachmentUpload(cmd, []string{docPath}) })
 	if err != nil {
@@ -317,27 +331,6 @@ func TestRunAttachmentUploadEscapesFilename(t *testing.T) {
 	// The `]` in the filename must be escaped inside the label.
 	if !strings.Contains(out, `!file[a\\]b.pdf](https://public.example/api/attachments/att-esc/download)`) {
 		t.Fatalf("stdout missing escaped file-card snippet: %q", out)
-	}
-}
-
-func TestRunAttachmentUploadRequiresTask(t *testing.T) {
-	t.Setenv("MULTICA_TASK_ID", "")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-	setCLITestServerEnv(t, srv.URL)
-	t.Setenv("MULTICA_TOKEN", "mat_test-token")
-
-	dir := t.TempDir()
-	imgPath := filepath.Join(dir, "chart.png")
-	if err := os.WriteFile(imgPath, []byte("bytes"), 0o644); err != nil {
-		t.Fatalf("write temp image: %v", err)
-	}
-
-	cmd := newAttachmentUploadTestCmd() // no --task, no MULTICA_TASK_ID
-	if err := runAttachmentUpload(cmd, []string{imgPath}); err == nil || !strings.Contains(err.Error(), "no chat task in context") {
-		t.Fatalf("runAttachmentUpload error = %v, want no-chat-task error", err)
 	}
 }
 

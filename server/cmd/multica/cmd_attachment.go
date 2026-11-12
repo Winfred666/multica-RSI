@@ -34,33 +34,42 @@ var attachmentDownloadCmd = &cobra.Command{
 
 var attachmentUploadCmd = &cobra.Command{
 	Use:   "upload <path>",
-	Short: "Upload a file to attach to your chat reply",
-	Long: `Upload a local file so it is attached to the reply of the current chat task.
+	Short: "Upload a file or replace an attachment",
+	Long: `Upload a local file and print its ID and ready-to-paste markdown.
 
-Intended for agents running inside a chat task: the file is tagged with the
-task and, when the task completes, the server binds it to the assistant reply
-it produces — it appears as an attachment card below your reply even if you
-paste nothing. The command also returns a markdown snippet you may paste on its
-own line to place the item: files use !file[name](url) (a card), images use
-![name](url) (inline).
+When present, MULTICA_TASK_ID binds a new upload to the current chat reply;
+--task overrides it. A task is not required.
 
-The task id is read from MULTICA_TASK_ID (set by the daemon inside a task);
-override it with --task when needed.`,
-	Example: `  # Attach an image to the current chat reply
-  $ multica attachment upload ./chart.png`,
+Pass --attachment-id to replace a file. The server decides whether to renew
+it or preserve the previous content with a new ID. Use the returned ID and
+markdown_url for subsequent operations.`,
+	Example: `  $ multica attachment upload ./chart.png
+  $ multica attachment upload ./preview.html --attachment-id <id> --output json`,
 	Args: exactArgs(1),
 	RunE: runAttachmentUpload,
+}
+
+var attachmentGetCmd = &cobra.Command{
+	Use:   "get <attachment-id>",
+	Short: "Get attachment metadata",
+	Args:  exactArgs(1),
+	RunE:  runAttachmentGet,
 }
 
 func init() {
 	attachmentCmd.AddCommand(attachmentDownloadCmd)
 	attachmentCmd.AddCommand(attachmentUploadCmd)
+	attachmentCmd.AddCommand(attachmentGetCmd)
 
 	attachmentDownloadCmd.Flags().StringP("output-dir", "o", ".", "Directory to save the downloaded file")
 	attachmentUploadCmd.Flags().String("task", "", "Chat task id to attach to (defaults to MULTICA_TASK_ID)")
+	attachmentUploadCmd.Flags().String("attachment-id", "", "Attachment ID whose content to replace (the server may return a new ID)")
+	attachmentUploadCmd.Flags().String("output", "json", "Output format: json")
+	attachmentGetCmd.Flags().String("output", "json", "Output format: json")
 }
 
 func runAttachmentUpload(cmd *cobra.Command, args []string) error {
+	attachmentID, _ := cmd.Flags().GetString("attachment-id")
 	client, err := newAPIClient(cmd)
 	if err != nil {
 		return err
@@ -69,9 +78,6 @@ func runAttachmentUpload(cmd *cobra.Command, args []string) error {
 	taskID, _ := cmd.Flags().GetString("task")
 	if taskID == "" {
 		taskID = client.TaskID
-	}
-	if taskID == "" {
-		return fmt.Errorf("no chat task in context: run inside a chat task (MULTICA_TASK_ID set) or pass --task <id>")
 	}
 
 	path := args[0]
@@ -86,7 +92,7 @@ func runAttachmentUpload(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), cli.AtLeastAPITimeout(60*time.Second))
 	defer cancel()
 
-	att, err := client.UploadChatAttachment(ctx, data, path, taskID)
+	att, err := client.UploadAttachment(ctx, data, path, taskID, attachmentID)
 	if err != nil {
 		return fmt.Errorf("upload attachment: %w", err)
 	}
@@ -101,6 +107,20 @@ func runAttachmentUpload(cmd *cobra.Command, args []string) error {
 		"markdown_url": att.MarkdownURL,
 		"markdown":     markdown,
 	})
+}
+
+func runAttachmentGet(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+	var att map[string]any
+	if err := client.GetJSON(ctx, "/api/attachments/"+args[0], &att); err != nil {
+		return fmt.Errorf("get attachment: %w", err)
+	}
+	return cli.PrintJSON(os.Stdout, att)
 }
 
 // attachmentMarkdown renders the markdown snippet that makes an uploaded file

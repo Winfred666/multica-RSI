@@ -3815,6 +3815,8 @@ func newIssueUpdateTestCmd() *cobra.Command {
 	cmd.Flags().String("description-file", "", "")
 	cmd.Flags().Bool("allow-external-file", false, "")
 	cmd.Flags().StringArray("attachment", nil, "")
+	cmd.Flags().StringSlice("attachment-id", nil, "")
+	cmd.Flags().StringSlice("remove-attachment-id", nil, "")
 	cmd.Flags().String("status", "", "")
 	cmd.Flags().String("priority", "", "")
 	cmd.Flags().String("assignee", "", "")
