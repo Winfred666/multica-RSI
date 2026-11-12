@@ -289,8 +289,9 @@ including declarative owners, guarded assignee synchronization and FINISHED re-e
 Its minimal `common.py` helpers publish shared configuration JSON as ordinary
 ownerless uploads, retaining the returned attachment ID. MAIN/developer/reviewer
 readers share small references; configuration payloads are not issue metadata.
-Transient SoP runtime/recovery state remains separate. HTML debug previews and
-controller artifacts stay ordinary comment attachments, not ownerless configs.
+Transient SoP runtime/recovery state remains separate. Auto-compiled DEBUG HTML
+uploads ownerless with a non-owning current-issue comment link; controller-supplied
+artifacts stay ordinary comment attachments. DEBUG settings and triggers are unchanged.
 
 See [configuration artifacts](../../harness/skills/create-symbolic-sop/references/config-artifacts.md).
 No manual deliverables-list or independent upload mode is used. This is not a

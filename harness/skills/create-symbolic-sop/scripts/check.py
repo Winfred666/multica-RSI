@@ -363,7 +363,7 @@ workflow = Workflow(
                 self.assertNotIn('setting', value)
             cli.side_effect = ValueError('Announcement unavailable')
             failed = {'issue_id': 'installer', 'filename': 'master.json'}
-            with self.assertRaisesRegex(ValueError, 'Configuration uploaded as replacement'):
+            with self.assertRaisesRegex(ValueError, 'Resource uploaded as replacement'):
                 common.write_config(failed, {'setting': 3})
             self.assertEqual(failed['attachment_id'], 'replacement')
         self.assertNotIn(b'name="attachment_id"', uploads[0])
@@ -397,6 +397,7 @@ workflow = Workflow(
                         MULTICA_SERVER_URL='http://fixture.invalid'), patch.object(wrapper, 'write_artifact') as upload:
             wrapper.publish_artifacts(context, controller, result)
         reference, html, parent = upload.call_args.args
+        self.assertEqual(upload.call_args.kwargs, {'independent': True})
         self.assertEqual(reference['issue_id'], 'fixture-issue')
         self.assertIsNone(parent)
         filename = reference['filename']
