@@ -556,46 +556,33 @@ func (c *APIClient) UploadIssueAttachment(ctx context.Context, fileData []byte, 
 // UploadAttachment forwards optional task and replacement IDs. The server's
 // response determines the resulting attachment identity.
 func (c *APIClient) UploadAttachment(ctx context.Context, fileData []byte, filename, taskID, attachmentID string) (AttachmentResponse, error) {
-	fields := map[string]string{}
-	if taskID != "" {
-		fields["task_id"] = taskID
-	}
-	if attachmentID != "" {
-		fields["attachment_id"] = attachmentID
-	}
-	var result AttachmentResponse
-	if err := c.uploadAttachment(ctx, fileData, filename, fields, &result); err != nil {
-		return AttachmentResponse{}, err
-	}
-	if result.ID == "" {
-		return AttachmentResponse{}, fmt.Errorf("upload response missing attachment id")
-	}
-	return result, nil
-}
-
-func (c *APIClient) uploadAttachment(ctx context.Context, fileData []byte, filename string, fields map[string]string, out any) error {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
 	part, err := writer.CreateFormFile("file", filepath.Base(filename))
 	if err != nil {
-		return fmt.Errorf("create form file: %w", err)
+		return AttachmentResponse{}, fmt.Errorf("create form file: %w", err)
 	}
 	if _, err := part.Write(fileData); err != nil {
-		return fmt.Errorf("write file data: %w", err)
+		return AttachmentResponse{}, fmt.Errorf("write file data: %w", err)
 	}
-	for key, value := range fields {
-		if err := writer.WriteField(key, value); err != nil {
-			return fmt.Errorf("write %s field: %w", key, err)
+	if taskID != "" {
+		if err := writer.WriteField("task_id", taskID); err != nil {
+			return AttachmentResponse{}, fmt.Errorf("write task_id field: %w", err)
+		}
+	}
+	if attachmentID != "" {
+		if err := writer.WriteField("attachment_id", attachmentID); err != nil {
+			return AttachmentResponse{}, fmt.Errorf("write attachment_id field: %w", err)
 		}
 	}
 	if err := writer.Close(); err != nil {
-		return fmt.Errorf("close multipart writer: %w", err)
+		return AttachmentResponse{}, fmt.Errorf("close multipart writer: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/api/upload-file", &body)
 	if err != nil {
-		return err
+		return AttachmentResponse{}, err
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	c.setHeaders(req)
@@ -614,18 +601,22 @@ func (c *APIClient) uploadAttachment(ctx context.Context, fileData []byte, filen
 	resp, err := httpClient.Do(req)
 	err = wrapTransport(req, err)
 	if err != nil {
-		return err
+		return AttachmentResponse{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return newHTTPError(http.MethodPost, "/api/upload-file", resp)
+		return AttachmentResponse{}, newHTTPError(http.MethodPost, "/api/upload-file", resp)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("decode upload response: %w", wrapBodyRead(req, err))
+	var result AttachmentResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return AttachmentResponse{}, fmt.Errorf("decode upload response: %w", wrapBodyRead(req, err))
 	}
-	return nil
+	if result.ID == "" {
+		return AttachmentResponse{}, fmt.Errorf("upload response missing attachment id")
+	}
+	return result, nil
 }
 
 // UploadFileWithURL uploads a file via multipart form to /api/upload-file
