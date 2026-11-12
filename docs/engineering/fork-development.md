@@ -164,7 +164,7 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   the resolver's metadata reader and the engine's Workflow validation without
   issue/task context. Ordinary `sop list`, `sop run` and procedure help are unchanged.
 
-- **Template publication.** The creator/template publishes shared config JSON
+- **Engine publication.** The CLI-owned engine publishes shared config JSON
   and DEBUG-compiled HTML with ownerless CLI upload/renew and soft-attach to the
   current issue. IDs persist in the CLI-managed `independent_artifacts` list;
   controller-supplied ordinary comment attachments and DEBUG triggers are unchanged.
@@ -206,6 +206,13 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   limit apply; overlapping callbacks on the same SoP require coordination.
   Controller `data` remains internal; state instructions and option descriptions
   expose only selected facts in CLI, help and HTML.
+
+- **Built-in symbolic SoPs.** The blocker and child dispatch skills keep their
+  instructions, controllers and domain helpers, not copied runtime modules.
+  They use CLI callbacks with their existing checks, side effects and issue-owned
+  `sop.<name>` state. Help replays guidance without executing the procedure.
+  Protocol changes belong in the engine; propagation must preserve controllers
+  and live issue records.
   The blocker SoP marks the issue blocked and steers one concise help request
   to its parent's original assignment thread, or a new parent thread if none
   exists. It posts no separate blocker note or return receipt on the current
@@ -361,9 +368,9 @@ described above. There is no client history mode or independent-only list.
 
 Workspace `?include=attachments` supplies ordinary files. Tree free nodes select rows with both owner fields empty and deduplicate by ID, not filename. They float beside the issue trees on a separate layer beneath the cards, outside root packing, and reuse common preview tiles without extra titles or filename headers. Description content links use the ordinary attachment URL matcher to draw smooth dashed SVG cubic Bézier soft-reference curves without a routing library; they do not establish ownership. Comment files in the FK attachment projection join the existing deliverable collection and version rendering even before their timeline loads. The issue's `independent_artifacts` metadata additionally supplies soft-linked ownerless files in its tree card and Deliverables section.
 
-## SoP configuration artifacts (template only)
+## SoP configuration artifacts
 
-The creator/template adopts the [R-328 shared wrapper protocol](https://github.com/Winfred666/multica-featssship/tree/c396c654f245e2dd4d0686f70a16a73101ac4188/installation),
+The CLI-owned engine follows the [R-328 shared wrapper protocol](https://github.com/Winfred666/multica-featssship/tree/c396c654f245e2dd4d0686f70a16a73101ac4188/installation),
 including declarative owners, guarded assignee synchronization and FINISHED re-entry.
 Its `common.py` helpers retain shared configuration references. The runtime
 publishes present config JSON and DEBUG HTML through CLI ownerless upload/renew
@@ -373,9 +380,9 @@ Transient SoP runtime/recovery state remains separate. Shared artifact IDs
 live in `independent_artifacts`; controller-supplied artifacts stay ordinary
 comment attachments. DEBUG settings and triggers are unchanged.
 
-See [configuration artifacts](../../harness/skills/create-symbolic-sop/references/config-artifacts.md).
-The CLI manages the soft-link metadata; no independent upload flag is used. This is not a
-rollout: human approval is required before propagation to other SoPs or installs.
+See `multica sop docs` for the engine-owned authoring contract.
+The CLI manages soft-link metadata; no independent upload flag is used.
+Further propagation to other SoPs or installs requires human approval.
 
 ## Natural-answer issue completion
 

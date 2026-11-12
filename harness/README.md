@@ -36,8 +36,7 @@ replaces matching names/keys within the destination workspace; install updates
 the named startup kit. See the [package contract](../docs/engineering/workspace-packages.md).
 System skills inherit into newly created agents; optional skills remain in the
 workspace library for attachment.
-The optional library contains `create-symbolic-sop` for SOP authoring and
-`harness-backup-restore` and [explicit workspace manipulation](skills/multica-workspace-manipulation/SKILL.md).
+The optional library contains `harness-backup-restore` and [explicit workspace manipulation](skills/multica-workspace-manipulation/SKILL.md).
 Workspace manipulation requires an authorized host member profile or descriptor; ordinary
 task credentials and remote-sop do not grant cross-workspace access. It is not a
 system skill and is never attached automatically. Mika onboarding guidance renders in the chat system
@@ -52,28 +51,29 @@ cd harness
 go test ./...
 ```
 
-Symbolic SOP authoring and runtime build on AIDE²'s pinned protocol
-[`05ccf153`](https://github.com/WinfredClaw/multica-AIDE/tree/05ccf1530a46339af62daa7cf434d777037ff9db/.agents/skills/create-symbolic-sop).
-The complete template includes the background experiment monitor, persistent task
-facts, scripted routes and separate callback options. The authoring template
-generates its graph from `controller.workflow` and needs no `DEBUG.md`.
-`--validate` checks package files and the boolean `config.json` DEBUG value.
-Run `python3 harness/skills/create-symbolic-sop/scripts/check.py <skill-directory>`
-to validate a new SOP and check its shared runtime in temporary template fixtures.
-The two executable system SOPs share the approved template runtime, including
-read-only help replay and Workflow-based HTML. Graphs fit the width in landscape
-and keep their natural size with horizontal scrolling in portrait.
-Install Graphviz on the CLI/daemon host and put `dot` on PATH. The wrapper compiles
-DOT to embedded SVG before upload; preview opening and selection need no network.
-RSI keeps its native single-task lifecycle procedures. The authoring reference
-points to RSI's bundled platform guidance.
+## Symbolic SoPs
 
-Set `config.json` to `{"DEBUG": true}` to publish the controller's state HTML on native
-state shifts. The global graph comes from Workflow states, option targets and
-automatic Branch routes selected by script output. DOT action docstrings
-render only local logic, checks and exceptions on selection, before the issue metadata.
-Native small-circle
-start and double-circle stop markers and their boundary links are non-clickable; final states
-need no extra finish option. Read-only controller `artifacts(context)` can also
-publish live HTML; upload failures leave the procedure result intact. Existing `.state` records and
-procedure-specific policies must be preserved when updating installed bundles.
+The CLI owns the Python engine, Workflow API and authoring kit. Use
+`multica sop dev init DIRECTORY --minimal` (or `--feature-rich`) to start a skill,
+`multica sop docs` for its guide, and `multica sop dev validate DIRECTORY`
+for validation. Authoring guidance is separate from ordinary procedure help.
+
+The two executable system SoPs declare `metadata: {sop: symbolic}` in `SKILL.md`
+and keep only their procedure instructions, controller and domain helpers.
+Run `multica sop run multica-surface-block` or
+`multica sop run multica-subissue-distribute`; `--help` replays saved guidance
+without executing actions. The engine preserves the caller's working directory
+and stores current status and recovery in the issue's `sop.<name>` metadata key.
+Preserve those records and controller semantics when updating installed skills.
+
+Procedure-specific checks use the CLI-owned modules from the source tree:
+
+```sh
+PYTHONPATH=server/internal/cli/sop python3 -m unittest discover -s harness/tests
+multica sop dev validate harness/skills/multica-surface-block
+multica sop dev validate harness/skills/multica-subissue-distribute
+```
+
+An optional `config.json` with `{"DEBUG": true}` enables the engine's compiled state HTML.
+The graph derives from Workflow declarations; fenced DOT action docstrings add
+local logic. Preview publication failures leave procedure results intact.

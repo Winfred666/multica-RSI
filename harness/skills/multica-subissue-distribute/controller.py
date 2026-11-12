@@ -6,7 +6,6 @@ import json
 import math
 import os
 from pathlib import Path
-import sys
 
 from sop import Option, Parameter, State, Workflow
 
@@ -219,8 +218,3 @@ workflow = Workflow(
           final=True, precheck=precheck),
     params=(Parameter('--repo', required=False, type=Path),),
 )
-
-
-if __name__ == '__main__':
-    from wrapper import main
-    sys.exit(main())

@@ -1,12 +1,13 @@
 ---
 name: multica-surface-block
 description: Confirm and describe an external blocker before marking the current issue blocked.
+metadata: {sop: symbolic}
 ---
 
 Use before marking the current issue blocked:
 
 ```sh
-python3 <this-skill-directory>/wrapper.py
+multica sop run multica-surface-block
 ```
 
 Answer the returned questions, then supply `--reason` with only the concrete
@@ -22,6 +23,6 @@ a write or dispatch is uncertain; inspect the native comment before retrying.
 Follow returned error guidance, reconcile writes before retrying, and use
 `repaired` once for assertion failures; report repeated failure to the parent.
 
-`python3 <this-skill-directory>/wrapper.py --help` replays the last decision for
+`multica sop run multica-surface-block --help` replays the last decision for
 this issue, or shows this skill body when no SoP record exists, without running
 the procedure or creating state.

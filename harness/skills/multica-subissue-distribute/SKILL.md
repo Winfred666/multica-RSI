@@ -1,9 +1,10 @@
 ---
 name: multica-subissue-distribute
 description: Create and dispatch query, dev or exp children from the parent issue.
+metadata: {sop: symbolic}
 ---
 
-Use in the parent issue. Run `python3 <this-skill-directory>/wrapper.py` and follow
+Use in the parent issue. Run `multica sop run multica-subissue-distribute` and follow
 its choices. Supply a child specification JSON with `title` and optionally
 `description_file`, `project`, `stage`, `priority`, `due_date` and `assignee_id`.
 `--start` requires an assignee. `query` shares the parent branch; `dev` and `exp`
@@ -18,6 +19,6 @@ Use `multica-issue-workflow` for delivery and acceptance, and
 Follow returned error guidance, reconcile writes before retrying, and use `repaired`
 once for assertion failures; report a repeated failure through `multica-surface-block`.
 
-`python3 <this-skill-directory>/wrapper.py --help` replays the last decision for
+`multica sop run multica-subissue-distribute --help` replays the last decision for
 this issue, or shows this skill body when no SoP record exists, without running
 the procedure or creating state.

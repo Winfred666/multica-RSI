@@ -118,6 +118,39 @@ The process keeps the caller's cwd. Use `context['sop_dir']` or
 `Path(__file__).parent` for skill assets and `context['state_dir']` for local
 execution files. Keep skill names at most 60 characters.
 
+## Current-round replies and handover
+
+An action may return `{'this_round_reply_guidance': '...'}` to replace this
+invocation's `instruction` and omit all top-level `next_step` guidance, including
+nested instructions and alternatives. Without the field, output is unchanged.
+Transitions, destination checks, ownership and stored state still complete
+normally; resume/help show ordinary guidance. This is not a provider-stop or
+delivery mechanism.
+
+On an owner shift, name the intended human/agent and where/how to reply. The
+natural reply ends the turn and hands over to that recipient; do not execute
+its next choice in the same turn. Guidance may embed the existing questionnaire
+JSON (`status`, `instruction`, `next_step` with `multica sop run` commands).
+Masking ordinary choices does not remove JSON intentionally embedded in reply text.
+
+For strict direct publication, post that questionnaire through ordinary comment
+creation (`content` is the state JSON, `as_sop: true`, with the existing thread
+parent). Reuse outer-state publication rather than posting a second copy.
+Return `<option> done, silence. End this round with nothing replied`, replacing
+`<option>` with the option name. End without an acknowledgement; publication
+errors follow recovery guidance, not success/silence guidance.
+
+An addressed State owner supplies destination `issue_id`, `thread`, agent `id`
+and native comment `content` (`/note` or an agent mention). After the action
+chain, the renderer posts `!sop-render <skill-name> <owner JSON>` and ordinary,
+redacted state JSON in the execution issue, not the masked invocation reply.
+The execution assignee is unchanged. `--thread`/`state.reply_parent` selects the
+source parent; the owner's `thread` is the forwarding destination. Forwarding
+and rendering remain the Stage 3 contract.
+
+Authoring templates remain in the CLI-owned `server/internal/cli/sopdev/`
+directory as `minimal.py` and `feature-rich.py`.
+
 ## Help, validation and preview
 
 `multica sop dev validate DIRECTORY` checks metadata, Python imports and the

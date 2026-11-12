@@ -70,20 +70,19 @@ The uploaded HTML appears in the tree as a deliverable. Open it for branch score
 
 ## Contributor Template: Author, Plug In, Benchmark
 
-Start from [create-symbolic-sop](../harness/skills/create-symbolic-sop/SKILL.md) and its [standalone template](../harness/skills/create-symbolic-sop/assets/template/). Keep the entry instructions short and put procedure logic in Python:
+Start with `multica sop dev init .agents/skills/multica-your-research-sop --feature-rich`. Read `multica sop docs` for the engine-owned guide. Keep the entry instructions short and put procedure logic in Python:
 
 ```text
 multica-your-research-sop/
 ├── SKILL.md          # Trigger, required inputs, entry command, recall instructions
 ├── controller.py    # States, choices, actions, and live prechecks
-├── sop.py           # State/Option/Workflow objects from the template
-└── wrapper.py       # Entry point and persisted task state
+└── DEVELOPMENT.md   # Searchable engine-owned guide
 ```
 
 1. **Define the research contract.** Specify public inputs, candidate output, evaluator, ranking direction, budget, and measurable completion condition. Keep the baseline and evaluation resources fixed across comparisons.
 2. **Encode the procedure.** Export one `Workflow(...)` with one initial state and explicit final states. Give each `Option` its action and required parameters. Use read-only prechecks for evidence gates and saved state for recalls. Preserve live state when updating an installed skill.
 3. **Install through the skill APIs.** Add the skill to a workspace and attach it to the relevant agent. For a default harness contribution, update `harness/manifest.json`. Add a plugin only when the procedure needs a lifecycle activation policy; reuse the [hosted plugin contract](engineering/hosted-workflow-plugins.md).
-4. **Validate structure and behavior.** Run `python3 <skill-directory>/wrapper.py --validate`. Cover the procedure's meaningful state transitions, failed evidence gates, and resumption behavior with focused tests before running a live benchmark.
+4. **Validate structure and behavior.** Run `multica sop dev validate <skill-directory>`. Cover the procedure's meaningful state transitions, failed evidence gates, and resumption behavior with focused tests before running a live benchmark.
 5. **Benchmark the workflow.** Follow [AIDE's benchmark contract](https://github.com/Winfred666/multica-AIDE/blob/main/AGENTS.md). Record the input dataset/version, baseline commit, candidate commit, evaluator command, full delivery JSON, score, elapsed time, and measured resource use. Report goal attainment and failure cases alongside cost. Compare SOP variants on the same task and budget.
 
 For nested RSI, give the solution search and SOP search independent tree directories. Embed `SearchTree` and `render_tree` between your application's phases; the caller owns development, evaluation, restoration, and termination. Presentation labels such as execution steps or recorded tokens come from the caller. They do not change the numeric ranking function.
