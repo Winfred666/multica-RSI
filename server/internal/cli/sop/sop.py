@@ -1,7 +1,9 @@
 """Small state/option model used by the standalone wrapper."""
 import argparse
+import ast
 import inspect
 import re
+import textwrap
 
 FINISHED = 'FINISHED'
 
@@ -105,7 +107,7 @@ class Workflow:
         context.setdefault('resolved_options', {})[state.name] = options
         return options
 
-    def validate_graph(self, resolved=None):
+    def validate_graph(self, resolved=None, *, reply_guidance=False):
         """Trace declarations only. Never call option factories, actions or selectors."""
         edges = {name: tuple(branch.routes.values()) for name, branch in self.branches.items()}
         edges.update({name: (option.target,) for name, option in self.options.items()})
@@ -130,6 +132,28 @@ class Workflow:
 
         for name in edges:
             visit(name)
+
+        if reply_guidance:
+            def check(target, action):
+                if target in self.options:
+                    option = self.options[target]
+                    check(option.target, option.action)
+                elif target in self.branches:
+                    for destination in edges[target]:
+                        check(destination, action)
+                elif target in self.states and isinstance(self.states[target].owner, dict) and 'issue_id' in self.states[target].owner:
+                    tree = ast.parse(textwrap.dedent(inspect.getsource(action))) if action else ast.parse('')
+                    returns = (node.value if isinstance(node, ast.Return) else node.body
+                               for node in ast.walk(tree) if isinstance(node, (ast.Return, ast.Lambda)))
+                    if not any(isinstance(value, ast.Dict) and any(
+                            isinstance(key, ast.Constant) and key.value == 'this_round_reply_guidance'
+                            for key in value.keys) for value in returns):
+                        raise ValueError('Final action into addressed state ' + target +
+                                         ' must return this_round_reply_guidance')
+            for state in self.states.values():
+                if state.owner and not (isinstance(state.owner, dict) and 'issue_id' in state.owner):
+                    for option in self.choices(state, {}) if not callable(state.options) else ():
+                        check(option.target, option.action)
 
     def is_finished(self, phase):
         return phase == FINISHED or self.states[phase].final

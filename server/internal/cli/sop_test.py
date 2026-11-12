@@ -1,5 +1,6 @@
 """Shared Python engine protocol tests using CLI-owned semantic examples."""
 import importlib.util
+import io
 from html import unescape
 import json
 import os
@@ -575,6 +576,33 @@ workflow = Workflow(
         self.assertNotIn('sop.fixture-sop', metadata)
         self.assertFalse(list(self.root.rglob('.state')))
         self.assertFalse(list(self.root.rglob('.errors')))
+
+    def test_addressed_entry_validation_requires_guidance_on_final_action(self):
+        source = """from pathlib import Path
+from sop import Branch, FINISHED, Option, State, Workflow
+def earlier(args, context):
+    Path('calls').touch()
+    return {'this_round_reply_guidance': 'Earlier is not sufficient.'}
+def final(args, context):
+    Path('calls').touch()
+    return FINAL_RESULT
+workflow = Workflow(
+    State('ready', 'Prepare.', initial=True, owner={'id': 'host', 'name': 'Host'},
+          options=(Option('ask', 'last', 'Ask.', earlier),)),
+    Option('last', 'route', 'Last action.', final),
+    Branch('route', 'Choose.', {'go': 'addressed'}),
+    State('addressed', 'Question.', owner={'issue_id': 'destination'},
+          options=(Option('finish', FINISHED, 'Finish.'),)))
+"""
+        controller = self.package / 'controller.py'
+        controller.write_text(source.replace('FINAL_RESULT', '{}'))
+        self.assertIn('Final action into addressed state addressed', self.run_sop('--validate', valid=False)['error'])
+        controller.write_text(source.replace('FINAL_RESULT', "{'this_round_reply_guidance': 'End this turn.'}"))
+        self.assertEqual(self.run_sop('--validate'), {'status': 'valid'})
+        controller.write_text(source.replace('FINAL_RESULT', '{}').replace("'Last action.', final", "'Last action.'"))
+        self.assertIn('this_round_reply_guidance', self.run_sop('--validate', valid=False)['error'])
+        self.assertFalse(self.metadata.exists())
+        self.assertFalse((self.root / 'calls').exists())
 
     def test_metadata_failures_preserve_saved_state(self):
         self.run_sop()

@@ -80,8 +80,12 @@ execution files. Keep skill names at most 60 characters.
 ## Help, validation and preview
 
 `multica sop dev validate DIRECTORY` checks metadata, Python imports and the
-exported Workflow definition. It works directly on a directory, without an
-issue or task context.
+exported Workflow definition. Declared normal-agent-owned to addressed (`issue_id`)
+state paths require the final action to return a dictionary containing
+`this_round_reply_guidance`. Earlier actions alone do not satisfy the rule.
+The validator inspects declarations/source without running actions, selectors or
+owner/option factories; arbitrary dynamic Python return values are not proved.
+It works directly on a directory, without an issue or task context.
 
 `multica sop run NAME --help` shows the skill body before starting, or replays
 the current saved guidance. Authoring docs are only under `sop dev`.

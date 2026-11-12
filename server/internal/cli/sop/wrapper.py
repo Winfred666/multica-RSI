@@ -12,6 +12,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from types import SimpleNamespace
 
 from common import publish_shared_artifact, write_artifact
@@ -262,6 +263,8 @@ def state_owner(workflow, phase, context):
         return None
     owner = workflow.states[phase].owner
     owner = owner(context) if callable(owner) else owner
+    if owner and 'issue_id' in owner:
+        return {key: owner[key] for key in ('issue_id', 'thread', 'id', 'content')}
     return {key: owner[key] for key in ('id', 'name')} if owner else None
 
 
@@ -317,7 +320,7 @@ def transition(args, context, controller):
                 initial = context.get('initial')
                 result = error.result
             owner = state_owner(workflow, result['phase'] if result else phase, context)
-            if owner and context['agent_id'] != owner['id']:
+            if owner and 'issue_id' not in owner and context['agent_id'] != owner['id']:
                 raise SystemExit('Rejected: this action belongs to ' + owner['name'] + '.')
             if result is None:
                 if args.error is not None or args.error_file is not None:
@@ -373,10 +376,11 @@ def transition(args, context, controller):
         result['next_step']['alternatives'] = [callback(choice['instruction'], choice['callback'])
                                                 for choice in alternatives]
     owner = state_owner(workflow, next_phase, context)
-    if result['accepted'] and workflow.handoff and owner and owner['id'] != context['agent_id'] and not context.get('handoff'):
-        workflow.handoff(args, context, owner)
-    if result['accepted'] and owner and (before is None or owner != state_owner(workflow, phase, context)):
-        multica('assign', context['issue_id'], '--to-id', owner['id'], '--no-start')
+    if result['accepted'] and owner and 'issue_id' not in owner:
+        if workflow.handoff and owner['id'] != context['agent_id'] and not context.get('handoff'):
+            workflow.handoff(args, context, owner)
+        if before is None or owner != state_owner(workflow, phase, context):
+            multica('assign', context['issue_id'], '--to-id', owner['id'], '--no-start')
     finished = workflow.is_finished(next_phase)
     changed = before != (None if finished else status)
     result.update(ok=invalid is None, status=status, finished=finished,
@@ -502,7 +506,7 @@ def state_artifact(context, controller, result):
     quote = json.dumps
     diagram = 'digraph workflow {\nrankdir=LR; bgcolor="transparent";\nnode [shape=box];\n'
     diagram += '\n'.join(f'{quote(name)} [id={quote("state_" + name)}, label=<{escape(name)}' +
-                         (f'<br/><font point-size="9">{escape(owner["name"])}</font>'
+                         (f'<br/><font point-size="9">{escape(owner["id"] if "issue_id" in owner else owner["name"])}</font>'
                           if (owner := state_owner(controller.workflow, name, context)) else '') + '>];' for name in states)
     for branch in controller.workflow.branches.values():
         diagram += f'\n{quote(branch.name)} [id={quote("state_" + branch.name)}, shape=diamond, label={quote(branch.description)}];'
@@ -629,12 +633,32 @@ def publish_artifacts(context, controller, result):
         print(redact('Live artifact update failed: ' + str(error)), file=sys.stderr)
 
 
+def render_addressed_state(context, controller, result, rendered):
+    """Publish the ordinary state projection after the option chain and persistence."""
+    if not result['ok'] or not result.get('state_changed'):
+        return
+    owner = state_owner(controller.workflow, result['status'], context)
+    if not owner or 'issue_id' not in owner:
+        return
+    destination = {key: owner[key] for key in ('issue_id', 'thread', 'id')}
+    with tempfile.TemporaryDirectory(prefix='.sop-', dir=Path.cwd()) as directory:
+        body = Path(directory) / 'handoff.md'
+        body.write_text(owner['content'] + ' !sop-render ' + controller.SOP_NAME + ' ' + json.dumps(destination) +
+                        '\n' + json.dumps(rendered, allow_nan=False))
+        words = ['comment', 'add', context['issue_id'], '--content-file', str(body)]
+        parent = getattr(context.get('args'), 'thread', None) or context['state'].get('reply_parent')
+        if parent:
+            words += ['--parent', parent]
+        context['external_write_attempted'] = True
+        multica(*words)
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv == ['--validate']:
         try:
             validate_package()
-            load_controller()
+            load_controller().workflow.validate_graph(reply_guidance=True)
             print(json.dumps({'status': 'valid'}))
             return 0
         except Exception as error:
@@ -671,18 +695,20 @@ def main(argv=None):
         if context.get('quitted'):
             result.update(status='quitted', state_changed=True, next_step=callback(str(error)))
     output = redact(response(result))
-    if controller and context.get('state'):
-        state = context['state']
-        state['output'] = redact(response(result, reply_guidance=False))
-        if not getattr(controller, 'CACHE_VIEW', True):
-            state['output'] = {'status': state.get('status'), 'instruction': controller.workflow.states.get(
-                state.get('status'), controller.workflow.states[controller.workflow.initial]).description}
-        if not context.get('state_deleted') and not context.get('state_write_failed'):
-            try:
+    rendered = redact(response(result, reply_guidance=False))
+    try:
+        if controller and context.get('state'):
+            state = context['state']
+            state['output'] = rendered
+            if not getattr(controller, 'CACHE_VIEW', True):
+                state['output'] = {'status': state.get('status'), 'instruction': controller.workflow.states.get(
+                    state.get('status'), controller.workflow.states[controller.workflow.initial]).description}
+            if not context.get('state_deleted') and not context.get('state_write_failed'):
                 save_state(context, state)
-            except Exception as error:
-                result = exception_result(error, context)
-                output = redact(response(result))
+        render_addressed_state(context, controller, result, rendered)
+    except Exception as error:
+        result = exception_result(error, context)
+        output = redact(response(result))
     context['output'] = output
     publish_artifacts(context, controller, result)
     print(redact(context['handoff']) if result['ok'] and context.get('handoff') and

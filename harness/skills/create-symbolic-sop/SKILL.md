@@ -98,6 +98,23 @@ A state may declare `owner={"id": ..., "name": ...}` (or a callable). The runtim
 checks that owner before actions, uses `Workflow(handoff=...)` for the existing
 scripted handoff, and synchronizes accepted destination ownership with
 `issue assign --to-id ... --no-start`. Help and rejected transitions do not hand off.
+For an addressed destination, declare `owner={"issue_id": ..., "thread": ...,
+"id": ..., "content": "/note"}`. After the option/action
+chain completes, the state renderer posts `/note !sop-render <skill-name> <owner JSON>`
+followed by the existing ordinary, redacted state JSON in the execution issue.
+The native comment `content` supplies `/note` or an existing agent mention link;
+there are no custom `type`, `name` or `note` settings. Only the destination issue,
+thread and agent ID are encoded beside the protocol marker. Publication uses natural
+agent authorship, preserves the assignee and is not an option action side effect.
+Existing `--thread`/`state.reply_parent` selects the source comment's parent;
+the owner's `thread` is the forwarding destination. Stage 3 owns forwarding/rendering.
+`multica sop dev validate` checks declared normal-agent-owned → addressed-state
+paths: the final action must return a dictionary containing `this_round_reply_guidance`.
+Guidance on an earlier action alone does not satisfy it. Validation inspects source
+without executing callbacks or owner/option factories; it does not prove arbitrary
+Python return values. The comment uses `response(result, reply_guidance=False)`,
+not the invocation-only masked reply. See the minimal
+[addressed-owner fixture](assets/multica-addressed-owner/SKILL.md).
 `FINISHED` clears transient state and returns re-entry guidance.
 When revising a procedure, preserve its checks, side effects, completion rules
 and live state. Keep delivery/review records in comments.

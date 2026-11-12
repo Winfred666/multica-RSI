@@ -210,6 +210,16 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   exists. It posts no separate blocker note or return receipt on the current
   issue; the agent's normal reply explains the blocker.
 
+- **Addressed SoP owners.** A state owner dictionary with `issue_id`, `thread`,
+  `id` and native comment `content` is rendered after the option/action chain.
+  The ordinary agent comment contains `!sop-render <skill-name> <owner JSON>`
+  and the existing redacted, ordinary state JSON, not the masked invocation reply.
+  `content` supplies native `/note` or agent-mention syntax; only the three destination
+  IDs are encoded, and the execution assignee is unchanged.
+  Controller validation checks that the final action on a declared normal-agent
+  to addressed-state path returns `this_round_reply_guidance`. Stage 3 owns forwarding
+  and rendering; this adds no state/question schema or remote-call dispatch.
+
 - **Workspace packages.** `workspace package`, `workspace export` and
   `workspace import` expose the native package API with paged summaries, JSON
   selection files and inactive imported agents. See [usage and defaults](workspace-packages.md#cli).
