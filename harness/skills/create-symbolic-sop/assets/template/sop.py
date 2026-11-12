@@ -3,6 +3,8 @@ import argparse
 import inspect
 import re
 
+FINISHED = 'FINISHED'
+
 
 class Parameter:
     def __init__(self, flag, prompt='', *, required=True, value=None, **kwargs):
@@ -37,13 +39,15 @@ class Option:
 
 class State:
     def __init__(self, name, description, *, initial=False, final=False,
-                 options=(), precheck=None, view=None):
-        self.name, self.description = name, description
+                 options=(), precheck=None, view=None, owner=None):
+        self.name, self.description, self.owner = name, description, owner
         self.initial, self.final = initial, final
         self.options, self.precheck, self.view = options, precheck, view
 
     def choices(self, context):
-        return tuple(self.options(context) if callable(self.options) else self.options)
+        options = tuple(self.options(context) if callable(self.options) else self.options)
+        context.setdefault('resolved_options', {})[self.name] = options
+        return options
 
 
 class Completed(Exception):
@@ -59,23 +63,24 @@ class Branch:
 
 
 class Workflow:
-    def __init__(self, *nodes, params=()):
+    FINISHED = FINISHED
+
+    def __init__(self, *nodes, params=(), handoff=None):
         self.states = {node.name: node for node in nodes if isinstance(node, State)}
         self.branches = {node.name: node for node in nodes if isinstance(node, Branch)}
-        self.params = tuple(params)
+        self.params, self.handoff = tuple(params), handoff
         states = tuple(self.states.values())
         initial = [state for state in states if state.initial]
-        final = [state for state in states if state.final]
         if (len(set(self.states) | set(self.branches)) != len(nodes) or
-                len(initial) != 1 or not final or initial[0].final):
-            raise ValueError('Declare unique states, one initial state and at least one final state')
+                len(initial) != 1 or initial[0].final):
+            raise ValueError('Declare unique states and one initial state')
         self.initial = initial[0].name
         for node in nodes:
             if not re.fullmatch(r'[a-z][a-z0-9_]*', node.name) or node.name in {'init', 'repaired', 'error', 'blocked'}:
                 raise ValueError('Invalid or reserved node name: ' + node.name)
         for branch in self.branches.values():
-            if not branch.routes or any(target not in self.states for target in branch.routes.values()):
-                raise ValueError('Branch routes must name declared states: ' + branch.name)
+            if not branch.routes or any(target not in self.states and target != FINISHED for target in branch.routes.values()):
+                raise ValueError('Branch routes must name declared states or FINISHED: ' + branch.name)
         for state in states:
             if state.final and (callable(state.options) or state.options):
                 raise ValueError('Final states cannot have options')
@@ -84,8 +89,11 @@ class Workflow:
 
     def validate_options(self, options):
         for option in options:
-            if option.target not in self.states.keys() | self.branches.keys() or not re.fullmatch(r'[a-z][a-z0-9_-]*', option.name) or option.name in {'init', 'repaired', 'quit'}:
+            if option.target not in self.states.keys() | self.branches.keys() | {FINISHED} or not re.fullmatch(r'[a-z][a-z0-9_-]*', option.name) or option.name in {'init', 'repaired', 'quit'}:
                 raise ValueError('Option needs a command name and a declared target: ' + option.name)
+
+    def is_finished(self, phase):
+        return phase == FINISHED or self.states[phase].final
 
     def configure(self, parser):
         for param in self.params:
@@ -98,6 +106,8 @@ class Workflow:
 
     def after(self, context, args, initial, result):
         context.update(args=args, initial=initial, result=result)
+        if result['phase'] == FINISHED:
+            return
         state = self.states[result['phase']]
         if state.precheck:
             state.precheck(context)
@@ -160,5 +170,7 @@ class Workflow:
         branch = self.branches.get(option.target)
         if result.get('accepted', True) and branch and result.get('phase') not in branch.routes.values():
             raise context['error']('invalid_branch_output', 'Return a declared phase for branch ' + branch.name)
-        target = self.states[result.get('phase', option.target)] if result.get('accepted', True) else state
-        return self.guidance(target, context, result)
+        target = result.get('phase', option.target) if result.get('accepted', True) else state.name
+        if target == FINISHED:
+            return {**result, 'phase': FINISHED, 'instruction': ''}
+        return self.guidance(self.states[target], context, result)

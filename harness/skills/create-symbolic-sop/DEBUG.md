@@ -13,7 +13,7 @@ protocol to symbolic SoPs in `harness/` and distributions such as
 `dist/AIDE^2-harness`, preserving controllers and live state.
 
 The standalone package includes `SKILL.md`, `config.json`, `controller.py`,
-`sop.py`, `wrapper.py`, `monitor.py` and procedure dependencies. The runtime owns one serialized current record in
+`sop.py`, `wrapper.py`, `common.py`, `monitor.py` and procedure dependencies. The runtime owns one serialized current record in
 `issue.metadata["sop.<skill-name>"]`; preserve it during updates. `config.json`
 contains a boolean `DEBUG` (default `false`). Changing issue metadata does not
 configure that package flag.
@@ -121,17 +121,11 @@ For conservative refinement, define states directly inside the exported
 `Workflow(...)` and keep predefined prechecks with their states. The harness reads
 initial and final boundaries from these declarations.
 
-If a procedure needs a small setting across runs, use a procedure-specific issue
-metadata key through the existing helper, for example:
-
-```python
-context['cli']('metadata', 'set', context['issue_id'],
-               '--key', 'my_sop_target', '--value', args.target, write=True)
-```
-
-Read it back from `context['cli']('get', context['issue_id'])['metadata']`.
-Runtime status/recovery stay runtime-owned; delivery and review records belong
-in comments. Use native steering or mentions for another issue or agent.
+Shared configuration JSON belongs in artifacts through `common.write_config` and
+`read_config`; keep only the existing small references in metadata. See
+[configuration artifacts](references/config-artifacts.md). Runtime status/recovery
+stays runtime-owned; delivery/review records belong in comments. Use native
+steering or mentions for another issue or agent.
 
 ## Workflow graph and local action diagrams
 
@@ -159,18 +153,18 @@ diamonds and state-to-state links out of these diagrams. Name each DOT `digraph`
 after its function. There is no overview block in a docstring. Generated SoPs use the
 compiled HTML rather than a separately maintained `DEBUG.md` graph. Keep the action diagram short and consistent with its implementation.
 
-Use Graphviz's `point` start and filled `doublecircle` stop shapes linked to the
-initial/final states with plain arrows. These markers and boundary links are not
-clickable or workflow options.
-Final states have no options; the review action can complete directly without an
-extra finish action. Declare its normal completion target so the final state is
-connected before execution; handlers can still return another state for a retry.
+Use Graphviz's `point` start marker and a filled ringed-circle stop.
+The start boundary is diagram-only. R-328's `FINISHED` sentinel owns the stop
+marker: selecting it shows completion/re-entry guidance without calling workflow
+code. Options and Branch routes may target `FINISHED` directly. A declared final
+state with no options is also supported. State owners appear in the graph;
+scripted handoffs and guarded `--no-start` assignee updates remain runtime work.
 
 Set `"DEBUG": true` in the skill's `config.json` to publish `<skill-name>-state.html`
-on every state shift as an independent workspace resource. The wrapper reuses
-its persisted ID and replaces current content; no past content is retained.
-See [independent publication](references/independent-publication.md) for identity,
-linking, failure recovery and the CLI contract. The wrapper renders `controller.workflow` states, option
+on every state shift as an ordinary comment attachment, following R-328's
+`common.write_artifact` delivery. Shared JSON configuration, not HTML previews,
+is the artifact-first target; see [configuration artifacts](references/config-artifacts.md).
+The wrapper renders `controller.workflow` states, option
 targets and symbolic branches, with state meanings, native issue
 ID and assertion failures. Put the graph before headings and metadata so it is
 visible in thumbnails. Use a CSS orientation media query: in landscape, fit SVGs
@@ -201,9 +195,8 @@ Omit HTML help controls.
 Resolve dynamic option targets during normal choice resolution. DEBUG defaults
 to `false`. For an existing HTML view, export read-only `artifacts(context)` from
 `controller.py` returning `{stable_filename: html_string}`; the wrapper updates
-these independent live artifacts after accepted callbacks, using the same explicit-ID
-publication path as DEBUG previews. Upload or metadata failures leave workflow
-results intact and report reconciliation guidance on stderr.
+these ordinary comment artifacts after accepted callbacks, like DEBUG previews.
+Publication failures leave workflow results intact and report warnings on stderr.
 
 
 ## External tools

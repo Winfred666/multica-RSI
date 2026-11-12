@@ -25,17 +25,12 @@ During test, inspect the returned log excerpt and choose `continue` or `exceptio
 immediately; the full logs remain at the printed paths. Test completion or
 exception advances to review.
 
-Optional HTML artifacts and DEBUG previews publish as independent workspace
-resources. The runtime retains explicit IDs in issue metadata `sop_artifacts`
-(`{skill_name: {filename: UUID}}`, JSON encoded as a string) and links them through
-`deliverables` (a string-encoded UUID array). Completion/quit clears only the
-transient `sop.<skill-name>` key; publication IDs and links survive. Repeated
-publication replaces current content by ID with no history. A filename names a
-local publication slot, never a resource lookup. Ordinary comment attachments
-are not converted. Unlinking removes metadata only; publishing again restores
-the link. Coordinate concurrent metadata writers. On a publication warning,
-reconcile the reported ID and metadata before retrying publication, not the
-completed workflow action.
+Shared configuration payloads use JSON artifacts through `common.write_config`;
+persist its updated reference with `link_config`, and read it through `read_config`.
+MAIN and delegated readers share references, not copies of configuration payloads
+in metadata. Transient `sop.<skill-name>` execution state is separate.
+HTML artifacts and DEBUG previews remain ordinary comment attachments. Publication
+warnings do not undo a completed action; reconcile writes before any retry.
 
 In every state, follow returned error guidance and finish unmet prerequisites
 before retrying. Reconcile writes first. For assertion failures, use the returned
