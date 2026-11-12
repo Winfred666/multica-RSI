@@ -2338,6 +2338,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// from the attachment row.
 			r.Get("/api/attachments/{id}/content", h.GetAttachmentContent)
 			r.Delete("/api/attachments/{id}", h.DeleteAttachment)
+			r.Post("/api/attachments/{id}/attach", h.AttachAttachment)
+			r.Post("/api/attachments/{id}/detach", h.DetachAttachment)
 
 			// Comments
 			r.Route("/api/comments/{commentId}", func(r chi.Router) {

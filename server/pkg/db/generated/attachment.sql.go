@@ -384,6 +384,40 @@ func (q *Queries) DeleteSourceContextAttachmentsByWorkspace(ctx context.Context,
 	return err
 }
 
+const detachAttachmentFromIssue = `-- name: DetachAttachmentFromIssue :one
+WITH previous AS (
+  SELECT attachment.comment_id FROM attachment
+  WHERE attachment.id = $1 AND attachment.workspace_id = $2
+    AND attachment.issue_id = $3 AND attachment.source_context_id IS NULL
+), detached AS (
+  UPDATE attachment SET issue_id = NULL, comment_id = NULL
+  WHERE attachment.id = $1 AND attachment.workspace_id = $2
+    AND EXISTS (SELECT 1 FROM previous)
+  RETURNING attachment.id
+), bumped_issue AS (
+  UPDATE issue SET revision = revision + 1
+  WHERE issue.id = $3 AND EXISTS (SELECT 1 FROM detached)
+  RETURNING revision
+), bumped_comment AS (
+  UPDATE comment SET revision = revision + 1
+  WHERE comment.id IN (SELECT comment_id FROM previous) AND EXISTS (SELECT 1 FROM detached)
+)
+SELECT revision FROM bumped_issue
+`
+
+type DetachAttachmentFromIssueParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	IssueID     pgtype.UUID `json:"issue_id"`
+}
+
+func (q *Queries) DetachAttachmentFromIssue(ctx context.Context, arg DetachAttachmentFromIssueParams) (int64, error) {
+	row := q.db.QueryRow(ctx, detachAttachmentFromIssue, arg.ID, arg.WorkspaceID, arg.IssueID)
+	var revision int64
+	err := row.Scan(&revision)
+	return revision, err
+}
+
 const detachAttachmentsFromUserChatMessageByTask = `-- name: DetachAttachmentsFromUserChatMessageByTask :many
 UPDATE attachment
 SET chat_message_id = NULL

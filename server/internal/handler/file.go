@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -241,8 +242,8 @@ func (h *Handler) buildMarkdownURL(a db.Attachment, id string) string {
 	relPath := util.AttachmentDownloadPath(id)
 	publicURL := strings.TrimRight(h.cfg.PublicURL, "/")
 
-	// An issue task deliverable can be replaced; its Markdown link follows the row.
-	if (!a.TaskID.Valid || !a.IssueID.Valid) && h.storageURLIsPubliclyReadable(a.Url) {
+	// Renewable files use the row URL so links survive byte replacement.
+	if attachmentHasContentOwner(a) && (!a.TaskID.Valid || !a.IssueID.Valid) && h.storageURLIsPubliclyReadable(a.Url) {
 		return a.Url
 	}
 
@@ -566,7 +567,29 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var replaced db.Attachment
-		if params.TaskID.Valid && params.IssueID.Valid {
+		if attachmentID := r.FormValue("attachment_id"); attachmentID != "" {
+			attachmentUUID, ok := parseUUIDOrBadRequest(w, attachmentID, "attachment_id")
+			if !ok {
+				return
+			}
+			if params.IssueID.Valid || params.CommentID.Valid || params.ChatSessionID.Valid || params.TaskID.Valid {
+				writeError(w, http.StatusBadRequest, "renewal cannot set an owner")
+				return
+			}
+			replaced, err = h.Queries.GetAttachment(r.Context(), db.GetAttachmentParams{ID: attachmentUUID, WorkspaceID: params.WorkspaceID})
+			if err != nil || replaced.SourceContextID.Valid {
+				writeError(w, http.StatusNotFound, "attachment not found")
+				return
+			}
+			if !h.canMutateAttachment(r, replaced, userID) {
+				writeError(w, http.StatusForbidden, "not authorized to renew this attachment")
+				return
+			}
+			if attachmentHasContentOwner(replaced) {
+				writeError(w, http.StatusConflict, "only ownerless attachments can be renewed")
+				return
+			}
+		} else if params.TaskID.Valid && params.IssueID.Valid {
 			attachments, err := h.Queries.ListAttachmentsByIssue(r.Context(), db.ListAttachmentsByIssueParams{
 				IssueID: params.IssueID, WorkspaceID: params.WorkspaceID,
 			})
@@ -575,7 +598,7 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			for _, attachment := range attachments {
-				if attachment.TaskID.Valid && !attachment.SourceContextID.Valid &&
+				if attachment.TaskID.Valid && !attachment.CommentID.Valid && !attachment.SourceContextID.Valid &&
 					attachment.UploaderType == params.UploaderType && attachment.UploaderID == params.UploaderID &&
 					attachment.Filename == params.Filename && attachment.ContentType == params.ContentType {
 					replaced = attachment
@@ -597,18 +620,26 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 		var att db.CreateAttachmentRow
 		if replaced.ID.Valid {
-			err = h.withAttachmentOwnerLock(r.Context(), replaced, func(qtx *db.Queries) error {
+			err = h.withAttachmentOwnerLock(r.Context(), replaced, func(qtx *db.Queries, fresh db.Attachment) error {
+				if fresh.CommentID.Valid || (r.FormValue("attachment_id") != "" && attachmentHasContentOwner(fresh)) {
+					return errAttachmentHasOwner
+				}
 				updated, updateErr := qtx.UpdateAttachment(r.Context(), db.UpdateAttachmentParams{
 					ID: replaced.ID, WorkspaceID: params.WorkspaceID,
 					Filename: params.Filename, Url: link, ContentType: contentType, SizeBytes: params.SizeBytes,
 					Width: params.Width, Height: params.Height,
 				})
 				att = db.CreateAttachmentRow(updated)
+				replaced.Url = fresh.Url
 				return updateErr
 			})
 			if err != nil {
 				h.deleteS3Object(r.Context(), link)
-				writeError(w, http.StatusInternalServerError, "failed to replace attachment")
+				if errors.Is(err, errAttachmentHasOwner) {
+					writeError(w, http.StatusConflict, err.Error())
+				} else {
+					writeError(w, http.StatusInternalServerError, "failed to replace attachment")
+				}
 				return
 			}
 			h.deleteS3Object(r.Context(), replaced.Url)
@@ -636,26 +667,7 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 			// S3 upload succeeded but DB record failed — still return the link
 			// so the file is usable. Log the error for investigation.
 		} else {
-			if att.IssueRevision > 0 && att.IssueID.Valid {
-				h.publish(protocol.EventIssueAttachmentsChanged, workspaceID, uploaderType, uploaderID, map[string]any{
-					"issue_id":       uuidToString(att.IssueID),
-					"issue_revision": att.IssueRevision,
-					"attachment_id":  uuidToString(att.ID),
-				})
-			}
-			if att.CommentRevision > 0 && att.CommentID.Valid {
-				if comment, loadErr := h.Queries.GetCommentInWorkspace(r.Context(), db.GetCommentInWorkspaceParams{
-					ID:          att.CommentID,
-					WorkspaceID: att.WorkspaceID,
-				}); loadErr == nil {
-					commentID := uuidToString(comment.ID)
-					reactions := h.groupReactions(r, []pgtype.UUID{comment.ID})
-					attachments := h.groupAttachments(r, []pgtype.UUID{comment.ID})
-					h.publish(protocol.EventCommentUpdated, workspaceID, uploaderType, uploaderID, map[string]any{
-						"comment": commentToResponse(comment, reactions[commentID], attachments[commentID]),
-					})
-				}
-			}
+			h.publishAttachmentChange(r, att.Attachment(), att.IssueRevision, uploaderType, uploaderID, true)
 			writeJSON(w, http.StatusOK, h.attachmentToResponse(att.Attachment(), attachmentURLModeFromRequest(r)))
 			return
 		}
@@ -665,6 +677,11 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 			"url":      link,
 			"filename": header.Filename,
 		})
+		return
+	}
+
+	if r.FormValue("attachment_id") != "" {
+		writeError(w, http.StatusBadRequest, "workspace_id is required for renewal")
 		return
 	}
 
@@ -1412,33 +1429,12 @@ func isTextPreviewable(contentType, filename string) bool {
 
 func (h *Handler) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
 	r = h.withWakeupActor(r)
-	attachmentID := chi.URLParam(r, "id")
-	workspaceID := h.resolveWorkspaceID(r)
-	if workspaceID == "" {
-		writeError(w, http.StatusBadRequest, "workspace_id is required")
-		return
-	}
-
 	userID, ok := requireUserID(w, r)
 	if !ok {
 		return
 	}
-
-	attUUID, ok := parseUUIDOrBadRequest(w, attachmentID, "attachment id")
+	att, ok := h.loadAttachmentForRequest(w, r)
 	if !ok {
-		return
-	}
-	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
-	if !ok {
-		return
-	}
-
-	att, err := h.Queries.GetAttachment(r.Context(), db.GetAttachmentParams{
-		ID:          attUUID,
-		WorkspaceID: wsUUID,
-	})
-	if err != nil {
-		writeError(w, http.StatusNotFound, "attachment not found")
 		return
 	}
 	// Captured-context attachments are immutable historical copies. They are
@@ -1461,7 +1457,8 @@ func (h *Handler) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
 
 	var deleted db.DeleteAttachmentRow
 	deleteParams := db.DeleteAttachmentParams{ID: att.ID, WorkspaceID: att.WorkspaceID}
-	err = h.withAttachmentOwnerLock(r.Context(), att, func(qtx *db.Queries) error {
+	err := h.withAttachmentOwnerLock(r.Context(), att, func(qtx *db.Queries, fresh db.Attachment) error {
+		att = fresh
 		var deleteErr error
 		deleted, deleteErr = qtx.DeleteAttachment(r.Context(), deleteParams)
 		return deleteErr
@@ -1477,28 +1474,146 @@ func (h *Handler) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete attachment")
 		return
 	}
-	if deleted.Changed && att.IssueID.Valid {
-		h.publish(protocol.EventIssueAttachmentsChanged, workspaceID, "member", userID, map[string]any{
-			"issue_id":       uuidToString(att.IssueID),
-			"issue_revision": deleted.IssueRevision,
-		})
-	}
-	if deleted.Changed && att.CommentID.Valid {
-		if comment, loadErr := h.Queries.GetCommentInWorkspace(r.Context(), db.GetCommentInWorkspaceParams{
-			ID:          att.CommentID,
-			WorkspaceID: att.WorkspaceID,
-		}); loadErr == nil {
-			commentID := uuidToString(comment.ID)
-			reactions := h.groupReactions(r, []pgtype.UUID{comment.ID})
-			attachments := h.groupAttachments(r, []pgtype.UUID{comment.ID})
-			h.publish(protocol.EventCommentUpdated, workspaceID, "member", userID, map[string]any{
-				"comment": commentToResponse(comment, reactions[commentID], attachments[commentID]),
-			})
-		}
+	if deleted.Changed {
+		h.publishAttachmentChange(r, att, deleted.IssueRevision, "member", userID, false)
 	}
 
 	h.deleteS3Object(r.Context(), att.Url)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+var errAttachmentHasOwner = errors.New("attachment belongs to another owner")
+
+func attachmentHasContentOwner(att db.Attachment) bool {
+	return att.IssueID.Valid || att.CommentID.Valid || att.ChatSessionID.Valid || att.ChatMessageID.Valid
+}
+
+func (h *Handler) canMutateAttachment(r *http.Request, att db.Attachment, userID string) bool {
+	workspaceID := uuidToString(att.WorkspaceID)
+	actorType, actorID := h.resolveActor(r, userID, workspaceID)
+	if att.UploaderType == actorType && uuidToString(att.UploaderID) == actorID {
+		return true
+	}
+	member, err := h.getWorkspaceMember(r.Context(), userID, workspaceID)
+	return err == nil && (member.Role == "admin" || member.Role == "owner")
+}
+
+// AttachAttachment — POST /api/attachments/{id}/attach {"issue_id":"UUID"}
+func (h *Handler) AttachAttachment(w http.ResponseWriter, r *http.Request) {
+	h.setAttachmentOwner(w, r, false)
+}
+
+// DetachAttachment — POST /api/attachments/{id}/detach {"issue_id":"UUID"}
+func (h *Handler) DetachAttachment(w http.ResponseWriter, r *http.Request) {
+	h.setAttachmentOwner(w, r, true)
+}
+
+func (h *Handler) setAttachmentOwner(w http.ResponseWriter, r *http.Request, detach bool) {
+	r = h.withWakeupActor(r)
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	att, ok := h.loadAttachmentForRequest(w, r)
+	if !ok {
+		return
+	}
+	if att.SourceContextID.Valid {
+		writeError(w, http.StatusNotFound, "attachment not found")
+		return
+	}
+	if !h.canMutateAttachment(r, att, userID) {
+		writeError(w, http.StatusForbidden, "not authorized to change this attachment")
+		return
+	}
+	var req struct {
+		IssueID string `json:"issue_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	issueID, ok := parseUUIDOrBadRequest(w, req.IssueID, "issue_id")
+	if !ok {
+		return
+	}
+	if _, err := h.Queries.GetIssueInWorkspace(r.Context(), db.GetIssueInWorkspaceParams{ID: issueID, WorkspaceID: att.WorkspaceID}); err != nil {
+		writeError(w, http.StatusNotFound, "issue not found")
+		return
+	}
+	var issueRevision int64
+	var owners db.Attachment
+	err := h.withAttachmentOwnerLock(r.Context(), att, func(qtx *db.Queries, fresh db.Attachment) error {
+		owners = fresh
+		if detach {
+			if fresh.IssueID != issueID || fresh.ChatSessionID.Valid || fresh.ChatMessageID.Valid {
+				return errAttachmentHasOwner
+			}
+			var err error
+			issueRevision, err = qtx.DetachAttachmentFromIssue(r.Context(), db.DetachAttachmentFromIssueParams{ID: att.ID, WorkspaceID: att.WorkspaceID, IssueID: issueID})
+			if err != nil {
+				return err
+			}
+			fresh.IssueID, fresh.CommentID = pgtype.UUID{}, pgtype.UUID{}
+		} else {
+			if fresh.IssueID == issueID && !fresh.CommentID.Valid {
+				att = fresh
+				return nil
+			}
+			if attachmentHasContentOwner(fresh) {
+				return errAttachmentHasOwner
+			}
+			if _, err := qtx.LockIssueForAttachmentWrite(r.Context(), db.LockIssueForAttachmentWriteParams{ID: issueID, WorkspaceID: att.WorkspaceID}); err != nil {
+				return err
+			}
+			result, err := qtx.LinkAttachmentsToIssue(r.Context(), db.LinkAttachmentsToIssueParams{
+				IssueID: issueID, WorkspaceID: att.WorkspaceID, AttachmentIds: []pgtype.UUID{att.ID}, BumpRevision: true,
+			})
+			if err != nil {
+				return err
+			}
+			issueRevision = result.IssueRevision
+			fresh.IssueID, owners.IssueID = issueID, issueID
+		}
+		att = fresh
+		return nil
+	})
+	if errors.Is(err, errAttachmentHasOwner) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "attachment not found")
+		return
+	}
+	if err != nil {
+		slog.Error("failed to change attachment owner", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to change attachment owner")
+		return
+	}
+	workspaceID := uuidToString(att.WorkspaceID)
+	actorType, actorID := h.resolveActor(r, userID, workspaceID)
+	h.publishAttachmentChange(r, owners, issueRevision, actorType, actorID, true)
+	writeJSON(w, http.StatusOK, h.attachmentToResponse(att, attachmentURLModeFromRequest(r)))
+}
+
+func (h *Handler) publishAttachmentChange(r *http.Request, att db.Attachment, issueRevision int64, actorType, actorID string, includeAttachmentID bool) {
+	workspaceID := uuidToString(att.WorkspaceID)
+	if issueRevision > 0 && att.IssueID.Valid {
+		payload := map[string]any{"issue_id": uuidToString(att.IssueID), "issue_revision": issueRevision}
+		if includeAttachmentID {
+			payload["attachment_id"] = uuidToString(att.ID)
+		}
+		h.publish(protocol.EventIssueAttachmentsChanged, workspaceID, actorType, actorID, payload)
+	}
+	if att.CommentID.Valid {
+		if comment, err := h.Queries.GetCommentInWorkspace(r.Context(), db.GetCommentInWorkspaceParams{ID: att.CommentID, WorkspaceID: att.WorkspaceID}); err == nil {
+			id := uuidToString(comment.ID)
+			h.publish(protocol.EventCommentUpdated, workspaceID, actorType, actorID, map[string]any{
+				"comment": commentToResponse(comment, h.groupReactions(r, []pgtype.UUID{comment.ID})[id], h.groupAttachments(r, []pgtype.UUID{comment.ID})[id]),
+			})
+		}
+	}
 }
 
 // Attachment linking
@@ -1533,7 +1648,7 @@ const attachmentOwnerLockAttempts = 3
 // waited is seen before the write; an attachment that gained an owner is
 // retried with that owner locked. Returns pgx.ErrNoRows when the attachment,
 // or the comment owning it, is gone.
-func (h *Handler) withAttachmentOwnerLock(ctx context.Context, att db.Attachment, write func(*db.Queries) error) error {
+func (h *Handler) withAttachmentOwnerLock(ctx context.Context, att db.Attachment, write func(*db.Queries, db.Attachment) error) error {
 	for attempt := 0; ; attempt++ {
 		fresh, err := h.attachmentOwnerLockAttempt(ctx, att, write)
 		if !errors.Is(err, errAttachmentOwnerChanged) {
@@ -1551,7 +1666,7 @@ func (h *Handler) withAttachmentOwnerLock(ctx context.Context, att db.Attachment
 // ones and the attempt must be retried against the new owner.
 var errAttachmentOwnerChanged = errors.New("attachment owner changed")
 
-func (h *Handler) attachmentOwnerLockAttempt(ctx context.Context, att db.Attachment, write func(*db.Queries) error) (db.Attachment, error) {
+func (h *Handler) attachmentOwnerLockAttempt(ctx context.Context, att db.Attachment, write func(*db.Queries, db.Attachment) error) (db.Attachment, error) {
 	tx, err := h.beginWakeupWrite(ctx)
 	if err != nil {
 		return db.Attachment{}, err
@@ -1590,7 +1705,7 @@ func (h *Handler) attachmentOwnerLockAttempt(ctx context.Context, att db.Attachm
 	if fresh.IssueID != att.IssueID || fresh.CommentID != att.CommentID {
 		return fresh, errAttachmentOwnerChanged
 	}
-	if err := write(qtx); err != nil {
+	if err := write(qtx, fresh); err != nil {
 		return db.Attachment{}, err
 	}
 	return fresh, tx.Commit(ctx)

@@ -1824,6 +1824,12 @@ func TestBuildMarkdownURL_PublicCdnAbsoluteURLReusedVerbatim(t *testing.T) {
 	}
 
 	resp := testHandler.attachmentToResponse(att, attachmentURLModeSigned)
+	want := "https://api.multica.test/api/attachments/" + id + "/download"
+	if resp.MarkdownURL != want {
+		t.Fatalf("ownerless markdown_url = %q, want renewable row URL %q", resp.MarkdownURL, want)
+	}
+	att.IssueID = parseUUID(testWorkspaceID)
+	resp = testHandler.attachmentToResponse(att, attachmentURLModeSigned)
 	if resp.MarkdownURL != "https://cdn.multica.test/uploads/abc.png" {
 		t.Fatalf("markdown_url = %q, want raw a.Url passthrough", resp.MarkdownURL)
 	}

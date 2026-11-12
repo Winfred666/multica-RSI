@@ -326,3 +326,23 @@ ORDER BY id;
 DELETE FROM attachment
 WHERE workspace_id = sqlc.arg(workspace_id)
   AND source_context_id IS NOT NULL;
+
+-- name: DetachAttachmentFromIssue :one
+WITH previous AS (
+  SELECT attachment.comment_id FROM attachment
+  WHERE attachment.id = sqlc.arg(id) AND attachment.workspace_id = sqlc.arg(workspace_id)
+    AND attachment.issue_id = sqlc.arg(issue_id) AND attachment.source_context_id IS NULL
+), detached AS (
+  UPDATE attachment SET issue_id = NULL, comment_id = NULL
+  WHERE attachment.id = sqlc.arg(id) AND attachment.workspace_id = sqlc.arg(workspace_id)
+    AND EXISTS (SELECT 1 FROM previous)
+  RETURNING attachment.id
+), bumped_issue AS (
+  UPDATE issue SET revision = revision + 1
+  WHERE issue.id = sqlc.arg(issue_id) AND EXISTS (SELECT 1 FROM detached)
+  RETURNING revision
+), bumped_comment AS (
+  UPDATE comment SET revision = revision + 1
+  WHERE comment.id IN (SELECT comment_id FROM previous) AND EXISTS (SELECT 1 FROM detached)
+)
+SELECT revision FROM bumped_issue;

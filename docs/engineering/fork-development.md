@@ -6,6 +6,23 @@ behavior. The [README](../../README.md) presents the research platform.
 
 ## Backend
 
+- **Renewable attachments.** `POST /api/upload-file` accepts multipart `file`
+  alone to create an ownerless workspace attachment, or `file` plus
+  `attachment_id` (UUID) to renew that ownerless row. Renewal preserves its ID,
+  replaces its current file and deletes the previous object; it keeps no versions
+  or backups. Do not send owner fields on renewal. Issue/comment-owned and chat
+  files cannot be renewed this way. Task-upload replacement skips comment-owned
+  files, preserving dependent comment history.
+  `POST /api/attachments/{id}/attach` and `/detach` both take JSON
+  `{"issue_id":"UUID"}`. Attach claims an ownerless file for that issue; an
+  existing issue-only attachment to the same issue is a no-op. Detach requires
+  that issue to be the current owner and clears both `issue_id` and `comment_id`.
+  Neither operation changes file ID or bytes. All three operations return HTTP
+  200 with the existing `AttachmentResponse`, including the same `id` and current
+  nullable owner fields. Use authentication and `X-Workspace-ID` (or slug).
+  Mutations require the uploader actor or a workspace owner/admin. A conflicting
+  owner returns 409, unauthorized mutations 403, missing resources 404 and invalid
+  UUIDs/payloads 400. Ordinary dependent deletion is unchanged.
 - **Editable startup prompts.** We replaced embedded workflow instructions with
   workspace Go templates and SOP skills. You can edit the workspace prompt;
   the server validates the template on save. The kit routes issue turns to the
