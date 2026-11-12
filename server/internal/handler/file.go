@@ -53,7 +53,6 @@ const (
 
 type AttachmentResponse struct {
 	ID            string  `json:"id"`
-	Independent   bool    `json:"independent,omitempty"`
 	WorkspaceID   string  `json:"workspace_id"`
 	IssueID       *string `json:"issue_id"`
 	CommentID     *string `json:"comment_id"`
@@ -158,11 +157,15 @@ func attachmentURLModeFromRequest(r *http.Request) attachmentURLMode {
 	return attachmentURLModeSigned
 }
 
+// Ownerless files may renew their current key, so their URLs must bypass immutable caches.
+func attachmentHasNoOwner(a db.Attachment) bool {
+	return !a.IssueID.Valid && !a.CommentID.Valid && !a.SourceContextID.Valid && !a.ChatSessionID.Valid && !a.ChatMessageID.Valid
+}
+
 func (h *Handler) attachmentToResponse(a db.Attachment, mode attachmentURLMode) AttachmentResponse {
 	id := uuidToString(a.ID)
 	resp := AttachmentResponse{
 		ID:           id,
-		Independent:  a.Independent,
 		WorkspaceID:  uuidToString(a.WorkspaceID),
 		UploaderType: a.UploaderType,
 		UploaderID:   uuidToString(a.UploaderID),
@@ -177,7 +180,7 @@ func (h *Handler) attachmentToResponse(a db.Attachment, mode attachmentURLMode) 
 	// Only CloudFront mode overrides the stable path here; the presign and proxy
 	// modes already leave DownloadURL as the stable path and resolve it at
 	// download time, so stable mode is a no-op for them.
-	if !a.Independent && h.CFSigner != nil && mode != attachmentURLModeStable {
+	if h.CFSigner != nil && mode != attachmentURLModeStable && !attachmentHasNoOwner(a) {
 		resp.DownloadURL = h.CFSigner.SignedURL(a.Url, time.Now().Add(h.attachmentDownloadURLTTL()))
 	}
 	if a.Width.Valid && a.Height.Valid {
@@ -244,7 +247,7 @@ func (h *Handler) buildMarkdownURL(a db.Attachment, id string) string {
 	publicURL := strings.TrimRight(h.cfg.PublicURL, "/")
 
 	// Replaceable resources keep Markdown links tied to the row, not the blob.
-	if !a.Independent && (!a.TaskID.Valid || !a.IssueID.Valid) && h.storageURLIsPubliclyReadable(a.Url) {
+	if !attachmentHasNoOwner(a) && (!a.TaskID.Valid || !a.IssueID.Valid) && h.storageURLIsPubliclyReadable(a.Url) {
 		return a.Url
 	}
 
@@ -440,29 +443,8 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	independent := r.FormValue("independent") == "true"
-	if raw := r.FormValue("independent"); raw != "" && raw != "true" && raw != "false" {
-		writeError(w, http.StatusBadRequest, "independent must be true or false")
-		return
-	}
-	if independent {
-		if workspaceID == "" {
-			writeError(w, http.StatusBadRequest, "independent resources require a workspace")
-			return
-		}
-		for _, owner := range []string{"issue_id", "comment_id", "task_id", "chat_session_id", "chat_message_id", "source_context_id"} {
-			if r.FormValue(owner) != "" {
-				writeError(w, http.StatusBadRequest, "independent resources cannot have an owner")
-				return
-			}
-		}
-	}
 	if attachmentID := r.FormValue("attachment_id"); attachmentID != "" {
-		if !independent {
-			writeError(w, http.StatusBadRequest, "attachment_id replacement requires independent=true")
-			return
-		}
-		h.replaceIndependentAttachment(w, r, userID, workspaceID, attachmentID, header.Filename, contentType, data)
+		h.replaceAttachment(w, r, userID, workspaceID, attachmentID, header.Filename, contentType, data)
 		return
 	}
 
@@ -491,7 +473,6 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		uploaderType, uploaderID := h.resolveActor(r, userID, workspaceID)
 
 		params := db.CreateAttachmentParams{
-			Independent:  independent,
 			ID:           pgtype.UUID{Bytes: id, Valid: true},
 			WorkspaceID:  parseUUID(workspaceID),
 			UploaderType: uploaderType,
@@ -604,7 +585,7 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			for _, attachment := range attachments {
-				if attachment.TaskID.Valid && !attachment.SourceContextID.Valid &&
+				if attachment.TaskID.Valid && !attachment.CommentID.Valid && !attachment.SourceContextID.Valid &&
 					attachment.UploaderType == params.UploaderType && attachment.UploaderID == params.UploaderID &&
 					attachment.Filename == params.Filename && attachment.ContentType == params.ContentType {
 					replaced = attachment
@@ -626,7 +607,17 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 		var att db.CreateAttachmentRow
 		if replaced.ID.Valid {
+			retained := false
 			err = h.withAttachmentOwnerLock(r.Context(), replaced, func(qtx *db.Queries) error {
+				fresh, err := qtx.GetAttachment(r.Context(), db.GetAttachmentParams{ID: replaced.ID, WorkspaceID: params.WorkspaceID})
+				if err != nil {
+					return err
+				}
+				if fresh.CommentID.Valid || fresh.IssueID != params.IssueID {
+					retained = true
+					att, err = qtx.CreateAttachment(r.Context(), params)
+					return err
+				}
 				updated, updateErr := qtx.UpdateAttachment(r.Context(), db.UpdateAttachmentParams{
 					ID: replaced.ID, WorkspaceID: params.WorkspaceID,
 					Filename: params.Filename, Url: link, ContentType: contentType, SizeBytes: params.SizeBytes,
@@ -640,7 +631,9 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, "failed to replace attachment")
 				return
 			}
-			h.deleteS3Object(r.Context(), replaced.Url)
+			if !retained {
+				h.deleteS3Object(r.Context(), replaced.Url)
+			}
 		} else if params.CommentID.Valid {
 			// A comment attachment is written under the comment's lock, so a
 			// delete that commits while the object uploaded cannot leave it on
@@ -662,11 +655,6 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			slog.Error("failed to create attachment record", "error", err)
-			if independent {
-				h.deleteS3Object(r.Context(), link)
-				writeError(w, http.StatusInternalServerError, "failed to create independent resource")
-				return
-			}
 			// S3 upload succeeded but DB record failed — still return the link
 			// so the file is usable. Log the error for investigation.
 		} else {
@@ -782,7 +770,7 @@ func (h *Handler) writeSignedAttachmentMetadata(w http.ResponseWriter, r *http.R
 	// keeps images renderable inline while preserving the original download
 	// filename.
 	mode := h.resolveAttachmentDownloadMode(att.Url)
-	if att.Independent {
+	if attachmentHasNoOwner(att) {
 		mode = attachmentDownloadModeProxy
 	}
 	switch mode {
@@ -953,7 +941,7 @@ func (h *Handler) DownloadAttachment(w http.ResponseWriter, r *http.Request) {
 
 	key := h.Storage.KeyFromURL(att.Url)
 	// Mutable content must bypass the storage/CDN's immutable-object cache.
-	if att.Independent {
+	if attachmentHasNoOwner(att) {
 		h.proxyAttachmentDownload(w, r, att, key, false)
 		return
 	}
@@ -1619,14 +1607,7 @@ func (h *Handler) attachmentOwnerLockAttempt(ctx context.Context, att db.Attachm
 			return db.Attachment{}, err
 		}
 	}
-	var fresh db.Attachment
-	if att.IssueID.Valid || att.CommentID.Valid {
-		fresh, err = qtx.GetAttachment(ctx, db.GetAttachmentParams{ID: att.ID, WorkspaceID: att.WorkspaceID})
-	} else {
-		// Nothing to lock above: take the row itself so it cannot gain an owner
-		// between this read and the write.
-		fresh, err = qtx.LockAttachmentRow(ctx, db.LockAttachmentRowParams{ID: att.ID, WorkspaceID: att.WorkspaceID})
-	}
+	fresh, err := qtx.LockAttachmentRow(ctx, db.LockAttachmentRowParams{ID: att.ID, WorkspaceID: att.WorkspaceID})
 	if err != nil {
 		return db.Attachment{}, err
 	}
@@ -1657,4 +1638,73 @@ func (h *Handler) deleteS3Objects(ctx context.Context, urls []string) {
 		keys[i] = h.Storage.KeyFromURL(u)
 	}
 	h.Storage.DeleteKeys(ctx, keys)
+}
+
+// replaceAttachment preserves owned/comment versions; only ownerless files renew the current key.
+func (h *Handler) replaceAttachment(w http.ResponseWriter, r *http.Request, userID, workspaceID, attachmentID, filename, contentType string, data []byte) {
+	if workspaceID == "" {
+		writeError(w, http.StatusBadRequest, "workspace_id is required")
+		return
+	}
+	if _, err := h.getWorkspaceMember(r.Context(), userID, workspaceID); err != nil {
+		writeError(w, http.StatusForbidden, "not a member of this workspace")
+		return
+	}
+	id, ok := parseUUIDOrBadRequest(w, attachmentID, "attachment_id")
+	if !ok {
+		return
+	}
+	att, err := h.Queries.GetAttachment(r.Context(), db.GetAttachmentParams{ID: id, WorkspaceID: parseUUID(workspaceID)})
+	if err != nil || att.SourceContextID.Valid || att.ChatSessionID.Valid || att.ChatMessageID.Valid {
+		writeError(w, http.StatusNotFound, "attachment not found")
+		return
+	}
+	var result db.Attachment
+	err = h.withAttachmentOwnerLock(r.Context(), att, func(q *db.Queries) error {
+		att, err := q.GetAttachment(r.Context(), db.GetAttachmentParams{ID: id, WorkspaceID: att.WorkspaceID})
+		if err != nil {
+			return err
+		}
+		preserve := att.IssueID.Valid || att.CommentID.Valid
+		key := h.Storage.KeyFromURL(att.Url)
+		nextID := id
+		if preserve {
+			value, err := uuid.NewV7()
+			if err != nil {
+				return err
+			}
+			nextID = pgtype.UUID{Bytes: value, Valid: true}
+			key = path.Join(path.Dir(key), value.String()+path.Ext(filename))
+		}
+		link, err := h.Storage.Upload(r.Context(), key, data, contentType, filename)
+		if err != nil {
+			return err
+		}
+		params := db.UpdateAttachmentParams{ID: nextID, WorkspaceID: att.WorkspaceID, Filename: filename, Url: link, ContentType: contentType, SizeBytes: int64(len(data))}
+		if dimensions, ok := imagemetadata.Dimensions(data); ok {
+			params.Width = pgtype.Int4{Int32: dimensions.Width, Valid: true}
+			params.Height = pgtype.Int4{Int32: dimensions.Height, Valid: true}
+		}
+		if preserve {
+			created, err := q.CreateAttachment(r.Context(), db.CreateAttachmentParams{
+				ID: nextID, WorkspaceID: att.WorkspaceID, IssueID: att.IssueID, CommentID: att.CommentID,
+				TaskID: att.TaskID, UploaderType: att.UploaderType, UploaderID: att.UploaderID,
+				Filename: filename, Url: link, ContentType: contentType, SizeBytes: params.SizeBytes, Width: params.Width, Height: params.Height,
+			})
+			if err != nil {
+				h.deleteS3Object(r.Context(), link)
+				return err
+			}
+			result = created.Attachment()
+			return nil
+		}
+		updated, err := q.UpdateAttachment(r.Context(), params)
+		result = db.CreateAttachmentRow(updated).Attachment()
+		return err
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to replace attachment")
+		return
+	}
+	writeJSON(w, http.StatusOK, h.attachmentToResponse(result, attachmentURLModeFromRequest(r)))
 }

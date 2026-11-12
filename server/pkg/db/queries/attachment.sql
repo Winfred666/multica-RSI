@@ -3,12 +3,12 @@ WITH inserted AS (
   INSERT INTO attachment (
     id, workspace_id, issue_id, comment_id, chat_session_id, task_id, source_context_id,
     uploader_type, uploader_id, filename, url, content_type, size_bytes,
-    width, height, independent
+    width, height
   )
   VALUES (
     $1, $2, sqlc.narg(issue_id), sqlc.narg(comment_id), sqlc.narg(chat_session_id), sqlc.narg(task_id), sqlc.narg(source_context_id),
     $3, $4, $5, $6, $7, $8,
-    sqlc.narg(width), sqlc.narg(height), sqlc.arg(independent)
+    sqlc.narg(width), sqlc.narg(height)
   )
   RETURNING *
 ), bumped_issue AS (
@@ -118,25 +118,22 @@ RETURNING url;
 
 -- name: LinkAttachmentsToComment :exec
 UPDATE attachment
-SET comment_id = $1
-WHERE issue_id = $2
+SET issue_id = $2, comment_id = $1
+WHERE (issue_id IS NULL OR issue_id = $2)
   AND comment_id IS NULL
-  AND source_context_id IS NULL
-  AND NOT independent
+  AND workspace_id = (SELECT workspace_id FROM comment WHERE id = $1 AND issue_id = $2)
+  AND source_context_id IS NULL AND chat_session_id IS NULL AND chat_message_id IS NULL
   AND id = ANY($3::uuid[]);
 
 -- name: ReplaceCommentAttachments :execrows
 UPDATE attachment
-SET comment_id = CASE
-  WHEN id = ANY(sqlc.arg(attachment_ids)::uuid[]) THEN $1
-  ELSE NULL
-END
-WHERE issue_id = $2
-  AND source_context_id IS NULL
-  AND NOT independent
+SET issue_id = CASE WHEN id = ANY(sqlc.arg(attachment_ids)::uuid[]) THEN $2 ELSE NULL END,
+    comment_id = CASE WHEN id = ANY(sqlc.arg(attachment_ids)::uuid[]) THEN $1 ELSE NULL END
+WHERE workspace_id = (SELECT workspace_id FROM comment WHERE id = $1 AND issue_id = $2)
+  AND source_context_id IS NULL AND chat_session_id IS NULL AND chat_message_id IS NULL
   AND (
     (comment_id = $1 AND NOT id = ANY(sqlc.arg(attachment_ids)::uuid[]))
-    OR (comment_id IS NULL AND id = ANY(sqlc.arg(attachment_ids)::uuid[]))
+    OR (comment_id IS NULL AND (issue_id IS NULL OR issue_id = $2) AND id = ANY(sqlc.arg(attachment_ids)::uuid[]))
   );
 
 -- name: LinkAttachmentsToChatMessage :many
@@ -148,7 +145,6 @@ WHERE workspace_id = sqlc.arg(workspace_id)
   AND comment_id IS NULL
   AND chat_message_id IS NULL
   AND source_context_id IS NULL
-  AND NOT independent
   AND (
     chat_session_id IS NULL
     OR chat_session_id = sqlc.arg(chat_session_id)
@@ -209,37 +205,20 @@ WHERE chat_message_id = ANY($1::uuid[]) AND workspace_id = $2
 ORDER BY created_at ASC;
 
 -- name: LockAttachmentsForIssueLink :many
--- Issue updates bind attachments and then touch the owner row. Only rows that
--- belong to no issue yet are eligible, and nothing reaches those through an
--- issue — not teardown's cascade, not DeleteAttachment, which takes the owning
--- issue first — so locking them before the owner cannot deadlock.
--- Attachments that DO belong to the issue are locked after it; see
--- LockAttachmentsForCommentLink.
 SELECT id FROM attachment
 WHERE workspace_id = sqlc.arg(workspace_id)
-  AND issue_id IS NULL
-  AND source_context_id IS NULL
-  AND NOT independent
+  AND issue_id IS NULL AND comment_id IS NULL
+  AND source_context_id IS NULL AND chat_session_id IS NULL AND chat_message_id IS NULL
   AND id = ANY(sqlc.arg(attachment_ids)::uuid[])
-ORDER BY id
-FOR UPDATE;
+ORDER BY id FOR UPDATE;
 
 -- name: LockAttachmentsForCommentLink :many
--- CreateComment binds attachments in the transaction that created the comment,
--- after the CreateComment statement has taken the issue row: issue -> comment
--- -> child, the order every owner-first mutation here uses. This pins the
--- requested set under that lock and returns the ids still eligible, so the
--- caller can refuse before the comment is committed when a requested
--- attachment was deleted while the issue lock was contended.
 SELECT id FROM attachment
 WHERE workspace_id = sqlc.arg(workspace_id)
-  AND issue_id = sqlc.arg(issue_id)
-  AND comment_id IS NULL
-  AND source_context_id IS NULL
-  AND NOT independent
+  AND (issue_id IS NULL OR issue_id = sqlc.arg(issue_id)) AND comment_id IS NULL
+  AND source_context_id IS NULL AND chat_session_id IS NULL AND chat_message_id IS NULL
   AND id = ANY(sqlc.arg(attachment_ids)::uuid[])
-ORDER BY id
-FOR UPDATE;
+ORDER BY id FOR UPDATE;
 
 -- name: LockAttachmentRow :one
 -- Locks an attachment that has no owner to lock instead — a chat, avatar or
@@ -255,9 +234,8 @@ WITH linked AS (
   UPDATE attachment
   SET issue_id = sqlc.arg(issue_id)
   WHERE attachment.workspace_id = sqlc.arg(workspace_id)
-    AND attachment.issue_id IS NULL
-    AND attachment.source_context_id IS NULL
-    AND NOT attachment.independent
+    AND attachment.issue_id IS NULL AND attachment.comment_id IS NULL
+    AND attachment.source_context_id IS NULL AND attachment.chat_session_id IS NULL AND attachment.chat_message_id IS NULL
     AND attachment.id = ANY(sqlc.arg(attachment_ids)::uuid[])
   RETURNING attachment.issue_id
 ), bumped_issue AS (
@@ -333,7 +311,26 @@ DELETE FROM attachment
 WHERE workspace_id = sqlc.arg(workspace_id)
   AND source_context_id IS NOT NULL;
 
--- name: ListIndependentAttachments :many
+-- name: ListWorkspaceAttachments :many
 SELECT * FROM attachment
-WHERE workspace_id = $1 AND independent
+WHERE workspace_id = $1 AND source_context_id IS NULL
+  AND chat_session_id IS NULL AND chat_message_id IS NULL
 ORDER BY created_at ASC, id ASC;
+
+-- name: UnlinkIssueAttachments :one
+WITH detached AS (
+    UPDATE attachment a SET issue_id = NULL, comment_id = NULL
+    WHERE a.workspace_id = sqlc.arg(workspace_id)
+      AND (a.issue_id = sqlc.arg(issue_id) OR a.comment_id IN (
+          SELECT c.id FROM comment c WHERE c.issue_id = sqlc.arg(issue_id) AND c.workspace_id = sqlc.arg(workspace_id)
+      ))
+      AND a.id = ANY(sqlc.arg(attachment_ids)::uuid[]) AND a.source_context_id IS NULL
+    RETURNING a.id
+), bumped AS (
+    UPDATE issue SET revision = revision + 1, updated_at = now()
+    WHERE issue.id = sqlc.arg(issue_id) AND issue.workspace_id = sqlc.arg(workspace_id)
+      AND sqlc.arg(bump_revision)::boolean AND EXISTS (SELECT 1 FROM detached)
+    RETURNING revision
+)
+SELECT (SELECT COUNT(*) FROM detached)::bigint AS changed_count,
+       COALESCE((SELECT revision FROM bumped), 0)::bigint AS issue_revision;
