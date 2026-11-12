@@ -23,7 +23,7 @@ export function useOpenAttachment() {
   const { tryOpen } = preview;
   const open = useCallback(
     (attachment: Attachment) => {
-      if (attachment.independent === true) {
+      if (!attachment.issue_id && !attachment.comment_id) {
         for (const key of ["attachment-content", "attachment-inline-resign", "attachment-inline-blob"]) {
           void client.invalidateQueries({ queryKey: [key, attachment.id] });
         }

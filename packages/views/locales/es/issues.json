@@ -1494,8 +1494,6 @@
     "credits_count": "{{credits}} créditos de {{provider}}"
   },
   "deliverables": {
-    "linked_title": "Entregables vinculados",
-    "independent_title": "Entregable independiente",
     "section_title": "Entregables",
     "view_all_one": "Ver {{count}} entregable",
     "view_all_other": "Ver todos los {{count}} entregables",

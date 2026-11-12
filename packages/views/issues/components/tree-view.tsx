@@ -14,8 +14,8 @@ import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { isBuiltInIssueStatus } from "@multica/core/issue-statuses";
 import { agentTaskSnapshotOptions } from "@multica/core/agents";
 import { issueAttachmentsOptions, issueTimelineOptions } from "@multica/core/issues/queries";
-import { workspaceDeliverablesOptions } from "@multica/core/workspace/queries";
-import { collectDeliverableFiles, linkedDeliverables } from "@multica/core/attachments/deliverables";
+import { workspaceAttachmentsOptions } from "@multica/core/workspace/queries";
+import { collectDeliverableFiles } from "@multica/core/attachments/deliverables";
 import { issueStatusCategory, statusColumnKeys } from "@multica/core/issues";
 import { STATUS_CONFIG } from "@multica/core/issues/config";
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
@@ -45,7 +45,6 @@ import type { ChildProgress } from "./list-row";
 import { IssueActionsContextMenu } from "../actions";
 import { TreeCollaboratorAvatar, TreeIssueHoverContent } from "./tree-hover-content";
 import { BUILT_IN_ICON_COLOR, StatusIcon } from "./status-icon";
-import { LinkedDeliverables } from "./deliverables/linked-deliverables";
 import { TreeDeliverables } from "./deliverables/tree-deliverables";
 
 const EMPTY_TASKS: AgentTask[] = [];
@@ -79,7 +78,7 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
   const sortDirection = useViewStore((s) => s.sortDirection);
   const treeViewport = useViewStore((s) => s.treeViewport);
   const setTreeViewport = useViewStore((s) => s.setTreeViewport);
-  const deliverables = useQuery(workspaceDeliverablesOptions(wsId));
+  const deliverables = useQuery(workspaceAttachmentsOptions(wsId));
   const { data: tasks = EMPTY_TASKS } = useQuery(agentTaskSnapshotOptions(wsId));
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [layoutWidth, setLayoutWidth] = useState(0);
@@ -285,26 +284,25 @@ export function TreeView({ issues, statusPagination, onCreateIssue, childProgres
           })}
         </svg>
         {layout.nodes.map(({ node, x, y, width }) => {
-          if (node.deliverable) return <div key={node.id} className="absolute" style={{ left: x - width / 2, top: y, width }}>
-            <TreeIndependentDeliverable file={node.deliverable} onSizeChange={onSizeChange} />
+          if (node.deliverable) return <div key={node.id} className="absolute z-0" style={{ left: x - width / 2, top: y, width }}>
+            <TreeFloatingAttachment file={node.deliverable} onSizeChange={onSizeChange} />
           </div>;
           const issue = node.issues[0]!;
           const frame = isWorkspaceNode(node);
           const snapshot = snapshots.data?.[frame ? issueWorkspaceId(issue)! : issue.workspace_id];
           const workspace = snapshot?.workspace;
           const style = { left: x - width / 2, top: y, width };
-          if (frame) return <div key={node.id} data-workspace-frame className="absolute" style={style}>
+          if (frame) return <div key={node.id} data-workspace-frame className="absolute z-10" style={style}>
             {workspace && !snapshot.error ? <AppLink href={paths.workspace(workspace.slug).issues()} className="flex h-10 items-center gap-2 overflow-hidden border-b px-3 text-caption font-medium">
               <Layers className="size-4 shrink-0" /><span className="truncate">{t(($) => $.tree.workspace_static_at, { name: workspace.name, time: snapshotTime(snapshot.capturedAt) })}</span>
             </AppLink> : <span className="flex h-10 items-center justify-center text-caption text-muted-foreground">
               {snapshot || snapshots.error ? <EyeOff className="size-4" role="img" aria-label={t(($) => $.tree.workspace_no_access)} /> : t(($) => $.tree.loading)}
             </span>}
           </div>;
-          return <div key={node.id} data-workspace-frame={isSnapshot(node) ? "" : undefined} className="absolute flex flex-col" style={style}>
+          return <div key={node.id} data-workspace-frame={isSnapshot(node) ? "" : undefined} className="absolute z-10 flex flex-col" style={style}>
             {workspace ? <TreeSnapshotNode issue={issue} workspaceSlug={workspace.slug} onSizeChange={onSizeChange} /> : <TreeIssueNode
               issue={node.issues[0]!}
               tasks={tasks}
-              linkedFiles={linkedDeliverables(issue.metadata?.deliverables, deliverables.data ?? [])}
               onCreateIssue={onCreateIssue}
               childProgress={childProgressMap?.get(node.issues[0]!.id)}
               project={projectMap?.get(node.issues[0]!.project_id ?? "")}
@@ -374,10 +372,9 @@ function TreeCollaborators({ issue, collaborators, tasks, workspaceSlug }: {
   );
 }
 
-function TreeIssueNode({ issue, tasks, linkedFiles, onCreateIssue, childProgress, project, onSizeChange, collapsed }: {
+function TreeIssueNode({ issue, tasks, onCreateIssue, childProgress, project, onSizeChange, collapsed }: {
   issue: Issue;
   tasks: AgentTask[];
-  linkedFiles: Attachment[];
   onCreateIssue: (defaults?: IssueCreateDefaults) => void;
   childProgress?: ChildProgress;
   project?: Project;
@@ -437,7 +434,6 @@ function TreeIssueNode({ issue, tasks, linkedFiles, onCreateIssue, childProgress
         </div>
       </IssueActionsContextMenu>
       {files.length > 0 && <TreeDeliverables files={files} />}
-      <LinkedDeliverables files={linkedFiles} />
       <div className="flex justify-center">
         <Button variant="ghost" size="icon-xs" aria-label={t(($) => $.tree.create_child)} onClick={() => onCreateIssue({ parent_issue_id: issue.id, parent_issue_identifier: issue.identifier, project_id: issue.project_id })}><Plus /></Button>
       </div>
@@ -446,17 +442,12 @@ function TreeIssueNode({ issue, tasks, linkedFiles, onCreateIssue, childProgress
   );
 }
 
-function TreeIndependentDeliverable({ file, onSizeChange }: {
+function TreeFloatingAttachment({ file, onSizeChange }: {
   file: Attachment;
   onSizeChange: (id: string, size: IssueTreeSize) => void;
 }) {
-  const { t } = useT("issues");
   const ref = useTreeNodeSize(`deliverable:${file.id}`, onSizeChange);
-  return <div ref={ref} data-independent-deliverable={file.id} className="rounded-lg border border-surface-border bg-surface shadow-sm">
-    <div className="min-w-0 px-4 pt-3">
-      <div className="text-micro text-muted-foreground">{t(($) => $.deliverables.independent_title)}</div>
-      <div className="truncate text-caption font-medium" title={file.filename}>{file.filename}</div>
-    </div>
+  return <div ref={ref} data-free-attachment={file.id}>
     <TreeDeliverables files={[{ key: file.id, latest: file, versions: [file] }]} />
   </div>;
 }

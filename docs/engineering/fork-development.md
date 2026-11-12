@@ -278,6 +278,10 @@ and `--remove-attachment-id` for the backend's attach/paired-detach operations.
 Normal issue/comment `--attachment` paths are unchanged. No metadata protocol,
 client history mode, separate link/unlink commands or independent-only list.
 
+### Common preview tiles
+
+Workspace `?include=attachments` supplies ordinary files. Tree free nodes select rows with both owner fields empty and deduplicate by ID, not filename. They float beside the issue trees on a separate layer beneath the cards, outside root packing, and reuse common preview tiles without extra titles or filename headers. Description content links use the ordinary attachment URL matcher to draw soft-reference edges; they do not establish ownership. Comment files in the FK attachment projection join the existing deliverable collection and version rendering even before their timeline loads. No metadata-deliverables list or parallel linked-file section is read.
+
 ## SoP configuration artifacts (template only)
 
 The creator/template adopts the [R-328 shared wrapper protocol](https://github.com/Winfred666/multica-featssship/tree/c396c654f245e2dd4d0686f70a16a73101ac4188/installation),

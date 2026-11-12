@@ -1451,8 +1451,6 @@
     "issue_disabled_action": "恢復"
   },
   "deliverables": {
-    "linked_title": "關聯交付物",
-    "independent_title": "獨立交付物",
     "section_title": "產物",
     "view_all_other": "檢視全部 {{count}} 個產物",
     "name_with_version": "{{name}}，第 {{version}} 版",

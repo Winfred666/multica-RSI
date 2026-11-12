@@ -1524,8 +1524,6 @@
     "issue_disabled_action": "Turn on"
   },
   "deliverables": {
-    "linked_title": "Linked deliverables",
-    "independent_title": "Independent deliverable",
     "section_title": "Deliverables",
     "view_all_one": "View all {{count}} deliverable",
     "view_all_other": "View all {{count}} deliverables",

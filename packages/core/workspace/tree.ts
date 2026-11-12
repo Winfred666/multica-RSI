@@ -1,9 +1,10 @@
 import { queryOptions } from "@tanstack/react-query";
 import { api } from "../api";
 import type { Attachment, Issue, Workspace } from "../types";
-import { independentDeliverables, linkedDeliverables } from "../attachments/deliverables";
+import { floatingAttachments } from "../attachments/deliverables";
+import { contentReferencesAttachment } from "../types/attachment-url";
 import { workspaceListOptions } from "./queries";
-import { buildIssueTree, layoutIssueTree, type IssueTreeNode, type IssueTreeSize } from "../issues/surface/tree";
+import { buildIssueTree, layoutIssueTree, TREE_NODE_WIDTH, TREE_NODE_HEIGHT, type IssueTreeNode, type IssueTreeSize } from "../issues/surface/tree";
 
 export function issueWorkspaceId(issue: Pick<Issue, "metadata">): string | null {
   const id = issue.metadata?.sub_workspace_id;
@@ -87,14 +88,28 @@ export function layoutWorkspaceTree(roots: IssueTreeNode[], wsId: string, snapsh
     }))]);
     return layout;
   }
-  const independent = independentDeliverables(deliverables);
-  const layout = build([...roots, ...independent.map((file) => ({
-    id: `deliverable:${file.id}`, deliverable: file, issues: [], collapsed: false, children: [],
-  }))]);
+  const floating = floatingAttachments(deliverables);
+  const layout = build(roots);
+  // Floating previews overlay the canvas beside the issues, never entering root packing.
+  const left = layout.width;
+  let top = 48;
+  const previews = floating.map((file) => {
+    const id = `deliverable:${file.id}`;
+    const { width = TREE_NODE_WIDTH, height = TREE_NODE_HEIGHT } = sizes.get(id) ?? {};
+    const position = {
+      node: { id, deliverable: file, issues: [], collapsed: false, children: [] },
+      x: left + width / 2, y: top, width, height, parentId: null,
+    };
+    top += height + 24;
+    return position;
+  });
+  layout.nodes.push(...previews);
+  layout.width = Math.max(layout.width, ...previews.map((position) => position.x + position.width / 2 + 48));
+  layout.height = Math.max(layout.height, top);
   for (const { node } of layout.nodes) {
     if (node.deliverable || node.collapsed || node.id.startsWith("workspace:")) continue;
     if (node.issues[0]?.workspace_id !== wsId) continue;
-    for (const file of linkedDeliverables(node.issues[0]?.metadata?.deliverables, independent)) {
+    for (const file of floating.filter((file) => contentReferencesAttachment(node.issues[0]?.description ?? "", file))) {
       links.push({ source: node.id, target: `deliverable:${file.id}`, kind: "deliverable" });
     }
   }

@@ -1473,8 +1473,6 @@
     "issue_disabled_action": "再開"
   },
   "deliverables": {
-    "linked_title": "リンクされた成果物",
-    "independent_title": "独立した成果物",
     "section_title": "成果物",
     "view_all_other": "成果物 {{count}} 件をすべて表示",
     "name_with_version": "{{name}}（バージョン {{version}}）",
