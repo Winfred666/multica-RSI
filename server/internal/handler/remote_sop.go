@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -30,6 +29,7 @@ func (h *Handler) TakeRemoteSOPs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) takeRemoteSOPs(ctx context.Context, runtime db.AgentRuntime) ([]protocol.RemoteSOPRequest, error) {
+	// TODO: need better assignment for remote calling comment in that issue
 	comments, err := h.Queries.ListRemoteSOPComments(ctx, runtime.ID)
 	if err != nil {
 		return nil, err
@@ -40,15 +40,17 @@ func (h *Handler) takeRemoteSOPs(ctx context.Context, runtime db.AgentRuntime) (
 		if err != nil {
 			return nil, err
 		}
-		skills, err := h.TaskService.LoadAgentSkills(ctx, issue.AssigneeID)
-		if err != nil {
+		callerAgentID, callerUserID := pgtype.UUID{}, comment.CallerUserID
+		logAgentID := issue.AssigneeID
+		if comment.AuthorType == "agent" {
+			callerAgentID, logAgentID = comment.AuthorID, comment.AuthorID
+		} else if !callerUserID.Valid {
+			callerUserID = comment.AuthorID
+		}
+		if _, err := h.Queries.GetMemberByUserAndWorkspace(ctx, db.GetMemberByUserAndWorkspaceParams{UserID: callerUserID, WorkspaceID: issue.WorkspaceID}); err != nil {
 			return nil, err
 		}
-		skillJSON, err := json.Marshal(skills)
-		if err != nil {
-			return nil, err
-		}
-		prior, err := h.Queries.GetLastTaskSession(ctx, db.GetLastTaskSessionParams{AgentID: issue.AssigneeID, IssueID: issue.ID})
+		workDir, err := h.Queries.GetRemoteSOPWorkDir(ctx, db.GetRemoteSOPWorkDirParams{RuntimeID: runtime.ID, AgentID: issue.AssigneeID, IssueID: issue.ID})
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
@@ -66,20 +68,20 @@ func (h *Handler) takeRemoteSOPs(ctx context.Context, runtime db.AgentRuntime) (
 			if _, err := q.TakeRemoteSOPComment(ctx, db.TakeRemoteSOPCommentParams{ID: comment.ID, WorkspaceID: comment.WorkspaceID}); err != nil {
 				return protocol.RemoteSOPRequest{}, err
 			}
-			// This completed row stores execution output; it never enters the agent queue.
-			if _, err := q.CreateRemoteSOPLog(ctx, db.CreateRemoteSOPLogParams{ID: comment.ID, AgentID: issue.AssigneeID, RuntimeID: runtime.ID, IssueID: issue.ID}); err != nil {
+			// This completed audit log retains caller provenance/output, never queued.
+			if _, err := q.CreateRemoteSOPLog(ctx, db.CreateRemoteSOPLogParams{ID: comment.ID, AgentID: logAgentID, RuntimeID: runtime.ID, IssueID: issue.ID, OriginatorUserID: callerUserID}); err != nil {
 				return protocol.RemoteSOPRequest{}, err
 			}
 			if _, err := q.CreateTaskMessage(ctx, db.CreateTaskMessageParams{ID: dbid.NewV7(), TaskID: comment.ID, Seq: 1, Type: "tool_use", Tool: pgtype.Text{String: "remote-sop", Valid: true}, Content: pgtype.Text{String: comment.Content, Valid: true}, CallID: pgtype.Text{String: uuidToString(comment.ID), Valid: true}}); err != nil {
 				return protocol.RemoteSOPRequest{}, err
 			}
-			if _, err := q.CreateTaskToken(ctx, db.CreateTaskTokenParams{ID: dbid.NewV7(), TokenHash: auth.HashToken(token), TaskID: comment.ID, AgentID: issue.AssigneeID, WorkspaceID: issue.WorkspaceID, UserID: runtime.OwnerID, ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true}}); err != nil {
+			if _, err := q.CreateTaskToken(ctx, db.CreateTaskTokenParams{ID: dbid.NewV7(), TokenHash: auth.HashToken(token), TaskID: comment.ID, AgentID: callerAgentID, WorkspaceID: issue.WorkspaceID, UserID: callerUserID, ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true}}); err != nil {
 				return protocol.RemoteSOPRequest{}, err
 			}
 			if err := tx.Commit(ctx); err != nil {
 				return protocol.RemoteSOPRequest{}, err
 			}
-			return protocol.RemoteSOPRequest{ID: uuidToString(comment.ID), AgentID: uuidToString(issue.AssigneeID), IssueID: uuidToString(issue.ID), WorkspaceID: uuidToString(issue.WorkspaceID), Content: comment.Content, WorkDir: prior.WorkDir.String, Skills: skillJSON, AuthToken: token}, nil
+			return protocol.RemoteSOPRequest{ID: uuidToString(comment.ID), AgentID: uuidToString(issue.AssigneeID), IssueID: uuidToString(issue.ID), WorkspaceID: uuidToString(issue.WorkspaceID), Content: comment.Content, WorkDir: workDir.String, AuthToken: token, CallerType: comment.AuthorType, CallerID: uuidToString(comment.AuthorID)}, nil
 		}()
 		if errors.Is(err, pgx.ErrNoRows) {
 			continue
@@ -87,7 +89,6 @@ func (h *Handler) takeRemoteSOPs(ctx context.Context, runtime db.AgentRuntime) (
 		if err != nil {
 			return nil, err
 		}
-		h.publish(protocol.EventCommentDeleted, request.WorkspaceID, "agent", request.AgentID, map[string]any{"comment_id": request.ID, "issue_id": request.IssueID})
 		requests = append(requests, request)
 	}
 	return requests, nil

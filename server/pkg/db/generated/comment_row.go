@@ -9,6 +9,7 @@ func (r CreateCommentRow) Comment() Comment {
 		IssueID:            r.IssueID,
 		AuthorType:         r.AuthorType,
 		AuthorID:           r.AuthorID,
+		CallerUserID:       r.CallerUserID,
 		Content:            r.Content,
 		Type:               r.Type,
 		CreatedAt:          r.CreatedAt,

@@ -10,6 +10,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/multica-ai/multica/server/internal/auth"
+	"github.com/multica-ai/multica/server/internal/middleware"
 )
 
 // TestListWorkspaceAgentTaskSnapshot covers the agent presence snapshot endpoint:
@@ -1109,14 +1112,7 @@ func TestAgentEnv_AgentActorRejected(t *testing.T) {
 	}
 }
 
-// TestAgentEnv_TaskTokenActorSource locks in the post-MUL-2600 attack
-// model: an agent process that strips its identifying headers
-// (X-Agent-ID / X-Task-ID) but is still authenticated by an `mat_`
-// task token MUST be recognized as actor=agent and rejected on the
-// env endpoint. The auth middleware sets X-Actor-Source=task_token
-// from the token row; resolveActor honors that header before the
-// header-pair fallback. Without this guard the lateral-movement fix
-// would only block "honest" CLIs that voluntarily set both headers.
+// Ordinary agent credentials remain agent-authored without client identity headers.
 func TestAgentEnv_TaskTokenActorSource(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("database not available")
@@ -1129,16 +1125,21 @@ func TestAgentEnv_TaskTokenActorSource(t *testing.T) {
 
 	req := newRequest(http.MethodGet, "/api/agents/"+targetID+"/env", nil)
 	req = withURLParam(req, "id", targetID)
-	// Simulate the auth middleware's post-mat_-resolution state: the
-	// only header touching actor identity is X-Actor-Source. The agent
-	// process stripped X-Agent-ID and X-Task-ID, hoping to fall back
-	// to the member auth path — the server-set X-Actor-Source must
-	// short-circuit that escape.
-	req.Header.Set("X-Actor-Source", "task_token")
+	sourceID := createHandlerTestTaskForAgent(t, targetID)
+	token, err := auth.GenerateAgentTaskToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbfx.Exec(t, `INSERT INTO task_token (id,token_hash,task_id,agent_id,workspace_id,user_id,expires_at)
+		VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,now()+interval '1 hour')`, auth.HashToken(token), sourceID, targetID, testWorkspaceID, testUserID)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Del("X-Agent-ID")
 	req.Header.Del("X-Task-ID")
 	w := httptest.NewRecorder()
-	testHandler.GetAgentEnv(w, req)
+	middleware.Auth(testHandler.Queries, nil, nil, nil)(http.HandlerFunc(testHandler.GetAgentEnv)).ServeHTTP(w, req)
+	if req.Header.Get("X-Agent-ID") != targetID || req.Header.Get("X-Task-ID") != sourceID {
+		t.Fatal("Auth did not restore ordinary agent identity")
+	}
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 when X-Actor-Source=task_token, got %d: %s", w.Code, w.Body.String())
 	}

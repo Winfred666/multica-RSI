@@ -100,13 +100,15 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 			// Agent task token: "mat_" prefix. Minted by the server at
 			// task-claim time and injected by the daemon into the agent
 			// process. Authoritative for actor identity — the bound
-			// (user_id, agent_id, task_id, workspace_id) triple is
+			// (user_id, agent_id, task_id, workspace_id) context is
 			// written into request headers here, OVERRIDING whatever the
 			// client sent, so a downstream actor-resolver cannot be
 			// tricked by a client that strips or forges X-Agent-ID /
 			// X-Task-ID. Human-only endpoints (e.g. agent env
 			// management) reject requests authenticated this way; see
 			// `actorSourceFromRequest`. MUL-2600.
+			// Remote SoP tokens reuse this path; member callers have no
+			// agent_id. Neither ID is client-selected.
 			if strings.HasPrefix(tokenString, "mat_") {
 				if queries == nil {
 					http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)

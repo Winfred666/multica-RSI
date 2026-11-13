@@ -12,16 +12,17 @@ import (
 )
 
 const createRemoteSOPLog = `-- name: CreateRemoteSOPLog :one
-INSERT INTO agent_task_queue (id, agent_id, runtime_id, issue_id, status, completed_at, context, trigger_summary)
-VALUES ($1, $2, $3, $4, 'completed', now(), '{"type":"remote_sop"}', 'Remote SOP')
+INSERT INTO agent_task_queue (id, agent_id, runtime_id, issue_id, status, completed_at, context, trigger_summary, originator_user_id, accountable_user_id)
+VALUES ($1, $2, $3, $4, 'completed', now(), '{"type":"remote_sop"}', 'Remote SOP', $5, $5)
 RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, autopilot_run_id, attempt, max_attempts, parent_task_id, failure_reason, trigger_summary, force_fresh_session, is_leader_task, wait_reason, initiator_user_id, handoff_note, prepare_lease_expires_at, squad_id, runtime_mcp_overlay, escalation_for_task_id, fire_at, originator_user_id, runtime_connected_apps, coalesced_comment_ids, delivered_comment_ids, chat_input_task_id, chat_finalize_deferred_at, originator_source, delegated_from_task_id, retry_of_task_id, rerun_of_task_id, rule_version_id, trigger_evidence_kind, trigger_evidence_ref_id, accountable_user_id, session_rollout_missing, retired_session_id, quick_actions_disabled, regenerate_quick_actions_for, branch_name, durable_work_dir, channel_context_revision, comment_thread_id, cancelled_by_type, cancelled_by_id, cancelled_by_name, issue_snapshot, workflow_step
 `
 
 type CreateRemoteSOPLogParams struct {
-	ID        pgtype.UUID `json:"id"`
-	AgentID   pgtype.UUID `json:"agent_id"`
-	RuntimeID pgtype.UUID `json:"runtime_id"`
-	IssueID   pgtype.UUID `json:"issue_id"`
+	ID               pgtype.UUID `json:"id"`
+	AgentID          pgtype.UUID `json:"agent_id"`
+	RuntimeID        pgtype.UUID `json:"runtime_id"`
+	IssueID          pgtype.UUID `json:"issue_id"`
+	OriginatorUserID pgtype.UUID `json:"originator_user_id"`
 }
 
 func (q *Queries) CreateRemoteSOPLog(ctx context.Context, arg CreateRemoteSOPLogParams) (AgentTaskQueue, error) {
@@ -30,6 +31,7 @@ func (q *Queries) CreateRemoteSOPLog(ctx context.Context, arg CreateRemoteSOPLog
 		arg.AgentID,
 		arg.RuntimeID,
 		arg.IssueID,
+		arg.OriginatorUserID,
 	)
 	var i AgentTaskQueue
 	err := row.Scan(
@@ -97,11 +99,33 @@ func (q *Queries) CreateRemoteSOPLog(ctx context.Context, arg CreateRemoteSOPLog
 	return i, err
 }
 
+const getRemoteSOPWorkDir = `-- name: GetRemoteSOPWorkDir :one
+SELECT work_dir FROM agent_task_queue
+WHERE runtime_id = $1 AND agent_id = $2 AND issue_id = $3
+  AND work_dir IS NOT NULL AND work_dir <> ''
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+type GetRemoteSOPWorkDirParams struct {
+	RuntimeID pgtype.UUID `json:"runtime_id"`
+	AgentID   pgtype.UUID `json:"agent_id"`
+	IssueID   pgtype.UUID `json:"issue_id"`
+}
+
+func (q *Queries) GetRemoteSOPWorkDir(ctx context.Context, arg GetRemoteSOPWorkDirParams) (pgtype.Text, error) {
+	row := q.db.QueryRow(ctx, getRemoteSOPWorkDir, arg.RuntimeID, arg.AgentID, arg.IssueID)
+	var work_dir pgtype.Text
+	err := row.Scan(&work_dir)
+	return work_dir, err
+}
+
 const listRemoteSOPComments = `-- name: ListRemoteSOPComments :many
-SELECT c.id, c.issue_id, c.author_type, c.author_id, c.content, c.type, c.created_at, c.updated_at, c.parent_id, c.workspace_id, c.resolved_at, c.resolved_by_type, c.resolved_by_id, c.source_task_id, c.quick_action_id, c.via_plugin_id, c.revision, c.recovery_settled_at, c.deleted_at, c.suppressed_agent_ids FROM comment c
+SELECT c.id, c.issue_id, c.author_type, c.author_id, c.content, c.type, c.created_at, c.updated_at, c.parent_id, c.workspace_id, c.resolved_at, c.resolved_by_type, c.resolved_by_id, c.source_task_id, c.quick_action_id, c.via_plugin_id, c.revision, c.recovery_settled_at, c.deleted_at, c.suppressed_agent_ids, c.caller_user_id FROM comment c
 JOIN issue i ON i.id = c.issue_id AND i.workspace_id = c.workspace_id
 JOIN agent a ON a.id = i.assignee_id AND i.assignee_type = 'agent'
-WHERE a.runtime_id = $1 AND c.content LIKE '/note !sop %' AND c.deleted_at IS NULL
+WHERE a.runtime_id = $1 AND c.content LIKE '/note !sop-remote %' AND c.deleted_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM agent_task_queue t WHERE t.id = c.id)
 ORDER BY c.created_at
 `
 
@@ -135,6 +159,7 @@ func (q *Queries) ListRemoteSOPComments(ctx context.Context, runtimeID pgtype.UU
 			&i.RecoverySettledAt,
 			&i.DeletedAt,
 			&i.SuppressedAgentIds,
+			&i.CallerUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -147,8 +172,8 @@ func (q *Queries) ListRemoteSOPComments(ctx context.Context, runtimeID pgtype.UU
 }
 
 const takeRemoteSOPComment = `-- name: TakeRemoteSOPComment :one
-DELETE FROM comment WHERE id = $1 AND workspace_id = $2 AND content LIKE '/note !sop %'
-RETURNING id, issue_id, author_type, author_id, content, type, created_at, updated_at, parent_id, workspace_id, resolved_at, resolved_by_type, resolved_by_id, source_task_id, quick_action_id, via_plugin_id, revision, recovery_settled_at, deleted_at, suppressed_agent_ids
+SELECT id, issue_id, author_type, author_id, content, type, created_at, updated_at, parent_id, workspace_id, resolved_at, resolved_by_type, resolved_by_id, source_task_id, quick_action_id, via_plugin_id, revision, recovery_settled_at, deleted_at, suppressed_agent_ids, caller_user_id FROM comment WHERE id = $1 AND workspace_id = $2 AND content LIKE '/note !sop-remote %'
+FOR UPDATE
 `
 
 type TakeRemoteSOPCommentParams struct {
@@ -180,6 +205,7 @@ func (q *Queries) TakeRemoteSOPComment(ctx context.Context, arg TakeRemoteSOPCom
 		&i.RecoverySettledAt,
 		&i.DeletedAt,
 		&i.SuppressedAgentIds,
+		&i.CallerUserID,
 	)
 	return i, err
 }

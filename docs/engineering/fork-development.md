@@ -151,9 +151,16 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   instruction and omits all top-level next steps. Stored guidance, ownership and
   transitions remain intact for later resume/help. Use `multica sop docs` for
   authoring guidance. This adds no provider-stop mechanism.
-  The daemon executes remote `/note !sop <name> <JSON argv>` requests through the
-  same CLI in the target working directory with scoped credentials. Execution
-  is bound to issue/workspace context and requires no task ID.
+  The daemon executes remote `/note !sop-remote <name> <JSON payload>` requests through the
+  `{"args":[],"que_comment_id":"optional-question-comment-id"}`. It uses the
+  same CLI in the target's latest saved working directory on that runtime, with
+  caller-scoped credentials. The
+  process inherits the daemon environment, not the target agent's provider homes
+  or custom settings. The comment author is the caller; the target agent only
+  selects the runtime/cwd. Skill discovery and execution remain CLI-owned.
+  Execution tokens reuse scoped credential storage and completed audit logs;
+  member callers have no agent identity, and agent callers retain their own.
+  SoPs are bound to issue/workspace context and require no task ID.
   The obsolete `remote-sop` CLI command and wrapper-presence resolver are removed.
 
 - **SoP developer kit.** `multica sop docs` is the canonical authoring guide;
