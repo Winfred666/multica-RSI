@@ -25,7 +25,7 @@ export function WorkspaceSlugProvider({
 }: {
   slug: string | null;
   children: ReactNode;
-}) {
+}): import("react").JSX.Element {
   return (
     <WorkspaceSlugContext.Provider value={slug}>
       {children}

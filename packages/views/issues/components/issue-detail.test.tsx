@@ -794,7 +794,7 @@ describe("IssueDetail (shared)", () => {
     const v1 = file("report-v1", { comment_id: "comment-1" });
     const v2 = file("report-v2", { comment_id: "comment-2", created_at: "2026-01-17T00:00:00Z" });
     mockApiObj.getIssue.mockResolvedValue({ ...mockIssue, description: "!file[brief.pdf](https://cdn.example.test/brief)" });
-    mockApiObj.listAttachments.mockResolvedValue([brief, v1, v2]);
+    mockApiObj.listAttachments.mockResolvedValueOnce([brief, v1, v2]);
     mockApiObj.listTimeline.mockResolvedValue([
       { ...mockTimeline[0]!, attachments: [v1] },
       { ...mockTimeline[1]!, attachments: [v2] },

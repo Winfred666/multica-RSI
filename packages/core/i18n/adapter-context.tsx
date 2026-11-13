@@ -11,7 +11,7 @@ export function LocaleAdapterProvider({
 }: {
   adapter: LocaleAdapter;
   children: ReactNode;
-}) {
+}): import("react").JSX.Element {
   return (
     <LocaleAdapterContext.Provider value={adapter}>
       {children}

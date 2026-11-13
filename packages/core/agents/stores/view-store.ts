@@ -94,7 +94,15 @@ export interface AgentsViewState
   setScope: (scope: AgentsScope) => void;
 }
 
-export const useAgentsViewStore = createCollectionViewStore<
+export const useAgentsViewStore: ReturnType<
+  typeof createCollectionViewStore<
+    AgentSortField,
+    AgentColumnKey,
+    AgentListFilters,
+    { scope: AgentsScope },
+    { setScope: (scope: AgentsScope) => void }
+  >
+> = createCollectionViewStore<
   AgentSortField,
   AgentColumnKey,
   AgentListFilters,

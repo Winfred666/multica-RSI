@@ -62,7 +62,15 @@ export interface ProjectViewState
   setViewMode: (mode: ProjectViewMode) => void;
 }
 
-export const useProjectViewStore = createCollectionViewStore<
+export const useProjectViewStore: ReturnType<
+  typeof createCollectionViewStore<
+    ProjectSortField,
+    ProjectColumnKey,
+    ProjectListFilters,
+    { viewMode: ProjectViewMode },
+    { setViewMode: (mode: ProjectViewMode) => void }
+  >
+> = createCollectionViewStore<
   ProjectSortField,
   ProjectColumnKey,
   ProjectListFilters,

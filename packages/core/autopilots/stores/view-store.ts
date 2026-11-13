@@ -80,7 +80,15 @@ export interface AutopilotsViewState
   setScope: (scope: AutopilotScope) => void;
 }
 
-export const useAutopilotsViewStore = createCollectionViewStore<
+export const useAutopilotsViewStore: ReturnType<
+  typeof createCollectionViewStore<
+    AutopilotSortField,
+    AutopilotColumnKey,
+    AutopilotListFilters,
+    { scope: AutopilotScope },
+    { setScope: (scope: AutopilotScope) => void }
+  >
+> = createCollectionViewStore<
   AutopilotSortField,
   AutopilotColumnKey,
   AutopilotListFilters,

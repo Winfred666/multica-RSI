@@ -12,7 +12,7 @@ export function issueSurfaceGanttOptions(
   wsId: string,
   projectId: string,
   plan: IssueSurfaceQueryPlan,
-) {
+): ReturnType<typeof projectGanttIssuesOptions> {
   return projectGanttIssuesOptions(
     wsId,
     projectId,

@@ -69,7 +69,13 @@ export type SkillsViewState = CollectionViewCore<
   SkillListFilters
 >;
 
-export const useSkillsViewStore = createCollectionViewStore<
+export const useSkillsViewStore: ReturnType<
+  typeof createCollectionViewStore<
+    SkillSortField,
+    SkillColumnKey,
+    SkillListFilters
+  >
+> = createCollectionViewStore<
   SkillSortField,
   SkillColumnKey,
   SkillListFilters

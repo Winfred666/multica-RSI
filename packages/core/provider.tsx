@@ -5,7 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { bindWorkspaceSlugLookup, createQueryClient } from "./query-client";
 import type { ReactNode } from "react";
 
-export function QueryProvider({ children }: { children: ReactNode }) {
+export function QueryProvider({ children }: { children: ReactNode }): import("react").JSX.Element {
   const [queryClient] = useState(createQueryClient);
   // Bind the client React actually kept. Effects never run during server
   // rendering, so account state is never shared between requests. Lookups

@@ -26,7 +26,9 @@ const EMPTY_DRAFT: ProjectDraft = {
   dueDate: undefined,
 };
 
-export const useProjectDraftStore = createDraftStore<ProjectDraft>({
+export const useProjectDraftStore: ReturnType<
+  typeof createDraftStore<ProjectDraft>
+> = createDraftStore<ProjectDraft>({
   storageKey: "multica_project_draft",
   emptyData: EMPTY_DRAFT,
   hasMeaningful: (d) => !!(d.title || d.description),

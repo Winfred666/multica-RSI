@@ -12,7 +12,7 @@ export function ViewStoreProvider({
 }: {
   store: StoreApi<IssueViewState>;
   children: React.ReactNode;
-}) {
+}): import("react").JSX.Element {
   return (
     <ViewStoreContext.Provider value={store}>
       {children}

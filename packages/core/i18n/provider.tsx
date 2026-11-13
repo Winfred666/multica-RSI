@@ -15,7 +15,7 @@ export function I18nProvider({
   locale,
   resources,
   children,
-}: I18nProviderProps) {
+}: I18nProviderProps): import("react").JSX.Element {
   const [instance] = useState(() => createI18n(locale, resources));
   const previous = useRef({ locale, resources });
 

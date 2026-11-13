@@ -53,7 +53,7 @@ export function FeatureFlagsProvider({
   service,
   context: ctx = {},
   children,
-}: FeatureFlagsProviderProps) {
+}: FeatureFlagsProviderProps): import("react").JSX.Element {
   const value = useMemo<FeatureFlagContextValue>(
     () => ({ service, ctx }),
     [service, ctx],

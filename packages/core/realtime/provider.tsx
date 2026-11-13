@@ -56,7 +56,7 @@ export function WSProvider({
   cookieAuth,
   identity,
   onToast,
-}: WSProviderProps) {
+}: WSProviderProps): import("react").JSX.Element {
   const user = authStore((s) => s.user);
   // Reactive read of the current workspace slug (URL-driven singleton in
   // packages/core/platform/workspace-storage.ts). When the workspace switches,

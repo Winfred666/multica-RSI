@@ -45,7 +45,7 @@ export function AuthInitializer({
   storage?: StorageAdapter;
   cookieAuth?: boolean;
   identity?: ClientIdentity;
-}) {
+}): import("react").JSX.Element {
   const qc = useQueryClient();
   const retryGeneration = useAuthStore((state) => state.retryGeneration);
   const configLoadedRef = useRef(false);

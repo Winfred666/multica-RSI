@@ -83,7 +83,9 @@ export function setManualDraftEntry(
 
 const EMPTY_MANUAL_AGENT_DRAFTS: ManualAgentDrafts = { byOwner: {} };
 
-export const useManualAgentDraftStore = createDraftStore<ManualAgentDrafts>({
+export const useManualAgentDraftStore: ReturnType<
+  typeof createDraftStore<ManualAgentDrafts>
+> = createDraftStore<ManualAgentDrafts>({
   storageKey: "multica:agents:manual-draft",
   emptyData: EMPTY_MANUAL_AGENT_DRAFTS,
   hasMeaningful: (drafts) =>

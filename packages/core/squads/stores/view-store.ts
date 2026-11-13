@@ -61,7 +61,15 @@ export interface SquadsViewState
   setScope: (scope: SquadsScope) => void;
 }
 
-export const useSquadsViewStore = createCollectionViewStore<
+export const useSquadsViewStore: ReturnType<
+  typeof createCollectionViewStore<
+    SquadSortField,
+    SquadColumnKey,
+    SquadListFilters,
+    { scope: SquadsScope },
+    { setScope: (scope: SquadsScope) => void }
+  >
+> = createCollectionViewStore<
   SquadSortField,
   SquadColumnKey,
   SquadListFilters,
