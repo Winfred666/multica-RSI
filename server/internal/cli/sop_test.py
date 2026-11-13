@@ -51,6 +51,10 @@ if os.environ.get('SOP_TEST_CLI_FAIL'):
     sys.exit('Metadata service unavailable')
 if args[:2] == ['issue', 'get']:
     print(json.dumps({'id': args[2], 'metadata': store.get(args[2], {})}))
+elif args[:2] == ['issue', 'assign']:
+    with path.with_suffix('.assignments').open('a') as log:
+        log.write(args[args.index('--to-id') + 1] + '\\n')
+    print('{}')
 else:
     action, issue = args[2:4]
     if os.environ.get('SOP_TEST_WRITE_FAIL'):
@@ -293,6 +297,119 @@ workflow = Workflow(
             wrapper.publish_artifacts({'issue_id': 'fixture-issue'}, wrapper.load_controller(),
                                       {'state_changed': True})
         publish.assert_not_called()
+
+    def test_round_reply_masks_only_invocation_and_preserves_handover(self):
+        (self.package / 'controller.py').write_text('''import json
+from pathlib import Path
+from sop import FINISHED, Option, State, Workflow
+
+def greet(args, context):
+    return {'this_round_reply_guidance': 'Reply to Guest in this issue: Hello. End this turn.'}
+
+def answer(args, context):
+    question = {'status': 'review', 'instruction': 'Host, approve the greeting.',
+                'next_step': [{'instruction': 'Approve', 'command': 'multica sop run fixture-sop approve'}]}
+    if args.event == 'publish':
+        Path('published').write_text(json.dumps(question))
+        guidance = 'publish done, silence. End this round with nothing replied'
+    else:
+        guidance = 'Reply to Host in this issue with exactly this JSON, then end this turn: ' + json.dumps(question)
+    context['handoff'] = 'Ordinary scripted handoff text must not override reply guidance'
+    return {'instruction': 'Ordinary destination instruction', 'this_round_reply_guidance': guidance}
+
+workflow = Workflow(
+    State('ready', 'Choose greet.', initial=True, owner={'id': 'host', 'name': 'Host'}, options=(
+        Option('greet', 'guest', 'Greet Guest', greet),)),
+    State('guest', 'Guest, answer the greeting.', owner={'id': 'guest', 'name': 'Guest'}, options=(
+        Option('answer', 'review', 'Answer naturally', answer),
+        Option('publish', 'review', 'Publish directly', answer))),
+    State('review', 'Host, approve.', owner={'id': 'host', 'name': 'Host'}, options=(
+        Option('approve', FINISHED, 'Approve'),)),
+)
+''')
+        self.env['MULTICA_AGENT_ID'] = 'host'
+        initial = self.run_sop()
+        self.assertEqual(len(initial['next_step']), 2)  # Includes quit.
+        greeting = self.run_sop('greet')
+        self.assertEqual(greeting, {'status': 'guest', 'instruction':
+                                   'Reply to Guest in this issue: Hello. End this turn.'})
+        self.assertEqual(self.state()['status'], 'guest')
+        self.assertNotIn('this_round_reply_guidance', json.dumps(self.state()))
+        self.env['MULTICA_AGENT_ID'] = 'guest'
+        resumed = self.run_sop('--help')
+        self.assertIn('Guest, answer', resumed['instruction'])
+        self.assertEqual(len(resumed['next_step']), 2)
+        self.assertEqual(self.run_sop(), resumed)
+        reply = self.run_sop('answer')
+        self.assertEqual(set(reply), {'status', 'instruction'})
+        question = json.loads(reply['instruction'].split('turn: ', 1)[1])
+        self.assertEqual(question['next_step'][0]['command'], 'multica sop run fixture-sop approve')
+        self.assertNotIn('Ordinary', reply['instruction'])
+        self.env['MULTICA_AGENT_ID'] = 'host'
+        self.assertEqual(self.run_sop('--help')['next_step'][0]['instruction'], 'Approve')
+        self.run_sop('approve')
+        self.assertFalse(self.state())
+        self.run_sop()
+        self.run_sop('greet')
+        self.env['MULTICA_AGENT_ID'] = 'guest'
+        self.assertEqual(self.run_sop('publish'), {'status': 'review', 'instruction':
+                         'publish done, silence. End this round with nothing replied'})
+        self.assertEqual(json.loads((self.root / 'published').read_text()), question)
+        self.env['MULTICA_AGENT_ID'] = 'host'
+        self.assertEqual(self.run_sop()['status'], 'review')
+        self.assertEqual(self.metadata.with_suffix('.assignments').read_text().splitlines(),
+                         ['host', 'guest', 'host', 'host', 'guest', 'host'])
+
+    def test_greeting_template_natural_questionnaire_and_direct_silence(self):
+        greeting = PACKAGE.parents[3] / 'harness/skills/create-symbolic-sop/assets/multica-greeting'
+        shutil.copy2(greeting / 'controller.py', self.package / 'controller.py')
+        (self.package / 'config.json').write_text('{"DEBUG": true}')
+        with (self.package / 'controller.py').open('a') as controller:
+            controller.write('''
+def artifacts(context):
+    return {'greeting.txt': context['output']['instruction']}
+''')
+        with (self.engine / 'common.py').open('a') as common:
+            common.write('''
+def request(path, data=None, content_type=None):
+    with Path(os.environ['SOP_TEST_METADATA']).with_suffix('.comments').open('a') as log:
+        log.write(data.decode() + '\\n')
+    return {}
+
+def write_artifact(reference, content, parent=None):
+    (Path(os.environ['SOP_TEST_METADATA']).parent / reference['filename']).write_text(content)
+
+publish_shared_artifact = write_artifact
+''')
+        self.run_sop()
+        reply = self.run_sop('greet', '--recipient', 'Guest')
+        question = json.loads(reply['instruction'].split('\n', 1)[1])
+        self.assertEqual(set(question), {'status', 'instruction', 'next_step'})
+        self.assertIn('Guest', question['instruction'])
+        help_output = self.run_sop('--help')
+        self.assertEqual(question['next_step'], help_output['next_step'])
+        self.assertEqual(self.run_sop(), help_output)
+        self.assertNotIn('next_step', reply)
+        html = (self.root / 'fixture-sop-state.html').read_text()
+        preview = json.loads(html.split('<script id="sop-data" type="application/json">', 1)[1].split('</script>', 1)[0])
+        self.assertEqual(preview['decision'], reply)
+        self.assertEqual(preview['nodes']['awaiting'], reply)
+        answer_edge = next(edge for edge in preview['edges'].values() if edge['source'] == 'awaiting')
+        self.assertEqual(answer_edge['decision'], question['next_step'][0])
+        self.assertEqual((self.root / 'greeting.txt').read_text(), reply['instruction'])
+        answer = self.run_sop('answer', '--greeting', 'Hello back')
+        self.assertIn('Reply to the greeting sender', answer['instruction'])
+        self.assertNotIn('next_step', answer)
+        self.run_sop('finish')
+        self.run_sop()
+        self.assertEqual(self.run_sop('publish', '--recipient', 'Guest')['instruction'],
+                         'publish done, silence. End this round with nothing replied')
+        self.run_sop('--help')
+        self.run_sop()
+        comments = self.metadata.with_suffix('.comments').read_text().splitlines()
+        self.assertEqual(len(comments), 1)
+        self.assertEqual(json.loads(comments[0]), {'content': json.dumps(question),
+                                                'as_sop': True, 'parent_id': None})
 
     def test_dependencies_install_when_missing_and_report_install_failure(self):
         spec = importlib.util.spec_from_file_location('protocol_wrapper', self.engine / 'wrapper.py')

@@ -147,6 +147,12 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   state directories as `context['sop_dir']` and `context['state_dir']`; transient
   workflow state remains in issue metadata. Callbacks use `multica sop run`,
   not copied wrappers. `--help` is passed to the selected SoP unchanged.
+  An option action's `this_round_reply_guidance` replaces the invocation's
+  instruction and omits all top-level next steps. Stored guidance, ownership and
+  transitions remain intact for later resume/help. The creator's
+  [greeting example](../../harness/skills/create-symbolic-sop/assets/multica-greeting/SKILL.md)
+  demonstrates natural-reply handover, the existing questionnaire JSON and strict
+  silence after direct publication. This adds no provider-stop mechanism.
   The daemon executes remote `/note !sop <name> <JSON argv>` requests through the
   same CLI in the target working directory with scoped credentials. Execution
   is bound to issue/workspace context and requires no task ID.

@@ -102,6 +102,15 @@ scripted handoff, and synchronizes accepted destination ownership with
 When revising a procedure, preserve its checks, side effects, completion rules
 and live state. Keep delivery/review records in comments.
 
+For current-round reply guidance and ownership handover, see the consecutive
+[protocol sections](DEBUG.md#current-round-action-reply-guidance) and the semantic
+[greeting template](assets/multica-greeting/SKILL.md). Actions may return
+`this_round_reply_guidance` to replace only this invocation's ordinary instruction
+and mask all top-level next steps. Natural replies hand over to the named recipient;
+direct questionnaire publication requires strict silence, not an acknowledgement.
+Later resume/help and workflow state remain ordinary. Use the CLI-owned engine;
+do not copy this protocol into other runtimes before human approval.
+
 The wrapper publishes `config.json` and DEBUG-compiled HTML as ownerless files
 through `attachment upload` (renewing with `--attachment-id`) and soft-links the
 returned IDs to the current issue with `attachment attach --soft`. The CLI owns

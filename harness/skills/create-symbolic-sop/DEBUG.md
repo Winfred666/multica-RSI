@@ -127,6 +127,45 @@ Shared configuration JSON belongs in artifacts through `common.write_config` and
 stays runtime-owned; delivery/review records belong in comments. Use native
 steering or mentions for another issue or agent.
 
+## Current-round action reply guidance
+
+An option action may return `{'this_round_reply_guidance': '...'}`. For that
+invocation, the CLI returns that text as `instruction`, without the ordinary
+state instruction or any top-level `next_step`, including nested instructions
+and alternatives. Without the field, output is unchanged. The transition,
+destination checks, ownership and stored state still complete normally. Resume
+and read-only `--help` show ordinary state guidance, not the one-round override.
+This is an interaction contract, not a provider-stop or delivery mechanism.
+
+## Natural reply ends the turn and hands over
+
+On an owner shift, name the intended human/agent and say where and how to reply.
+The agent's natural reply ends its turn and hands workflow ownership to that
+recipient; it must not execute the recipient's next choice in the same turn.
+Do not interrupt the model midway or add a daemon relay. This does not prove
+delivery or change the runtime's declared ownership checks and handoff effects.
+
+Prefer a natural reply to an action posting a comment followed by an agent
+acknowledgement. The [greeting template](assets/multica-greeting/controller.py)
+shows both paths. Natural guidance may embed the existing frontend-recognizable
+questionnaire JSON (`status`, `instruction`, `next_step` with option instructions
+and `multica sop run` commands). Reply with that JSON in the issue thread; the
+recipient can select an option or fill its declared parameters. Masking removes
+ordinary top-level choices, not JSON intentionally embedded in reply text.
+No additional envelope or question language is needed.
+
+When strict output requires direct publication, the action posts the same
+special SoP-authored outer-state questionnaire through ordinary comment creation
+(`content` is the state JSON, `as_sop: true`, with the existing thread parent).
+Reuse R-348's outer publication when entering an `outer` state; do not publish a
+second copy from the action. Return exactly
+`<option> done, silence. End this round with nothing replied`, substituting the
+actual option name. The agent ends without an extra acknowledgement. Publication
+errors follow existing recovery guidance, not success/silence guidance.
+
+Human approval is required before propagating these protocol changes beyond the
+canonical engine and creator examples.
+
 ## Workflow graph and local action diagrams
 
 The global state graph comes only from `Workflow`: its `State` objects, option

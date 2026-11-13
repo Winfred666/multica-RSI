@@ -446,8 +446,10 @@ def finished_instruction(controller):
             'Allow re-enter with initial command in SKILL.md next round.')
 
 
-def response(result):
+def response(result, *, reply_guidance=True):
     """Agent guidance for the current issue state."""
+    if reply_guidance and 'this_round_reply_guidance' in result:
+        return {'status': result['status'], 'instruction': result['this_round_reply_guidance']}
     step = result['next_step']
     instruction = step['instruction']
     if result['status'] == 'FINISHED':
@@ -556,13 +558,14 @@ def state_artifact(context, controller, result):
     for branch in controller.workflow.branches.values():
         nodes[branch.name] = {'instruction': branch.description, 'automatic': True, 'routes': branch.routes}
     nodes[FINISHED] = {'status': FINISHED, 'instruction': finished_instruction(controller)}
-    if context.get('output'):
-        nodes[phase] = agent_decision(context['output'])
+    # Bind edges before current-round reply guidance masks the state's options.
     links = {f'option_{index}': {
         'decision': next((option for option in nodes[source]['next_step']
                           if shlex.split(option['command'])[len(runtime_command())] == name), None),
         'source': source, 'option': name}
         for index, (source, name) in enumerate(edges)}
+    if context.get('output'):
+        nodes[phase] = agent_decision(context['output'])
     templates = ''.join(f'<template id="chart_{state}_{name}"><div class="diagram">{redact(svg)}</div></template>'
                         for state, charts in logic.items() for name, svg in charts.items())
     logic = {state: {name: f'chart_{state}_{name}' for name in charts} for state, charts in logic.items()}
@@ -670,7 +673,7 @@ def main(argv=None):
     output = redact(response(result))
     if controller and context.get('state'):
         state = context['state']
-        state['output'] = output
+        state['output'] = redact(response(result, reply_guidance=False))
         if not getattr(controller, 'CACHE_VIEW', True):
             state['output'] = {'status': state.get('status'), 'instruction': controller.workflow.states.get(
                 state.get('status'), controller.workflow.states[controller.workflow.initial]).description}
@@ -682,7 +685,8 @@ def main(argv=None):
                 output = redact(response(result))
     context['output'] = output
     publish_artifacts(context, controller, result)
-    print(redact(context['handoff']) if result['ok'] and context.get('handoff') else json.dumps(output, allow_nan=False))
+    print(redact(context['handoff']) if result['ok'] and context.get('handoff') and
+          'this_round_reply_guidance' not in result else json.dumps(output, allow_nan=False))
     return 0 if result["ok"] else result.get("returncode", 1)
 
 
