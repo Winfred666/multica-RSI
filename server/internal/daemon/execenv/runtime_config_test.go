@@ -1156,13 +1156,10 @@ func TestMultiThreadReplyInstructionsFanOut(t *testing.T) {
 	for _, want := range []string{
 		"3 DISTINCT threads",
 		"Post ONE reply per thread",
-		"OVERRIDES",
 		"--parent c1", "--parent c2", "--parent c3",
 		"OLDEST thread first",
-		// MUL-5825: the posting mechanism is a pointer at the brief's
-		// canonical section plus the one multi-thread-specific delta.
-		"`## Comment Formatting`",
-		"DISTINCT body file per thread",
+		"Leave the final response empty",
+		"exception to automatic final-answer delivery",
 		"never reuse a `--parent` from an earlier turn",
 	} {
 		if !strings.Contains(out, want) {
@@ -1170,15 +1167,7 @@ func TestMultiThreadReplyInstructionsFanOut(t *testing.T) {
 		}
 	}
 
-	// Pin ledger (MUL-5825): the embedded file-operations cookbook was
-	// retired in favour of the `## Comment Formatting` pointer above — it
-	// triple-wrote the mechanism already carried by the brief and the
-	// single-thread cookbook (~1KB per multi-thread turn). These strings are
-	// the retired machinery; none may reappear in the fan-out block. The
-	// `--content-file` / inline `--content` anchors and the semantic
-	// `\n`-escape anchor (replacing the phrasing-fragile "Do NOT write
-	// literal") were added on Elon's #6517 review: without them, prose-only
-	// restatements of the flag mechanics could regrow under green tests.
+	// Fan-out must not restore the removed file-post cookbook.
 	for _, banned := range []string{
 		"For EACH thread above",                // old cookbook opener
 		"UTF-8 file with your file-write tool", // restated mechanism
@@ -1196,14 +1185,7 @@ func TestMultiThreadReplyInstructionsFanOut(t *testing.T) {
 	}
 }
 
-// TestMultiThreadReplyInstructionsOSInvariant pins that the fan-out block is
-// byte-identical across host OSes (MUL-5825). The only OS-dependent text was
-// the embedded cleanup command pair (`rm` vs `Remove-Item`), which left with
-// the cookbook; the OS split now lives solely in the brief's
-// `## Comment Formatting`. If this fails, OS-specific mechanism text crept
-// back into the block — move it to the brief instead.
-//
-// Not parallel: mutates the package-level runtimeGOOS.
+// Fan-out delivery targets do not depend on the host shell.
 func TestMultiThreadReplyInstructionsOSInvariant(t *testing.T) {
 	saved := runtimeGOOS
 	t.Cleanup(func() { runtimeGOOS = saved })
@@ -1220,18 +1202,5 @@ func TestMultiThreadReplyInstructionsOSInvariant(t *testing.T) {
 		if linux != windows {
 			t.Errorf("fan-out block (leader=%v) must be OS-invariant\nlinux:\n%s\nwindows:\n%s", leader, linux, windows)
 		}
-	}
-}
-
-// Single-thread reply cookbook moved to the per-turn prompt (MUL-5377).
-func TestSingleThreadReplyInstructionsKeepSingleParent(t *testing.T) {
-	t.Parallel()
-	out := BuildCommentReplyInstructions("claude", "55555555-6666-7777-8888-999999999999", "c3", false)
-
-	if strings.Contains(out, "DISTINCT threads") {
-		t.Errorf("single/same-thread instructions must not emit the multi-thread fan-out block, got:\n%s", out)
-	}
-	if !strings.Contains(out, "--parent c3 --content-file ./reply.md") {
-		t.Errorf("single/same-thread instructions must keep the single --parent=trigger cookbook, got:\n%s", out)
 	}
 }

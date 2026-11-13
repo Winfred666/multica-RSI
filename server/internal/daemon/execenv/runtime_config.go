@@ -56,8 +56,8 @@ const (
 	runtimeManagedSeparator = "\n\n"
 )
 
-// runtimeGOOS is the host-platform string exposed to startup templates and
-// BuildCommentReplyInstructions to emit Windows-specific guidance. Defaults
+// runtimeGOOS is the host-platform string exposed to startup templates
+// to emit Windows-specific guidance. Defaults
 // to runtime.GOOS; tests override it to exercise the cross-platform branches
 // deterministically without having to run on every target OS.
 var runtimeGOOS = runtime.GOOS

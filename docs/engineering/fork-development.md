@@ -376,3 +376,20 @@ comment attachments. DEBUG settings and triggers are unchanged.
 See [configuration artifacts](../../harness/skills/create-symbolic-sop/references/config-artifacts.md).
 The CLI manages the soft-link metadata; no independent upload flag is used. This is not a
 rollout: human approval is required before propagation to other SoPs or installs.
+
+## Natural-answer issue completion
+
+Daemon issue prompts use the existing provider-neutral `agent.Result.Output` →
+`TaskResult.Comment` → terminal `/complete` transport. Successful completion
+publishes the final answer without a routine reply file, CLI final-post call, or
+second acknowledgement. Assignment answers are top-level; comment-triggered
+answers use the current trigger, including resumed sessions and wakeups.
+Explicit quiet/no_action outcomes leave the final response empty. Deliberate
+comments and attachments remain available; for coalesced cross-thread runs,
+each thread receives a deliberate reply and the final response stays empty.
+The existing backend suppresses completion output if this agent already commented
+on the issue during the run, including progress comments; changing that gate is
+outside the daemon scope.
+Failed/cancelled delivery and adapter extraction are unchanged.
+
+Contract: [natural-answer completion #40](https://github.com/Winfred666/multica-RSI/issues/40).

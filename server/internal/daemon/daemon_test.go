@@ -1229,21 +1229,15 @@ func TestBuildPromptCommentTriggered(t *testing.T) {
 		Agent:                 &AgentData{Name: "Test"},
 	}, "claude")
 
-	// Prompt should contain the comment content, the trigger comment id, and
-	// the full reply command with --parent. Re-emitting --parent on every turn
-	// is what prevents resumed sessions from reusing the previous turn's
-	// --parent UUID.
+	// Resumed sessions must receive the current completion target.
 	for _, want := range []string{
 		issueID,
 		commentContent,
 		"Focus on THIS comment",
 		commentID,
-		"multica issue comment add " + issueID + " --parent " + commentID,
-		"do NOT reuse --parent values from previous turns",
-		// MUL-5442 (2026-08-06): with the generic no-reply rule retired,
-		// the reply command is framed as a plain imperative again — the
-		// squad leader's `no_action` block states its own exception.
-		"Post your reply as a comment",
+		"under trigger comment " + commentID,
+		"not a target from a previous turn",
+		"Answer naturally in your final response",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt missing %q\n---\n%s", want, prompt)
@@ -1326,7 +1320,7 @@ func TestBuildPromptCommentTriggeredByMember(t *testing.T) {
 	if strings.Contains(prompt, "MUST respond") {
 		t.Fatalf("prompt should not contain unconditional \"MUST respond\" language\n---\n%s", prompt)
 	}
-	if !strings.Contains(prompt, "Post your reply as a comment") {
+	if !strings.Contains(prompt, "Answer naturally in your final response") {
 		t.Fatalf("prompt should carry the imperative reply command\n---\n%s", prompt)
 	}
 }
@@ -6839,12 +6833,7 @@ func TestFreshSessionMayHelp(t *testing.T) {
 	}
 }
 
-// TestBuildPromptSquadLeaderReplyCommandCarvesOutNoAction renders the COMPLETE
-// leader prompt and pins the exception's scope relation (MUL-5442 #6493
-// review): the no_action rule and the reply imperative appear in the same
-// prompt, so the imperative must carry the carve-out itself — a bare
-// unconditional "Post your reply as a comment" anywhere in a leader prompt
-// re-opens the contradiction the carve-out exists to close.
+// The final response must stay empty when the leader records no_action.
 func TestBuildPromptSquadLeaderReplyCommandCarvesOutNoAction(t *testing.T) {
 	t.Parallel()
 
@@ -6862,7 +6851,7 @@ func TestBuildPromptSquadLeaderReplyCommandCarvesOutNoAction(t *testing.T) {
 		},
 	}, "claude")
 
-	if !strings.Contains(prompt, "Unless your outcome is `no_action`, post your reply as a comment") {
+	if !strings.Contains(prompt, "If an explicit quiet/no_action rule applies, leave the final response empty") {
 		t.Fatalf("leader prompt missing the carve-out reply imperative\n---\n%s", prompt)
 	}
 	if strings.Contains(prompt, "Post your reply as a comment") {
@@ -6901,17 +6890,11 @@ func TestBuildPromptSquadLeaderMultiThreadCarvesOutNoAction(t *testing.T) {
 	if scope < 0 {
 		t.Fatalf("leader multi-thread prompt missing the whole-block scope sentence\n---\n%s", prompt)
 	}
-	// Obligation strings track the converged fan-out block (MUL-5825). Pin
-	// ledger: "Post the replies in the order listed below" → the order rule
-	// merged into the targets header ("OLDEST thread first"); "For EACH
-	// thread above" → the embedded cookbook collapsed to the
-	// `## Comment Formatting` pointer plus the per-thread file delta
-	// ("DISTINCT body file per thread"). The assertion shape is unchanged:
-	// every obligation must sit AFTER the no_action scope sentence.
+	// Every fan-out obligation must follow the quiet exception.
 	for _, obligation := range []string{
-		"multiple replies are required and correct",
+		"Post ONE reply per thread",
 		"OLDEST thread first",
-		"DISTINCT body file per thread",
+		"Leave the final response empty",
 	} {
 		idx := strings.Index(prompt, obligation)
 		if idx < 0 {

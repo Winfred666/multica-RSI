@@ -136,7 +136,7 @@ type TaskContextForEnv struct {
 	// CommentReplyTargets is set for a comment run that coalesced comments
 	// spanning MORE THAN ONE root thread (MUL-4348). When it has >=2 entries the
 	// workflow's reply step fans out — one reply per thread — instead of the
-	// single --parent=trigger cookbook, keeping this persistent brief in sync
+	// single completion reply, keeping this persistent brief in sync
 	// with the per-turn prompt so a cross-thread run cannot get one source
 	// telling it "one comment" and the other "one per thread". Same-thread
 	// follow-ups collapse to a single group upstream, so this stays empty and

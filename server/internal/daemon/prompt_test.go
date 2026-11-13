@@ -274,7 +274,7 @@ func TestBuildPromptSquadLeaderReplyCarveOutIgnoresTriggerAuthor(t *testing.T) {
 			},
 		}, "claude")
 
-		if !strings.Contains(out, "Unless your outcome is `no_action`, post your reply as a comment") {
+		if !strings.Contains(out, "If an explicit quiet/no_action rule applies, leave the final response empty") {
 			t.Errorf("%s-triggered leader prompt lost the no_action carve-out\n---\n%s", authorType, out)
 		}
 		// The rule is stated by the protocol in Instructions, never restated
@@ -421,7 +421,7 @@ func TestBuildPromptProtocolHeadingInInstructionsIsNotALeader(t *testing.T) {
 			t.Fatalf("ordinary agent prompt leaked squad-leader rule %q\n---\n%s", banned, out)
 		}
 	}
-	if !strings.Contains(out, "Post your reply as a comment") {
+	if !strings.Contains(out, "Answer naturally in your final response") {
 		t.Fatalf("ordinary agent prompt lost the unconditional reply imperative\n---\n%s", out)
 	}
 }
@@ -449,7 +449,7 @@ func TestBuildPromptLegacyServerKeepsBriefingBasedLeaderRole(t *testing.T) {
 		},
 	}, "claude")
 
-	if !strings.Contains(out, "Unless your outcome is `no_action`, post your reply as a comment") {
+	if !strings.Contains(out, "If an explicit quiet/no_action rule applies, leave the final response empty") {
 		t.Fatalf("legacy-server leader prompt lost the leader-only reply carve-out\n---\n%s", out)
 	}
 }
@@ -1620,7 +1620,6 @@ func TestBuildCommentPromptCrossThreadFansOutReplies(t *testing.T) {
 	for _, want := range []string{
 		"3 DISTINCT threads",
 		"Post ONE reply per thread",
-		"OVERRIDES",
 		"--parent c1",
 		"--parent c2",
 		"--parent c3",
@@ -1633,15 +1632,12 @@ func TestBuildCommentPromptCrossThreadFansOutReplies(t *testing.T) {
 	if strings.Contains(out, "always use the trigger comment ID below") {
 		t.Errorf("cross-thread prompt must not emit the single-parent reply cookbook, got:\n%s", out)
 	}
-	// MUL-5825: the fan-out block points at the brief's `## Comment
-	// Formatting` for the posting mechanism instead of restating it, so the
-	// assembled cross-thread prompt carries no `comment add` example commands
-	// at all — the `--parent` targets plus the pointer are the whole recipe.
+	// Deliberate fan-out keeps targets, without a file-post recipe.
 	if strings.Contains(out, "multica issue comment add") {
-		t.Errorf("cross-thread prompt re-grew embedded comment-add commands (mechanism lives in ## Comment Formatting — MUL-5825), got:\n%s", out)
+		t.Errorf("cross-thread prompt re-grew embedded comment-add commands, got:\n%s", out)
 	}
-	if !strings.Contains(out, "`## Comment Formatting`") {
-		t.Errorf("cross-thread prompt must point at the brief's Comment Formatting mechanism, got:\n%s", out)
+	if !strings.Contains(out, "Leave the final response empty") {
+		t.Errorf("cross-thread prompt must suppress a duplicate final acknowledgement, got:\n%s", out)
 	}
 
 	// Chronological ordering (MUL-4348 test-round-2 problem #1): replies must be
@@ -1680,10 +1676,9 @@ func TestBuildCommentPromptSameThreadKeepsSingleReply(t *testing.T) {
 	if strings.Contains(out, "DISTINCT threads") {
 		t.Errorf("same-thread coalescing must not emit the multi-thread fan-out block, got:\n%s", out)
 	}
-	// The single-parent cookbook is used, threading the one reply under the
-	// trigger comment.
-	if !strings.Contains(out, "--parent c3 --content-file ./reply.md") {
-		t.Errorf("same-thread run must keep the single --parent=trigger reply cookbook, got:\n%s", out)
+	// Completion threads the answer under this turn's trigger.
+	if !strings.Contains(out, "under trigger comment c3") {
+		t.Errorf("same-thread run must use completion under the trigger, got:\n%s", out)
 	}
 }
 

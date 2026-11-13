@@ -291,11 +291,8 @@ func buildWorktreeReplayConflictBlock(files []string) string {
 
 // BuildPrompt constructs the task prompt for an agent CLI.
 // Keep this minimal — detailed instructions live in CLAUDE.md / AGENTS.md
-// injected by execenv.InjectRuntimeConfig. The provider string is threaded
-// through to comment-triggered tasks' per-turn reply template; that template
-// is provider-agnostic AND host-agnostic now (every OS → write a UTF-8 file,
-// post with `--content-file`) because the shell-layer corruption it guards
-// against is not specific to any one provider or host (MUL-2904, #4182).
+// injected by execenv.InjectRuntimeConfig. Completion delivery guidance is
+// shared across providers and does not require an agent-side posting tool call.
 func BuildPrompt(task Task, provider string, options ...PromptOption) string {
 	var opts promptOpts
 	for _, apply := range options {
@@ -338,7 +335,9 @@ func buildPromptBody(task Task, provider string) string {
 			fmt.Fprintf(&b, "Inspect this configuration with `multica issue wakeup get %s %s --output json`. If recurring work is no longer needed, disable it with `multica issue wakeup disable %s %s`.\n", task.IssueID, task.WakeupID, task.IssueID, task.WakeupID)
 		}
 		if task.TriggerCommentID != "" {
-			fmt.Fprintf(&b, "Post your result using `multica issue comment add %s --parent %s --content-file ./reply.md --output table && rm ./reply.md`. This is the original delivery thread, not a new comment trigger.\n", task.IssueID, task.TriggerCommentID)
+			b.WriteString(execenv.BuildCommentReplyInstructions(provider, task.IssueID, task.TriggerCommentID, taskIsSquadLeader(task)))
+		} else {
+			b.WriteString(execenv.IssueCompletionInstructions)
 		}
 		return b.String()
 	}
@@ -367,6 +366,7 @@ func buildPromptBody(task Task, provider string) string {
 		b.WriteString("\n")
 	}
 	b.WriteString(buildIssueReadInstruction(task, false))
+	b.WriteString(execenv.IssueCompletionInstructions)
 	// Workflow step 2 owns the catch-up rule for every issue turn; this line
 	// only hands over the commands. It used to add "(assignment-triggered tasks
 	// treat the read as mandatory)", which read as if comment-triggered turns
