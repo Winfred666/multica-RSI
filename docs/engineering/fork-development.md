@@ -152,6 +152,13 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   is bound to issue/workspace context and requires no task ID.
   The obsolete `remote-sop` CLI command and wrapper-presence resolver are removed.
 
+- **SoP developer kit.** Authoring lives under `multica sop dev`: `init DIRECTORY`
+  accepts an empty or nonexistent directory with `--minimal` (default) or
+  `--feature-rich`; both write a semantic controller, `SKILL.md` and a searchable
+  `DEVELOPMENT.md`. `docs` prints the embedded guide; `validate DIRECTORY` reuses
+  the resolver's metadata reader and the engine's Workflow validation without
+  issue/task context. Ordinary `sop list`, `sop run` and procedure help are unchanged.
+
 - **Template publication.** The creator/template publishes shared config JSON
   and DEBUG-compiled HTML with ownerless CLI upload/renew and soft-attach to the
   current issue. IDs persist in the CLI-managed `independent_artifacts` list;

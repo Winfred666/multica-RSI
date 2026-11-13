@@ -1,4 +1,4 @@
-"""Shared Python engine protocol tests, moved from the symbolic SoP checker."""
+"""Shared Python engine protocol tests using CLI-owned semantic examples."""
 import importlib.util
 from html import unescape
 import json
@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-TEMPLATE = Path(__file__).resolve().parents[3] / 'harness/skills/create-symbolic-sop/assets/template'
+DEVKIT = Path(__file__).with_name('sopdev')
 PACKAGE = Path(__file__).with_name('sop')
 
 
@@ -21,7 +21,9 @@ class SymbolicProtocol(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.package = self.root / 'skill'
-        shutil.copytree(TEMPLATE, self.package)
+        self.package.mkdir()
+        (self.package / 'SKILL.md').write_text((DEVKIT / 'SKILL.md').read_text().replace('{{name}}', 'fixture-sop'))
+        shutil.copy2(DEVKIT / 'feature-rich.py', self.package / 'controller.py')
         self.engine = self.root / 'engine'
         shutil.copytree(PACKAGE, self.engine)
         self.state_dir = self.root / 'state'
@@ -72,7 +74,7 @@ else:
 
     def state(self):
         metadata = json.loads(self.metadata.read_text())[self.env['MULTICA_ISSUE_ID']]
-        value = metadata.get('sop.multica-parallel-refinement')
+        value = metadata.get('sop.' + self.skill_name())
         return json.loads(value) if value is not None else {}
 
     def run_sop(self, *args, valid=True, json_output=True, cwd=None):
@@ -112,7 +114,7 @@ workflow = Workflow(
         store = json.loads(saved)
         state = self.state()
         state['output']['instruction'] = 'Updated directly in issue metadata'
-        store['fixture-issue']['sop.multica-parallel-refinement'] = json.dumps(state)
+        store['fixture-issue']['sop.' + self.skill_name()] = json.dumps(state)
         path.write_text(json.dumps(store))
         self.assertEqual(self.run_sop('--help'), state['output'])
         self.assertEqual((self.root / 'observations').read_text(), 'xx')
@@ -200,51 +202,33 @@ workflow = Workflow(
             self.assertEqual(wrapper.ensure_command('dot', 'graphviz'), str(binaries / 'dot'))
         self.assertEqual((binaries / 'installs').read_text().splitlines()[-1], 'Graphviz.Graphviz')
 
-    def test_bound_script_monitor_dynamic_routes_and_completion(self):
-        script = self.root / 'test_solution.py'
-        script.write_text('from pathlib import Path\n'
-                          'def validate(): return True\n'
-                          'def score(delivery): return delivery["score"]\n'
-                          'def is_complete(delivery): return delivery["score"] == 1\n'
-                          'if __name__ == "__main__": print(\'{"score": \' + Path("score").read_text() + \'}\')\n')
-        (self.root / 'score').write_text('1')
-
+    def test_dynamic_options_branches_and_completion(self):
+        controller = self.package / 'controller.py'
+        controller.write_text(controller.read_text() + "\nchoices = workflow.states['inspect'].options\n"
+                              "workflow.states['inspect'].options = lambda context: choices\n")
+        sample = self.root / 'sample.txt'
+        sample.touch()
         initial = self.run_sop()
-        self.assertEqual(initial['status'], 'initialize')
+        self.assertEqual(initial['status'], 'inspect')
         self.assertIsInstance(initial['next_step'], list)
         self.assertTrue(all(set(option) == {'instruction', 'command'} for option in initial['next_step']))
-        configured = self.run_sop('configure', '--test-script', str(script))
-        self.assertEqual(configured['status'], 'variant')
-        self.assertNotIn('data', configured)
-        self.assertNotIn(str(self.root), configured['instruction'])
-        started = self.run_sop('test', '--description', 'Measure this solution.')
-        self.assertEqual(started['status'], 'test')
-        state = self.state()
-        self.assertNotIn('workspace', state)
-        job = Path(state['job'])
-        self.assertNotIn('data', started)
-        self.assertIn(str(job / 'stderr.log'), started['instruction'])
-        self.assertEqual(json.loads((job / 'job.json').read_text())['cwd'], str(self.root))
-        result = self.run_sop('continue')
-        self.assertEqual(result['status'], 'review')
-        self.assertNotIn('data', result)
-        self.assertIn('Result: {"score": 1}', result['instruction'])
-        self.assertIn('stdout.log:\n', result['instruction'])
-        state = self.state()
-        self.assertEqual(state['test_result']['delivery'], {'score': 1})
-        completed = self.run_sop('record', '--review', 'The measured result meets the exit condition.')
-        self.assertEqual(completed['status'], 'finished')
+        empty = self.run_sop('check', '--path', sample.name)
+        self.assertEqual(empty['status'], 'inspect')
+        sample.write_text('Ready for review.')
+        current = self.run_sop('check', '--path', sample.name)
+        self.assertEqual(current['status'], 'review')
+        self.assertNotIn('data', current)
+        self.assertEqual(self.state()['path'], str(sample))
+        self.assertNotIn('workspace', self.state())
+        self.assertEqual(self.run_sop('retry')['status'], 'inspect')
+        self.run_sop('check', '--path', sample.name)
+        completed = self.run_sop('accept')
+        self.assertEqual(completed['status'], 'FINISHED')
         self.assertNotIn('data', completed)
-        self.assertIn('Result: {"score": 1}', completed['instruction'])
         self.assertFalse(self.state())
-        script.write_text(script.read_text().replace('def validate(): return True', 'def validate(): return False'))
+        controller.write_text(controller.read_text().replace("'review' if size else 'inspect'", "FINISHED"))
         self.run_sop()
-        self.assertEqual(self.run_sop('configure', '--test-script', str(script))['status'], 'scaffold')
-        self.env['MULTICA_ISSUE_ID'] = 'invalid-branch'
-        controller = self.package / 'controller.py'
-        controller.write_text(controller.read_text().replace("'variant' if baseline else 'scaffold'", "'finished'"))
-        self.run_sop()
-        invalid = self.run_sop('configure', '--test-script', str(script), valid=False)
+        invalid = self.run_sop('check', '--path', sample.name, valid=False)
         self.assertEqual(invalid['error']['code'], 'invalid_branch_output')
 
     def test_assertion_repair_does_not_repeat_action(self):
@@ -294,7 +278,7 @@ workflow = Workflow(
         self.env['MULTICA_AGENT_ID'] = 'receiving-agent'
         replay = self.run_sop('--help')
         self.assertEqual(replay['status'], initial['status'])
-        self.assertTrue(replay['next_step'][0]['command'].startswith('multica sop run multica-parallel-refinement '))
+        self.assertTrue(replay['next_step'][0]['command'].startswith('multica sop run fixture-sop '))
         self.assertNotIn(str(self.root / 'skill'), replay['next_step'][0]['command'])
         # Help must not import the receiving controller or write metadata.
         controller = self.package / 'controller.py'
@@ -304,14 +288,14 @@ workflow = Workflow(
         self.assertEqual(self.run_sop('--help'), replay)
         self.assertEqual(self.metadata.read_bytes(), saved)
         controller.write_text(source)
-        self.assertEqual(self.run_sop()['status'], 'initialize')
+        self.assertEqual(self.run_sop()['status'], 'inspect')
         skill = self.package / 'SKILL.md'
         original = skill.read_text()
-        skill.write_text(original.replace('multica-parallel-refinement', 'multica-other-sop'))
+        skill.write_text(original.replace('fixture-sop', 'other-sop'))
         self.run_sop()
         metadata = json.loads(self.metadata.read_text())['fixture-issue']
-        self.assertIn('sop.multica-other-sop', metadata)
-        self.assertIn('sop.multica-parallel-refinement', metadata)
+        self.assertIn('sop.other-sop', metadata)
+        self.assertIn('sop.fixture-sop', metadata)
         skill.write_text(original)
         self.env['MULTICA_ISSUE_ID'] = 'another-issue'
         body = skill.read_text().split('---', 2)[2].strip()
@@ -323,8 +307,8 @@ workflow = Workflow(
         self.run_sop('quit', valid=False)
         metadata = json.loads(self.metadata.read_text())['fixture-issue']
         self.assertEqual(metadata['unrelated'], 'preserve')
-        self.assertIn('sop.multica-other-sop', metadata)
-        self.assertNotIn('sop.multica-parallel-refinement', metadata)
+        self.assertIn('sop.other-sop', metadata)
+        self.assertNotIn('sop.fixture-sop', metadata)
         self.assertFalse(list(self.root.rglob('.state')))
         self.assertFalse(list(self.root.rglob('.errors')))
 
@@ -341,7 +325,7 @@ workflow = Workflow(
         self.assertEqual(self.metadata.read_bytes(), saved)
         self.env.pop('SOP_TEST_WRITE_FAIL')
         store = json.loads(saved)
-        store['fixture-issue']['sop.multica-parallel-refinement'] = '{broken'
+        store['fixture-issue']['sop.fixture-sop'] = '{broken'
         self.metadata.write_text(json.dumps(store))
         self.assertEqual(self.run_sop(valid=False)['error']['code'], 'invalid_state')
         self.assertEqual(json.loads(self.metadata.read_text()), store)
@@ -350,6 +334,14 @@ workflow = Workflow(
         spec = importlib.util.spec_from_file_location('protocol_monitor', self.engine / 'monitor.py')
         monitor = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(monitor)
+        (self.root / 'score').write_text('1')
+        script = "from pathlib import Path; print('{\"score\": ' + Path('score').read_text() + '}')"
+        experiment = Path(monitor.start([sys.executable, '-c', script], self.root, self.state_dir))
+        result = monitor.wait(experiment, {})
+        self.assertEqual(result['state'], 'ended')
+        self.assertEqual(result['returncode'], 0)
+        self.assertEqual(monitor.delivery(experiment), {'score': 1})
+        self.assertEqual(json.loads((experiment / 'job.json').read_text())['cwd'], str(self.root))
         job = self.root / 'job'
         job.mkdir()
         (job / 'stdout.log').write_text('progress\n')
@@ -397,12 +389,10 @@ workflow = Workflow(
                 self.assertNotIn(('name="' + name + '"').encode(), body)
 
     def test_configured_preview_uses_actual_workflow(self):
-        script = self.root / 'test_solution.py'
-        script.write_text('def validate(): return True\n'
-                          'def score(delivery): return 1\n'
-                          'def is_complete(delivery): return True\n')
+        sample = self.root / 'sample.txt'
+        sample.write_text('Ready for review.')
         initial = self.run_sop()
-        current = self.run_sop('configure', '--test-script', str(script))
+        current = self.run_sop('check', '--path', sample.name)
         spec = importlib.util.spec_from_file_location('protocol_wrapper', self.engine / 'wrapper.py')
         wrapper = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(wrapper)
@@ -413,57 +403,56 @@ workflow = Workflow(
             sys.modules.pop('monitor', None)
             controller = wrapper.load_controller()
         state = self.state()
-        context = {'issue_id': 'fixture-issue', 'skill': 'multica-parallel-refinement', 'state': state, 'argv': ['configure'],
-                   'prior_status': 'initialize', 'output': {**current, 'workspace': 'private-workspace'}}
-        result = {'status': 'variant', 'state_changed': True, 'accepted': True}
+        context = {'issue_id': 'fixture-issue', 'skill': 'fixture-sop', 'state': state, 'argv': ['check', '--path', sample.name],
+                   'prior_status': 'inspect', 'output': {**current, 'workspace': 'private-workspace'}}
+        result = {'status': 'review', 'state_changed': True, 'accepted': True}
         with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue',
                         MULTICA_WORKSPACE_ID='fixture-workspace', MULTICA_TOKEN='fixture-token',
                         MULTICA_SERVER_URL='http://fixture.invalid'), patch.object(wrapper, 'publish_shared_artifact') as upload:
             wrapper.publish_artifacts(context, controller, result)
         config_reference, config = upload.call_args_list[0].args
-        self.assertEqual(config_reference['filename'], 'multica-parallel-refinement-config.json')
+        self.assertEqual(config_reference['filename'], 'fixture-sop-config.json')
         self.assertEqual(json.loads(config), {'DEBUG': True})
         reference, html = upload.call_args.args
         self.assertEqual(reference['issue_id'], 'fixture-issue')
         filename = reference['filename']
-        self.assertEqual(filename, 'multica-parallel-refinement-state.html')
+        self.assertEqual(filename, 'fixture-sop-state.html')
         self.assertIn('fixture-issue', html)
         self.assertNotIn('task_id', html)
-        self.assertIn('initialize->configure_result', unescape(html))
-        self.assertIn('configure_result->variant', unescape(html))
-        self.assertIn('configure_result->scaffold', unescape(html))
-        self.assertIn('__start->initialize', unescape(html))
-        self.assertIn('finished->__end', unescape(html))
+        self.assertIn('inspect->route', unescape(html))
+        self.assertIn('route->review', unescape(html))
+        self.assertIn('route->inspect', unescape(html))
+        self.assertIn('__start->inspect', unescape(html))
+        self.assertIn('review->__end', unescape(html))
         self.assertLess(html.index('id="workflow"'), html.index('<h1>'))
         data = json.loads(html.split('<script id="sop-data" type="application/json">', 1)[1].split('</script>', 1)[0])
-        self.assertEqual(data['nodes']['initialize'], initial)
-        self.assertEqual(data['nodes']['variant'], current)
+        self.assertEqual(data['nodes']['inspect']['next_step'], initial['next_step'])
+        self.assertIn(controller.workflow.states['inspect'].description, data['nodes']['inspect']['instruction'])
+        self.assertEqual(data['nodes']['review'], current)
         self.assertTrue(all('data' not in decision for decision in data['nodes'].values()))
         self.assertNotIn('private-legacy-data', html)
         self.assertNotIn('private-workspace', html)
         self.assertEqual(data['edges']['option_0']['decision'], initial['next_step'][0])
-        self.assertEqual(data['edges']['option_0']['source'], 'initialize')
-        self.assertEqual(data['edges']['option_0']['option'], 'configure')
-        self.assertIn('Run delivery-format check', unescape(html))
+        self.assertEqual(data['edges']['option_0']['source'], 'inspect')
+        self.assertEqual(data['edges']['option_0']['option'], 'check')
+        self.assertIn('Read file size', unescape(html))
         self.assertNotIn('<svg', json.dumps(data))
         for charts in data['logic'].values():
             for template in charts.values():
                 self.assertEqual(html.count(f'<template id="{template}">'), 1)
         overview = html.split('<div class="diagram" id="workflow">', 1)[1].split('</div>', 1)[0]
-        self.assertNotIn('Reject; keep current state', overview)
-        self.assertNotIn('Review is one paragraph?', overview)
-        self.assertNotIn('Measured delivery complete?', overview)
-        local = html.split(f'<template id="{data["logic"]["variant"]["test"]}">', 1)[1].split('</template>', 1)[0]
-        self.assertIn('Reject; keep current state', local)
-        controller.workflow.states['initialize'].options[0].action.__doc__ = ('```dot\n'
+        self.assertNotIn('Read file size', overview)
+        local = html.split(f'<template id="{data["logic"]["inspect"]["check"]}">', 1)[1].split('</template>', 1)[0]
+        self.assertIn('Read file size', local)
+        controller.workflow.states['inspect'].options[0].action.__doc__ = ('```dot\n'
             'digraph local { check [label="Local check?", shape=diamond]; check -> done; }\n```')
         changed = wrapper.state_artifact(context, controller, result)
         changed_overview = changed.split('<div class="diagram" id="workflow">', 1)[1].split('</div>', 1)[0]
         self.assertEqual(overview, changed_overview)
-        self.assertNotIn('def configure', html)
+        self.assertNotIn('def inspect_file', html)
         self.assertNotIn('__start', data['nodes'])
         self.assertNotIn('__end', data['nodes'])
-        self.assertEqual(data['nodes']['finished']['next_step'], [])
+        self.assertEqual(data['nodes']['FINISHED']['status'], 'FINISHED')
         self.assertLess(html.index('id="detail"'), html.index('id="logic"'))
         self.assertLess(html.index('id="logic"'), html.index('id="metadata"'))
         self.assertNotIn('<button', html)

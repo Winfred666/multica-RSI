@@ -76,24 +76,11 @@ func DiscoverSOPs(workdir string, installedRoots []string) ([]SOP, error) {
 		}
 		for _, entry := range entries {
 			dir := filepath.Join(root, entry.Name())
-			content, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+			sop, err := readSOP(dir)
 			if err != nil {
 				continue
 			}
-			parts := strings.SplitN(strings.ReplaceAll(string(content), "\r\n", "\n"), "---\n", 3)
-			if len(parts) != 3 || parts[0] != "" {
-				continue
-			}
-			var header struct {
-				Name     string `yaml:"name"`
-				Metadata struct {
-					SOP string `yaml:"sop"`
-				} `yaml:"metadata"`
-			}
-			if yaml.Unmarshal([]byte(parts[1]), &header) != nil || !sopName.MatchString(header.Name) || header.Metadata.SOP != "symbolic" {
-				continue
-			}
-			byName[header.Name] = SOP{Name: header.Name, Path: dir}
+			byName[sop.Name] = sop
 		}
 	}
 	result := make([]SOP, 0, len(byName))
@@ -102,6 +89,30 @@ func DiscoverSOPs(workdir string, installedRoots []string) ([]SOP, error) {
 	}
 	slices.SortFunc(result, func(a, b SOP) int { return strings.Compare(a.Name, b.Name) })
 	return result, nil
+}
+
+func readSOP(dir string) (SOP, error) {
+	content, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	if err != nil {
+		return SOP{}, err
+	}
+	parts := strings.SplitN(strings.ReplaceAll(string(content), "\r\n", "\n"), "---\n", 3)
+	if len(parts) != 3 || parts[0] != "" {
+		return SOP{}, fmt.Errorf("SKILL.md needs YAML frontmatter")
+	}
+	var header struct {
+		Name     string `yaml:"name"`
+		Metadata struct {
+			SOP string `yaml:"sop"`
+		} `yaml:"metadata"`
+	}
+	if err := yaml.Unmarshal([]byte(parts[1]), &header); err != nil {
+		return SOP{}, fmt.Errorf("SKILL.md: %w", err)
+	}
+	if !sopName.MatchString(header.Name) || header.Metadata.SOP != "symbolic" {
+		return SOP{}, fmt.Errorf("SKILL.md requires a valid name and metadata.sop: symbolic")
+	}
+	return SOP{Name: header.Name, Path: dir}, nil
 }
 
 // RunSOP executes the embedded Python runtime, keeping the caller's cwd and

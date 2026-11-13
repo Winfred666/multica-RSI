@@ -94,3 +94,51 @@ raise SystemExit(7)
 		t.Fatal(err)
 	}
 }
+
+func TestSOPDeveloperKit(t *testing.T) {
+	t.Setenv("MULTICA_ISSUE_ID", "")
+	t.Setenv("MULTICA_WORKSPACE_ID", "")
+	t.Setenv("MULTICA_TASK_ID", "")
+	for _, rich := range []bool{false, true} {
+		t.Run(map[bool]string{false: "minimal", true: "feature-rich"}[rich], func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "My SOP")
+			if rich {
+				if err := os.Mkdir(dir, 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			sop, err := InitSOP(dir, rich)
+			if err != nil || sop.Name != "my-sop" {
+				t.Fatalf("init = %+v, %v", sop, err)
+			}
+			guide, err := os.ReadFile(filepath.Join(dir, "DEVELOPMENT.md"))
+			if err != nil || string(guide) != SOPDeveloperDocs() {
+				t.Fatalf("offline guide differs: %v", err)
+			}
+			files, err := os.ReadDir(dir)
+			if err != nil || len(files) != 3 {
+				t.Fatalf("expected only skill, controller and guide: %v, %v", files, err)
+			}
+			if _, err := InitSOP(dir, rich); err == nil {
+				t.Fatal("init overwrote a populated directory")
+			}
+			var out, stderr bytes.Buffer
+			if err := ValidateSOP(context.Background(), dir, &out, &stderr); err != nil || out.String() != "{\"status\": \"valid\"}\n" {
+				t.Fatalf("validate: %v, %s%s", err, &out, &stderr)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "controller.py"), []byte("workflow = None"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			out.Reset()
+			if err := ValidateSOP(context.Background(), dir, &out, &stderr); err == nil {
+				t.Fatal("validation accepted a missing Workflow")
+			}
+			if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: text-only\n---\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := ValidateSOP(context.Background(), dir, &out, &stderr); err == nil {
+				t.Fatal("validation accepted missing symbolic metadata")
+			}
+		})
+	}
+}
