@@ -1,9 +1,8 @@
 # Acceptance and delivery
 
-## Delivery comments
+## Final answers
 
-Choose the format by issue label. These formats do not change status,
-acceptance or benchmark contracts.
+Choose the final answer's format by issue label.
 
 ### `dev`
 

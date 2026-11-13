@@ -27,7 +27,7 @@ behavior. The [README](../../README.md) presents the research platform.
   workspace Go templates and SOP skills. You can edit the workspace prompt;
   the server validates the template on save. The kit routes issue turns to the
   brief textual `multica-issue-workflow` skill only when available. Its textual
-  reference owns label-specific delivery comments, acceptance and benchmark
+  reference owns label-specific final answers, acceptance and benchmark
   completion rules; masking the skill removes them. Other skills and continuation
   prompts defer to it for delivery and review, keeping their own API, delegation,
   blocker and resource contracts. The prompt keeps common CLI rules,
@@ -63,10 +63,10 @@ checklist. The package API also supports selective export/import of
 projects/issues, agents, skills, MCPs, plugins and the system prompt. Imported
 agents are offline and require runtime setup; plugin installation never creates
 an execution PAT. See [the API contract](workspace-packages.md). Child dispatch uses
-`multica-subissue-distribute`; delivery uses the textual issue-workflow skill and native
-comments, with `in_review` awaiting acceptance. Parents accept children; bounded
+`multica-subissue-distribute`; agents answer naturally and completion publishes
+the reply, with `in_review` awaiting acceptance. Parents accept children; bounded
 benchmarks follow their scoped completion policy. Other root completion stays human.
-The issue workflow keeps progress and final delivery in one task thread with
+The issue workflow keeps deliberate comments in one task thread with
 `--parent`; corrections to another agent's active work use `--steer` when its run
 accepts input. Thread placement alone does not deliver input into a running turn.
 The kit has no separate executable delivery or review procedure.

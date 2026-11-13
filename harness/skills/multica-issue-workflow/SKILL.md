@@ -1,6 +1,6 @@
 ---
 name: multica-issue-workflow
-description: Own issue workflow, delivery comments, review and acceptance.
+description: Own issue workflow, delivery, review and acceptance.
 ---
 
 1. Read the current issue and supplied parent context; accept explicit unchanged
@@ -11,21 +11,12 @@ description: Own issue workflow, delivery comments, review and acceptance.
    `in_review` unless explicitly returned for rework. Consultation changes no status.
    Complete the assignment within Agent Identity boundaries; reuse its checkout
    and verified evidence.
-   Keep routine build/test progress in run output, not issue comments. For
-   meaningful progress comments, reuse one continuing thread on the issue. With a
-   trigger, pass `--parent <trigger-comment-id>`. Without one, reuse the task's
-   progress root or create it once and retain its returned comment `id`; pass
-   `--parent <root-comment-id>` for subsequent updates. Omitting `--parent`
-   creates a separate thread.
-   For a correction to another agent's active work, inspect
-   `multica issue runs <issue-id> --active --output json`. If its run reports
-   `can_supplement: true`, add `--steer <run-id>` alongside `--parent` when
-   posting. A plain reply can wait until the run ends even in the same thread;
-   follow `multica-platform`'s steering limits.
-4. Post final results through `multica issue comment add --content-file <path>`.
-   Apply the same parent rule to final delivery: reply under this turn's trigger,
-   otherwise reuse the task's progress root or create one if none exists.
-   Terminal output is not delivery.
+   Keep routine build/test progress in run output. For deliberate comments,
+   use `--parent` with this turn's trigger or the task's progress root.
+   For active corrections, inspect `multica issue runs <issue-id> --active --output json`
+   and add `--steer <run-id>` when `can_supplement: true`; see `multica-platform`.
+4. Answer naturally; successful completion publishes the reply.
+   Honor explicit quiet instructions.
 5. Delivered work awaiting acceptance enters `in_review`; unfinished work stays
    `in_progress`; `done` stays human. A `[Project workflow]` overrides built-in
    status commands.

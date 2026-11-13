@@ -20,8 +20,8 @@ The kit keeps one owner per deliverable, reuses current-task context and worktre
 establishes working artifacts early and preserves measured improvements. Delegation
 remains available for independently useful work. `multica-subissue-distribute`
 creates children from the parent;
-`multica-surface-block` handles external blockers. Children post results as native
-issue comments and enter `in_review` while awaiting acceptance. The textual
+`multica-surface-block` handles external blockers. Children answer naturally and
+enter `in_review` while awaiting acceptance. The textual
 acceptance policy lets parents accept children and scopes benchmark completion
 rules to benchmark work; other root completion stays human.
 The textual system skill follows the issue workflow in official Multica upstream
