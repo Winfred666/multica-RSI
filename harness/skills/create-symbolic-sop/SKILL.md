@@ -39,6 +39,46 @@ workflow = Workflow(
 )
 ```
 
+### Registered automatic actions
+
+A State pauses for selection or new input. Register a reusable `Option` directly
+in `Workflow`, then reuse that same object in State options or target its name
+from another option or Branch. Registered actions execute once per traversal
+until the next State, without another agent callback:
+
+```python
+from sop import Branch, FINISHED
+
+publish = Option('publish', 'answer', 'Publish.', publish_impl)
+workflow = Workflow(
+    State('choose', 'Choose.', initial=True, options=(
+        Option('run', 'prepare', 'Prepare and publish.'), publish)),
+    Option('prepare', 'ready', 'Prepare.', prepare_impl),
+    Branch('ready', 'Ready?', {'yes': 'approved', 'no': 'answer'}, select=ready),
+    Branch('approved', 'Approved?', {'yes': 'publish', 'no': 'answer'}, select=approved),
+    publish,
+    State('answer', 'Supply the next answer.', options=(Option('finish', FINISHED, 'Finish.'),)),
+)
+```
+
+Selectors receive `(args, context)` and return a declared route label. Branches
+without `select` retain the preceding action's declared `phase` behavior.
+Bind required action parameters at the preceding State, or with `Parameter(value=...)`;
+automatic entry validates them before running that action. New input needs a State.
+The HTML renders each registered action once, with its incoming/outgoing edges.
+Compilation never executes actions, selectors, views or option factories.
+
+Validation rejects declared cycles, including State-to-State paths through actions
+and diamonds, and reports the concrete cycle. Dynamic options are checked when
+normally resolved, not executed by static validation or drawing. Non-branch actions
+must use their declared target; rejected choices stay at their source State.
+Existing cyclic controllers need explicit migration. The shipped CLI feature-rich
+sample has `inspect -> inspect` and `inspect -> review -> inspect`; the refinement
+template has `test -> test` and refinement loops. Do not silently rewrite these
+procedures or propagate the protocol before human approval. Automatic chains are
+not transactions; preserve the existing repair/reconcile rules, without retries
+or an execution journal.
+
 Actions receive `(args, context)`. Use read-only `precheck(context)` for live
 prerequisites and `view(context)` for decision evidence. `context['issue_id']`
 identifies the current issue; `context['cli'](*words, write=False)` runs

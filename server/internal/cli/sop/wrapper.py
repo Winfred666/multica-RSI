@@ -503,17 +503,23 @@ def state_artifact(context, controller, result):
                          (f'<br/><font point-size="9">{escape(owner["name"])}</font>'
                           if (owner := state_owner(controller.workflow, name, context)) else '') + '>];' for name in states)
     for branch in controller.workflow.branches.values():
-        diagram += f'\n{quote(branch.name)} [shape=diamond, label={quote(branch.description)}];'
+        diagram += f'\n{quote(branch.name)} [id={quote("state_" + branch.name)}, shape=diamond, label={quote(branch.description)}];'
         diagram += '\n' + '\n'.join(f'{quote(branch.name)} -> {quote(node(target))} [label={quote(label)}];'
                                      for label, target in branch.routes.items())
     edges = {(state.name, option.name): option.target for state in states.values()
-             if not callable(state.options) for option in state.options}
+             if not callable(state.options) for option in controller.workflow.choices(state, {})}
     for source, targets in context.get('option_targets', {}).items():
         edges.update({(source, name): target for name, target in targets.items()})
-    logic = dict(context.get('option_diagrams', {}))
+    registered = controller.workflow.options
+    edges = {key: key[1] if key[1] in registered else target for key, target in edges.items()}
+    for option in registered.values():
+        diagram += f'\n{quote(option.name)} [id={quote("state_" + option.name)}, shape=ellipse, label={quote(option.name)}];'
+        diagram += f'\n{quote(option.name)} -> {quote(node(option.target))};'
+    logic = {name: {name: option.diagram()} for name, option in registered.items()}
+    logic.update(context.get('option_diagrams', {}))
     for state in states.values():
         if not callable(state.options):
-            logic[state.name] = {option.name: option.diagram() for option in state.options}
+            logic[state.name] = {option.name: option.diagram() for option in controller.workflow.choices(state, {})}
     logic = {state: {name: graph_svg(source, f'logic_{state}_{name}')
                      for name, source in charts.items()
                      if source}
@@ -536,12 +542,19 @@ def state_artifact(context, controller, result):
     nodes = {}
     for state in states.values():
         # Other states show declared guidance; previews never run views or option factories.
-        options = context.get('resolved_options', {}).get(state.name, () if callable(state.options) else state.options)
+        options = context.get('resolved_options', {}).get(state.name, () if callable(state.options) else controller.workflow.choices(state, {}))
         choices = [callback(option.prompt, option.callback()) for option in options]
         if state.initial:
             choices.append(callback('Stop this SOP.', ['quit']))
         nodes[state.name] = response({'status': state.name,
                                      'next_step': {**callback(state.description), 'alternatives': choices}})
+    for option in registered.values():
+        nodes[option.name] = {'instruction': option.prompt, 'automatic': True, 'target': option.target,
+                              'parameters': [{'flag': param.flag, 'prompt': param.prompt,
+                                              'required': param.required, 'value': param.value}
+                                             for param in option.params]}
+    for branch in controller.workflow.branches.values():
+        nodes[branch.name] = {'instruction': branch.description, 'automatic': True, 'routes': branch.routes}
     nodes[FINISHED] = {'status': FINISHED, 'instruction': finished_instruction(controller)}
     if context.get('output'):
         nodes[phase] = agent_decision(context['output'])

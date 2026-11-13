@@ -164,6 +164,13 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   current issue. IDs persist in the CLI-managed `independent_artifacts` list;
   controller-supplied ordinary comment attachments and DEBUG triggers are unchanged.
 
+- **Registered option actions.** The CLI Workflow accepts reusable `Option` nodes
+  and `Branch(select=...)` routes through options/diamonds until an interactive
+  State. HTML renders those same nodes once without running their logic. The
+  validator reports declared cycles with a concrete path; existing cyclic
+  controllers require explicit migration, not automatic rewriting. Rollout to
+  other SoPs remains subject to human protocol approval.
+
 - **Symbolic SoP protocol changes.** Update `harness/skills/create-symbolic-sop`
   and its template first; require human approval before mechanically propagating
   the approved protocol to other symbolic SoPs and distributions. The approved
