@@ -7,8 +7,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -39,54 +37,29 @@ func (d *Daemon) executeRemoteSOP(ctx context.Context, request protocol.RemoteSO
 	}
 }
 
+type remoteSOPCommand struct {
+	Args              []string `json:"args"`
+	QuestionCommentID string   `json:"que_comment_id,omitempty"`
+}
+
 func (d *Daemon) runRemoteSOP(ctx context.Context, request protocol.RemoteSOPRequest) (string, int, error) {
-	name, payload, _ := strings.Cut(strings.TrimPrefix(request.Content, "/note !sop "), " ")
-	var argv []string
-	if err := json.Unmarshal([]byte(payload), &argv); err != nil {
+	name, payload, _ := strings.Cut(strings.TrimPrefix(request.Content, "/note !sop-remote "), " ")
+	var command remoteSOPCommand
+	if err := json.Unmarshal([]byte(payload), &command); err != nil {
 		return "", 1, err
 	}
-	root := filepath.Join(d.cfg.WorkspacesRoot, "remote-sops", request.IssueID, request.AgentID)
-	var skills []SkillData
-	if err := json.Unmarshal(request.Skills, &skills); err != nil {
-		return "", 1, err
+	if request.WorkDir == "" {
+		return "", 1, fmt.Errorf("remote SOP requires the target working directory")
 	}
-	bound := filepath.Join(root, "skills")
-	for _, skill := range skills {
-		dir := filepath.Join(bound, skill.Name)
-		for _, file := range append([]SkillFileData{{Path: "SKILL.md", Content: skill.Content}}, skill.Files...) {
-			path := filepath.Join(dir, file.Path)
-			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-				return "", 1, err
-			}
-			if err := os.WriteFile(path, []byte(file.Content), 0600); err != nil {
-				return "", 1, err
-			}
-		}
+	agentID := ""
+	if request.CallerType == "agent" {
+		agentID = request.CallerID
 	}
-	work := request.WorkDir
-	if info, err := os.Stat(work); err != nil || !info.IsDir() {
-		work = filepath.Join(root, "workdir")
-	}
-	if err := os.MkdirAll(work, 0700); err != nil {
-		return "", 1, err
-	}
-	wrapper, available := findRemoteSOP([]string{bound, filepath.Join(work, ".agents", "skills"), filepath.Join(work, ".agents")}, name)
-	if wrapper == "" {
-		return fmt.Sprintf("SOP %q not found. Available SOPs: %s\n", name, strings.Join(available, ", ")), 1, nil
-	}
-	config := filepath.Join(root, "config")
-	if err := os.MkdirAll(config, 0700); err != nil {
-		return "", 1, err
-	}
-	process := exec.CommandContext(ctx, "python3", append([]string{wrapper}, argv...)...)
-	process.Dir = work
-	for _, item := range os.Environ() {
-		key, _, _ := strings.Cut(item, "=")
-		if !strings.HasPrefix(key, "MULTICA_") {
-			process.Env = append(process.Env, item)
-		}
-	}
-	process.Env = append(process.Env, "MULTICA_TASK_ID=0", "MULTICA_AGENT_ID="+request.AgentID, "MULTICA_ISSUE_ID="+request.IssueID, "MULTICA_WORKSPACE_ID="+request.WorkspaceID, "MULTICA_TOKEN="+request.AuthToken, "MULTICA_SERVER_URL="+d.cfg.ServerBaseURL, "MULTICA_TASK_CONFIG_ROOT="+config)
+	process := exec.CommandContext(ctx, "multica", append([]string{"sop", "run", name}, command.Args...)...)
+	process.Dir = request.WorkDir
+	process.Env = append(os.Environ(), "MULTICA_AGENT_ID="+agentID,
+		"MULTICA_ISSUE_ID="+request.IssueID, "MULTICA_WORKSPACE_ID="+request.WorkspaceID,
+		"MULTICA_TOKEN="+request.AuthToken, "MULTICA_SERVER_URL="+d.cfg.ServerBaseURL)
 	output, err := process.CombinedOutput()
 	code := 0
 	if err != nil {
@@ -96,28 +69,4 @@ func (d *Daemon) runRemoteSOP(ctx context.Context, request protocol.RemoteSOPReq
 		}
 	}
 	return string(output), code, err
-}
-
-func findRemoteSOP(roots []string, name string) (string, []string) {
-	available := []string{}
-	wrapper := ""
-	for _, root := range roots {
-		entries, _ := os.ReadDir(root)
-		for _, entry := range entries {
-			dir := filepath.Join(root, entry.Name())
-			script := filepath.Join(dir, "wrapper.py")
-			info, err := os.Stat(script)
-			if err != nil || info.IsDir() {
-				continue
-			}
-			if !slices.Contains(available, entry.Name()) {
-				available = append(available, entry.Name())
-			}
-			if entry.Name() == name && wrapper == "" {
-				wrapper = script
-			}
-		}
-	}
-	slices.Sort(available)
-	return wrapper, available
 }

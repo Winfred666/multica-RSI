@@ -1856,6 +1856,9 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 		// replay skips the agents it names.
 		SuppressedAgentIds: suppressAgentIDs,
 	}
+	if strings.HasPrefix(req.Content, "/note !sop-remote ") {
+		createParams.CallerUserID = parseUUID(userID)
+	}
 	var created db.CreateCommentRow
 	var err error
 	if len(attachmentIDs) > 0 {

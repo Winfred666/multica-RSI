@@ -77,8 +77,8 @@ func GenerateDaemonToken() (string, error) {
 
 // GenerateAgentTaskToken creates a new task-scoped agent auth token:
 // "mat_" + 40 random hex chars. The token is single-purpose — bound to a
-// specific (agent_id, task_id) pair on the server side — and is what the
-// daemon injects into the agent process in place of its own owner PAT.
+// server-side caller, workspace and execution log. Remote SoP member callers
+// have no agent_id. The daemon never substitutes its own owner PAT.
 // See MUL-2600.
 func GenerateAgentTaskToken() (string, error) {
 	b := make([]byte, 20)

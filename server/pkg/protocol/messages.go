@@ -426,14 +426,15 @@ type DaemonHeartbeatRequestPayload struct {
 }
 
 type RemoteSOPRequest struct {
-	ID          string          `json:"id"`
-	AgentID     string          `json:"agent_id"`
-	IssueID     string          `json:"issue_id"`
-	WorkspaceID string          `json:"workspace_id"`
-	Content     string          `json:"content"`
-	WorkDir     string          `json:"work_dir"`
-	Skills      json.RawMessage `json:"skills"`
-	AuthToken   string          `json:"auth_token"`
+	ID          string `json:"id"`
+	AgentID     string `json:"agent_id"`
+	IssueID     string `json:"issue_id"`
+	WorkspaceID string `json:"workspace_id"`
+	Content     string `json:"content"`
+	WorkDir     string `json:"work_dir"`
+	AuthToken   string `json:"auth_token"`
+	CallerType  string `json:"caller_type"`
+	CallerID    string `json:"caller_id"`
 }
 
 // DaemonHeartbeatAckPayload is the server's reply to DaemonHeartbeatRequestPayload.
