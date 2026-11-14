@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -67,5 +68,58 @@ sys.exit(7)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("remote result missing")
+	}
+}
+
+func TestRemoteSOPQuestionnaireCleanup(t *testing.T) {
+	for _, scenario := range []struct {
+		name, question string
+		denied         bool
+		calls          []string
+	}{
+		{"no-reference", "", false, nil},
+		{"missing-question", "missing", false, []string{"GET"}},
+		{"answered", "question", false, []string{"GET", "DELETE", "PUT"}},
+		{"edit-denied", "question", true, []string{"GET", "DELETE", "PUT"}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			var calls []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls = append(calls, r.Method)
+				if r.Header.Get("Authorization") != "Bearer mat_caller" || r.Header.Get("X-Workspace-ID") != "workspace" {
+					t.Error("wrong caller context")
+				}
+				switch r.Method {
+				case "GET":
+					_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "question", "revision": 3, "content": "/note !sop-render inspect {}\n{\"instruction\":\"Choose\"}"}})
+				case "DELETE":
+					if r.URL.Path != "/api/comments/answer/keep-replies" {
+						t.Error(r.URL.Path)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				case "PUT":
+					var update struct {
+						Content  string `json:"content"`
+						Revision int    `json:"expected_revision"`
+					}
+					_ = json.NewDecoder(r.Body).Decode(&update)
+					if update.Content != "/note !sop-render inspect {}\n{\"args\":[\"approve\",\"two words\"],\"instruction\":\"Choose\"}" || update.Revision != 3 {
+						t.Errorf("update=%+v", update)
+					}
+					if scenario.denied {
+						w.WriteHeader(http.StatusForbidden)
+					} else {
+						_, _ = w.Write([]byte(`{}`))
+					}
+				}
+			}))
+			defer server.Close()
+			d := &Daemon{cfg: Config{ServerBaseURL: server.URL}}
+			body, _ := json.Marshal(remoteSOPCommand{Args: []string{"approve", "two words"}, QuestionCommentID: scenario.question})
+			err := d.cleanRemoteSOPAnswer(t.Context(), protocol.RemoteSOPRequest{ID: "answer", IssueID: "issue", WorkspaceID: "workspace", AuthToken: "mat_caller", Content: "/note !sop-remote inspect " + string(body)})
+			if (err != nil) != scenario.denied || !reflect.DeepEqual(calls, scenario.calls) {
+				t.Fatalf("calls=%v err=%v", calls, err)
+			}
+		})
 	}
 }

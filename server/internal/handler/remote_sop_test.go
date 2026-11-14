@@ -49,6 +49,13 @@ func TestRemoteSOPNotesNeverAdmitAgentWork(t *testing.T) {
 			if len(requests) != 1 || requests[0].ID != comment.ID {
 				t.Fatalf("requests=%+v", requests)
 			}
+			if scenario.name == "member-idle" {
+				report := withURLParam(newOwnerDaemonRequest(http.MethodPost, "/messages", map[string]any{"messages": []map[string]any{{"seq": 2, "type": "tool_result", "tool": "remote-sop", "input": map[string]any{"questionnaire_edit_denied": true}}}}), "taskId", comment.ID)
+				testutil.Call(t, testHandler.ReportTaskMessages, report).Want(http.StatusOK)
+				if n := dbfx.Count(t, `SELECT count(*) FROM comment WHERE issue_id=$1 AND type='system' AND content='Cannot close the questionnaire: no comment editing permission.'`, f.issueID); n != 1 {
+					t.Fatal("missing system cleanup notice")
+				}
+			}
 			if requests[0].WorkDir != cwd || requests[0].AgentID != f.agentID || requests[0].CallerType != scenario.callerType || requests[0].CallerID != callerID {
 				t.Fatal("missing comment caller")
 			}

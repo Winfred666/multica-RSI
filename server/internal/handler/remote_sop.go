@@ -2,7 +2,9 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -92,4 +94,29 @@ func (h *Handler) takeRemoteSOPs(ctx context.Context, runtime db.AgentRuntime) (
 		requests = append(requests, request)
 	}
 	return requests, nil
+}
+
+func (h *Handler) noteRemoteSOPCleanupFailure(ctx context.Context, task db.AgentTaskQueue) {
+	var execution struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(task.Context, &execution) != nil || execution.Type != "remote_sop" {
+		return
+	}
+	issue, err := h.Queries.GetIssue(ctx, task.IssueID)
+	if err != nil {
+		return
+	}
+	created, err := h.Queries.CreateComment(ctx, db.CreateCommentParams{
+		ID: dbid.NewV7(), IssueID: task.IssueID, WorkspaceID: issue.WorkspaceID,
+		AuthorType: "system", AuthorID: pgtype.UUID{Valid: true}, Type: "system",
+		Content: "Cannot close the questionnaire: no comment editing permission.",
+	})
+	if err != nil {
+		slog.Warn("remote SoP cleanup notice failed", "error", err)
+		return
+	}
+	h.publish(protocol.EventCommentCreated, uuidToString(issue.WorkspaceID), "system", "", map[string]any{
+		"comment": commentToResponse(created.Comment(), nil, nil), "issue_revision": created.IssueRevision,
+	})
 }
