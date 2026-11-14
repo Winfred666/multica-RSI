@@ -109,7 +109,14 @@ hooks and an `owner={'id': agent_id, 'name': agent_name}` (or an owner callable)
 Addressed questionnaire JSON includes frontend-ignored `how_to_step` guidance for
 posting `/note !sop-remote NAME {"que_comment_id":"<this-comment-id>","args":[...]}`
 as an ordinary comment. Use the rendered questionnaire comment's ID and the chosen
-command's argument strings after `multica sop run NAME`; no self-ID readback is needed.
+command's argument strings after `multica sop run NAME`, including the rendered
+`--issue` source binding. Cross-issue questions forward an HTTP(S) Markdown source
+link and owner `content` to the declared thread, then store `que_comment_id` and
+`forwarded_comment_id` in the source JSON. Same-issue questions do not forward.
+Accepted-answer cleanup edits that original forward to retain the plain URL
+without Markdown and append the accepted static `!sop-render` block. Errors use
+ordinary publication/daemon reporting, not workflow recovery. `app_url` must point
+to the frontend for cross-issue links.
 
 `context['issue_id']` and `context['workspace_id']` identify execution. Mutable
 `context['state']` is stored in the issue's `sop.<name>` metadata key. Return

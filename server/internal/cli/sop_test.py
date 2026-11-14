@@ -342,35 +342,54 @@ workflow = Workflow(
         self.assertFalse(self.metadata.exists())
         self.assertFalse((self.root / 'calls').exists())
 
-    def test_addressed_questionnaire_includes_comment_step_hint(self):
+    def test_addressed_questionnaire_linkage(self):
         spec = importlib.util.spec_from_file_location('protocol_wrapper', self.engine / 'wrapper.py')
         wrapper = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(wrapper)
         wrapper.ROOT, wrapper.STATE_DIR, wrapper.SOP_NAME = self.package, self.state_dir, self.skill_name()
         controller = wrapper.load_controller()
-        owner = {'issue_id': 'destination', 'thread': 'target-thread', 'id': 'reader', 'content': '/note'}
-        context = {'issue_id': 'source', 'state': {'reply_parent': 'source-thread'}}
-        rendered = {'status': 'review', 'instruction': 'Choose.', 'next_step': [
-            {'instruction': 'Accept.', 'command': 'multica sop run fixture-sop accept'}]}
-        posted = []
+        for destination in ('source', 'destination'):
+            with self.subTest(destination=destination):
+                owner = {'issue_id': destination, 'thread': 'target-thread', 'id': 'reader', 'content': '/note'}
+                context = {'issue_id': 'source', 'workspace_id': 'workspace', 'state': {'reply_parent': 'source-thread'}}
+                rendered = {'status': 'review', 'instruction': 'Choose.', 'next_step': [
+                    {'instruction': 'Accept.', 'command': 'multica sop run fixture-sop accept'}]}
+                writes = []
 
-        def post(*words):
-            self.assertEqual(words[:3], ('comment', 'add', 'source'))
-            self.assertEqual(words[-2:], ('--parent', 'source-thread'))
-            posted.append(Path(words[words.index('--content-file') + 1]).read_text())
+                def post(*words):
+                    writes.append((words, Path(words[words.index('--content-file') + 1]).read_text()))
+                    return {'id': 'question' if len(writes) == 1 else 'forward', 'revision': 1}
 
-        with patch.object(wrapper, 'state_owner', return_value=owner), patch.object(wrapper, 'multica', side_effect=post):
-            wrapper.render_addressed_state(context, controller, {'ok': True, 'state_changed': True, 'status': 'review'}, rendered)
-        self.assertEqual(len(posted), 1)
-        header, body = posted[0].split('\n', 1)
-        self.assertTrue(header.startswith('/note !sop-render fixture-sop '))
-        question = json.loads(body)
-        hint = question.pop('how_to_step')
-        self.assertEqual(question, rendered)
-        self.assertIn('/note !sop-remote fixture-sop {"que_comment_id":"<this-comment-id>","args":[...]}', hint)
-        self.assertIn("multica issue comment add destination --parent '<this-comment-id>' --content-file '<answer-file>'", hint)
-        self.assertIn('this questionnaire comment', hint)
-        self.assertNotIn('how_to_step', rendered)
+                with patch.object(wrapper, 'state_owner', return_value=owner), \
+                     patch.object(wrapper, 'multica', side_effect=post), \
+                     patch.dict(os.environ, MULTICA_APP_URL='https://multica.example'):
+                    wrapper.render_addressed_state(context, controller,
+                                                   {'ok': True, 'state_changed': True, 'status': 'review'}, rendered)
+                self.assertEqual(writes[0][0][:3], ('comment', 'add', 'source'))
+                self.assertEqual(writes[0][0][-2:], ('--parent', 'source-thread'))
+                self.assertEqual(writes[-1][0][:5], ('comment', 'update', 'question', '--expected-revision', '1'))
+                question = json.loads(writes[-1][1].split('\n', 1)[1])
+                self.assertEqual(question['que_comment_id'], 'question')
+                self.assertTrue(question['next_step'][0]['command'].endswith('--issue source'))
+                self.assertIn("multica issue comment add source --parent '<this-comment-id>'", question['how_to_step'])
+                self.assertNotIn('how_to_step', rendered)
+                self.assertEqual(len(writes), 2 if destination == 'source' else 3)
+                if destination != 'source':
+                    self.assertEqual(question['forwarded_comment_id'], 'forward')
+                    self.assertEqual(writes[1][0][:5], ('comment', 'add', destination, '--parent', 'target-thread'))
+                    self.assertEqual(writes[1][1], '/note\n\n[Question](https://multica.example/workspace/issues/source#comment-question)')
+                else:
+                    self.assertNotIn('forwarded_comment_id', question)
+
+    def test_rejected_choice_does_not_report_remote_success(self):
+        (self.package / 'controller.py').write_text("""from sop import Option, State, Workflow
+def reject(args, context):
+    return {'accepted': False, 'instruction': 'Not accepted.'}
+workflow = Workflow(State('ready', 'Choose.', initial=True,
+    options=(Option('reject', 'ready', 'Reject.', reject),)))
+""")
+        self.run_sop()
+        self.assertEqual(self.run_sop('reject', valid=False)['status'], 'ready')
 
     def test_metadata_failures_preserve_saved_state(self):
         self.run_sop()

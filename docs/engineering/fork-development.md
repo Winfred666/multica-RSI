@@ -165,12 +165,22 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   execution deletes the answer comment and adds its `args` to the questionnaire
   JSON through normal target-authorized comment APIs. A denied edit leaves a
   short system notice, without granting editing rights. Missing questionnaire
-  references skip cleanup.
-  On the web frontend, standalone question permalinks mirror the source thread
-  in a nested window sized to the question and initially scrolled to it. The
-  source title/link and raw content remain accessible. Mirrored and delivered
-  questionnaire content uses the existing renderer; the engine owns completion
-  delivery. See [forwarded question links #69](https://github.com/Winfred666/multica-RSI/issues/69).
+  references skip cleanup. After questionnaire publication, cross-issue owners
+  receive a Markdown source link in their declared thread; the source question
+  records `que_comment_id` and `forwarded_comment_id`. Same-issue questions do
+  not forward. Rendered choices carry `--issue` so recipient answers still use
+  the source issue's state and cleanup. On the web frontend, pending standalone
+  question permalinks mirror the source thread in a nested window sized to the
+  question and initially scrolled to it. The source title/link and raw content
+  remain accessible, and mirrored questions use the existing renderer. The
+  engine owns completion delivery: after local accepted-answer cleanup, the
+  daemon edits that exact forward to retain owner prose and a plain HTTP(S)
+  source URL, then append the accepted static `!sop-render` block. Only content
+  and revision are updated. Failures use ordinary publication/daemon error
+  reporting, with no mirror recovery state or progression gate. The URL-plus-block
+  layout still requires frontend alignment: the bare URL must stop being a live
+  reference, and the static block follows prose rather than starting the comment.
+  See [forwarded question links #69](https://github.com/Winfred666/multica-RSI/issues/69).
   The obsolete `remote-sop` CLI command and wrapper-presence resolver are removed.
 
 - **SoP developer kit.** `multica sop docs` is the canonical authoring guide;

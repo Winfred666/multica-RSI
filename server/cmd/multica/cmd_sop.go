@@ -69,7 +69,7 @@ var sopRunCmd = &cobra.Command{
 			}
 			env := append(os.Environ(), "MULTICA_SERVER_URL="+tryResolveServerURL(cmd),
 				"MULTICA_WORKSPACE_ID="+resolveWorkspaceID(cmd), "MULTICA_TOKEN="+resolveToken(cmd),
-				"MULTICA_SOP_MAX_ACTION_DEPTH="+strconv.Itoa(depth))
+				"MULTICA_SOP_MAX_ACTION_DEPTH="+strconv.Itoa(depth), "MULTICA_APP_URL="+tryResolveAppURL(cmd))
 			err = cli.RunSOP(cmd.Context(), sop, filepath.Join(stateRoot, "sop", sop.Name), workdir, args[1:], env, cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr())
 			var exit *exec.ExitError
 			if errors.As(err, &exit) {

@@ -97,6 +97,8 @@ def arguments(argv, controller):
     action.add_argument("--error-file", type=Path)
     action.add_argument("--help", action="store_true")
     controller.workflow.configure(parser)
+    if '--issue' not in parser._option_string_actions:
+        parser.add_argument("--issue")
     args, args_extra = parser.parse_known_args(argv)
     args.extra = args_extra
     return args
@@ -642,23 +644,39 @@ def render_addressed_state(context, controller, result, rendered):
         return
     destination = {key: owner[key] for key in ('issue_id', 'thread', 'id')}
     answer = '/note !sop-remote ' + controller.SOP_NAME + ' {"que_comment_id":"<this-comment-id>","args":[...]}'
-    command = shlex.join(['multica', 'issue', 'comment', 'add', owner['issue_id'],
+    command = shlex.join(['multica', 'issue', 'comment', 'add', context['issue_id'],
                           '--parent', '<this-comment-id>', '--content-file', '<answer-file>'])
-    rendered = {**rendered, 'how_to_step': (
+    rendered = {**rendered, 'next_step': [
+        {**step, 'command': step['command'] + ' --issue ' + shlex.quote(context['issue_id'])}
+        for step in rendered.get('next_step', [])], 'how_to_step': (
         'Save ' + answer + ' in a UTF-8 file, then post it with: ' + command + '. '
         'Replace <this-comment-id> with the ID of this questionnaire comment and <answer-file> with the file path. '
         'Replace [...] with the chosen next_step command arguments after multica sop run ' + controller.SOP_NAME +
-        ', filling its placeholders; args must be a JSON array of strings.')}
+        ', including --issue ' + context['issue_id'] +
+        ' and filling its placeholders; args must be a JSON array of strings.')}
     with tempfile.TemporaryDirectory(prefix='.sop-', dir=Path.cwd()) as directory:
         body = Path(directory) / 'handoff.md'
-        body.write_text(owner['content'] + ' !sop-render ' + controller.SOP_NAME + ' ' + json.dumps(destination) +
-                        '\n' + json.dumps(rendered, allow_nan=False))
+        prefix = '/note' if owner['issue_id'] != context['issue_id'] else owner['content']
+        header = prefix + ' !sop-render ' + controller.SOP_NAME + ' ' + json.dumps(destination)
+        body.write_text(header + '\n' + json.dumps(rendered, allow_nan=False))
         words = ['comment', 'add', context['issue_id'], '--content-file', str(body)]
         parent = getattr(context.get('args'), 'thread', None) or context['state'].get('reply_parent')
         if parent:
             words += ['--parent', parent]
         context['external_write_attempted'] = True
-        multica(*words)
+        question = multica(*words)
+        rendered['que_comment_id'] = question['id']
+        if owner['issue_id'] != context['issue_id']:
+            app_url = os.environ.get('MULTICA_APP_URL', '').rstrip('/')
+            if not app_url.startswith(('http://', 'https://')):
+                raise SOPError('missing_app_url', 'Set app_url to the frontend HTTP(S) URL before forwarding questionnaires')
+            link = app_url + '/' + context['workspace_id'] + '/issues/' + context['issue_id'] + '#comment-' + question['id']
+            body.write_text(owner['content'] + '\n\n[Question](' + link + ')')
+            forward = multica('comment', 'add', owner['issue_id'], '--parent', owner['thread'], '--content-file', str(body))
+            rendered['forwarded_comment_id'] = forward['id']
+        body.write_text(header + '\n' + json.dumps(rendered, allow_nan=False))
+        multica('comment', 'update', question['id'], '--expected-revision', str(question['revision']),
+                '--content-file', str(body))
 
 
 def main(argv=None):
@@ -721,7 +739,7 @@ def main(argv=None):
     publish_artifacts(context, controller, result)
     print(redact(context['handoff']) if result['ok'] and context.get('handoff') and
           'this_round_reply_guidance' not in result else json.dumps(output, allow_nan=False))
-    return 0 if result["ok"] else result.get("returncode", 1)
+    return 0 if result["ok"] and result.get("accepted", True) else result.get("returncode", 1)
 
 
 if __name__ == "__main__":
