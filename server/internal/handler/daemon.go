@@ -5889,6 +5889,12 @@ func (h *Handler) ReportTaskMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, message := range req.Messages {
+		if message.Tool == "remote-sop" && message.Type == "tool_result" && message.Input["questionnaire_edit_denied"] == true {
+			h.noteRemoteSOPCleanupFailure(r.Context(), task)
+		}
+	}
+
 	if workspaceID != "" {
 		// CreateTaskMessages orders its result by seq, which is the daemon's
 		// own within-batch ordering — so this publishes in the same order the

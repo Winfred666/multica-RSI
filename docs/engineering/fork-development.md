@@ -161,6 +161,11 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   Execution tokens reuse scoped credential storage and completed audit logs;
   member callers have no agent identity, and agent callers retain their own.
   SoPs are bound to issue/workspace context and require no task ID.
+  When `que_comment_id` identifies a matching rendered questionnaire, successful
+  execution deletes the answer comment and adds its `args` to the questionnaire
+  JSON through normal caller-authorized comment APIs. A denied edit leaves a
+  short system notice, without granting editing rights. Missing questionnaire
+  references skip cleanup.
   The obsolete `remote-sop` CLI command and wrapper-presence resolver are removed.
 
 - **SoP developer kit.** `multica sop docs` is the canonical authoring guide;
