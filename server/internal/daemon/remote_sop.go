@@ -63,13 +63,9 @@ func (d *Daemon) runRemoteSOP(ctx context.Context, request protocol.RemoteSOPReq
 	if request.WorkDir == "" {
 		return "", 1, fmt.Errorf("remote SOP requires the target working directory")
 	}
-	agentID := ""
-	if request.CallerType == "agent" {
-		agentID = request.CallerID
-	}
 	process := exec.CommandContext(ctx, "multica", append([]string{"sop", "run", name}, command.Args...)...)
 	process.Dir = request.WorkDir
-	process.Env = append(os.Environ(), "MULTICA_AGENT_ID="+agentID,
+	process.Env = append(os.Environ(), "MULTICA_AGENT_ID="+request.AgentID,
 		"MULTICA_ISSUE_ID="+request.IssueID, "MULTICA_WORKSPACE_ID="+request.WorkspaceID,
 		"MULTICA_TOKEN="+request.AuthToken, "MULTICA_SERVER_URL="+d.cfg.ServerBaseURL)
 	output, err := process.CombinedOutput()

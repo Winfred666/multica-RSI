@@ -42,16 +42,6 @@ func (h *Handler) takeRemoteSOPs(ctx context.Context, runtime db.AgentRuntime) (
 		if err != nil {
 			return nil, err
 		}
-		callerAgentID, callerUserID := pgtype.UUID{}, comment.CallerUserID
-		logAgentID := issue.AssigneeID
-		if comment.AuthorType == "agent" {
-			callerAgentID, logAgentID = comment.AuthorID, comment.AuthorID
-		} else if !callerUserID.Valid {
-			callerUserID = comment.AuthorID
-		}
-		if _, err := h.Queries.GetMemberByUserAndWorkspace(ctx, db.GetMemberByUserAndWorkspaceParams{UserID: callerUserID, WorkspaceID: issue.WorkspaceID}); err != nil {
-			return nil, err
-		}
 		workDir, err := h.Queries.GetRemoteSOPWorkDir(ctx, db.GetRemoteSOPWorkDirParams{RuntimeID: runtime.ID, AgentID: issue.AssigneeID, IssueID: issue.ID})
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
@@ -70,14 +60,14 @@ func (h *Handler) takeRemoteSOPs(ctx context.Context, runtime db.AgentRuntime) (
 			if _, err := q.TakeRemoteSOPComment(ctx, db.TakeRemoteSOPCommentParams{ID: comment.ID, WorkspaceID: comment.WorkspaceID}); err != nil {
 				return protocol.RemoteSOPRequest{}, err
 			}
-			// This completed audit log retains caller provenance/output, never queued.
-			if _, err := q.CreateRemoteSOPLog(ctx, db.CreateRemoteSOPLogParams{ID: comment.ID, AgentID: logAgentID, RuntimeID: runtime.ID, IssueID: issue.ID, OriginatorUserID: callerUserID}); err != nil {
+			// This completed row stores execution output; it never enters the agent queue.
+			if _, err := q.CreateRemoteSOPLog(ctx, db.CreateRemoteSOPLogParams{ID: comment.ID, AgentID: issue.AssigneeID, RuntimeID: runtime.ID, IssueID: issue.ID}); err != nil {
 				return protocol.RemoteSOPRequest{}, err
 			}
 			if _, err := q.CreateTaskMessage(ctx, db.CreateTaskMessageParams{ID: dbid.NewV7(), TaskID: comment.ID, Seq: 1, Type: "tool_use", Tool: pgtype.Text{String: "remote-sop", Valid: true}, Content: pgtype.Text{String: comment.Content, Valid: true}, CallID: pgtype.Text{String: uuidToString(comment.ID), Valid: true}}); err != nil {
 				return protocol.RemoteSOPRequest{}, err
 			}
-			if _, err := q.CreateTaskToken(ctx, db.CreateTaskTokenParams{ID: dbid.NewV7(), TokenHash: auth.HashToken(token), TaskID: comment.ID, AgentID: callerAgentID, WorkspaceID: issue.WorkspaceID, UserID: callerUserID, ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true}}); err != nil {
+			if _, err := q.CreateTaskToken(ctx, db.CreateTaskTokenParams{ID: dbid.NewV7(), TokenHash: auth.HashToken(token), TaskID: comment.ID, AgentID: issue.AssigneeID, WorkspaceID: issue.WorkspaceID, UserID: runtime.OwnerID, ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true}}); err != nil {
 				return protocol.RemoteSOPRequest{}, err
 			}
 			if err := tx.Commit(ctx); err != nil {

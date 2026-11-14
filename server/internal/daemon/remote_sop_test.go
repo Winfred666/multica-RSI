@@ -27,7 +27,7 @@ func TestRemoteSOPHeartbeatRunsTargetCLI(t *testing.T) {
 	if err := os.WriteFile(binary, []byte(`#!/usr/bin/env python3
 import os, sys
 assert sys.argv[1:] == ['sop', 'run', 'inspect', '--help', 'two words', '', '$(literal)']
-assert os.environ['MULTICA_AGENT_ID'] == 'caller'
+assert os.environ['MULTICA_AGENT_ID'] == 'assignee'
 assert os.environ['MULTICA_ISSUE_ID'] == 'issue'
 assert os.environ['MULTICA_WORKSPACE_ID'] == 'workspace'
 assert os.environ['MULTICA_TOKEN'] == 'mat_scoped'
@@ -86,8 +86,8 @@ func TestRemoteSOPQuestionnaireCleanup(t *testing.T) {
 			var calls []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls = append(calls, r.Method)
-				if r.Header.Get("Authorization") != "Bearer mat_caller" || r.Header.Get("X-Workspace-ID") != "workspace" {
-					t.Error("wrong caller context")
+				if r.Header.Get("Authorization") != "Bearer mat_scoped" || r.Header.Get("X-Workspace-ID") != "workspace" {
+					t.Error("wrong target context")
 				}
 				switch r.Method {
 				case "GET":
@@ -116,7 +116,7 @@ func TestRemoteSOPQuestionnaireCleanup(t *testing.T) {
 			defer server.Close()
 			d := &Daemon{cfg: Config{ServerBaseURL: server.URL}}
 			body, _ := json.Marshal(remoteSOPCommand{Args: []string{"approve", "two words"}, QuestionCommentID: scenario.question})
-			err := d.cleanRemoteSOPAnswer(t.Context(), protocol.RemoteSOPRequest{ID: "answer", IssueID: "issue", WorkspaceID: "workspace", AuthToken: "mat_caller", Content: "/note !sop-remote inspect " + string(body)})
+			err := d.cleanRemoteSOPAnswer(t.Context(), protocol.RemoteSOPRequest{ID: "answer", IssueID: "issue", WorkspaceID: "workspace", AuthToken: "mat_scoped", Content: "/note !sop-remote inspect " + string(body)})
 			if (err != nil) != scenario.denied || !reflect.DeepEqual(calls, scenario.calls) {
 				t.Fatalf("calls=%v err=%v", calls, err)
 			}

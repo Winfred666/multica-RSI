@@ -151,19 +151,19 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   instruction and omits all top-level next steps. Stored guidance, ownership and
   transitions remain intact for later resume/help. Use `multica sop docs` for
   authoring guidance. This adds no provider-stop mechanism.
-  The daemon executes remote `/note !sop-remote <name> <JSON payload>` requests through the
+  The daemon executes remote `/note !sop-remote <name> <JSON payload>` requests with
   `{"args":[],"que_comment_id":"optional-question-comment-id"}`. It uses the
   same CLI in the target's latest saved working directory on that runtime, with
-  caller-scoped credentials. The
+  target-scoped credentials. The
   process inherits the daemon environment, not the target agent's provider homes
-  or custom settings. The comment author is the caller; the target agent only
-  selects the runtime/cwd. Skill discovery and execution remain CLI-owned.
-  Execution tokens reuse scoped credential storage and completed audit logs;
-  member callers have no agent identity, and agent callers retain their own.
+  or custom settings. The comment author supplies attribution only; the target agent
+  selects the runtime/cwd and execution identity. Skill discovery and execution remain CLI-owned.
+  Execution tokens reuse target-agent/runtime-owner credential storage and
+  completed audit logs; they do not authenticate as the comment sender.
   SoPs are bound to issue/workspace context and require no task ID.
   When `que_comment_id` identifies a matching rendered questionnaire, successful
   execution deletes the answer comment and adds its `args` to the questionnaire
-  JSON through normal caller-authorized comment APIs. A denied edit leaves a
+  JSON through normal target-authorized comment APIs. A denied edit leaves a
   short system notice, without granting editing rights. Missing questionnaire
   references skip cleanup.
   The obsolete `remote-sop` CLI command and wrapper-presence resolver are removed.

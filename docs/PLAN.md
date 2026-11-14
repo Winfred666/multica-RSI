@@ -18,14 +18,10 @@ Before shipping, verify dragging at non-default zoom, nested workspace containme
 
 ## SOP calls and cross-issue handoffs
 
-Local symbolic SOP invocations belong to their agent task. A remote caller uses
-`multica remote-sop ISSUE SOP [args...]`, which posts the non-waking note
-`/note !sop <name> <JSON argv>`. The daemon takes it through its heartbeat,
-moves it into the execution log and runs the skill's `wrapper.py` with task ID
-`0`. Remote calls never enter agent admission, steering or provider execution.
-Skills come from agent bindings and workspace `.agents/` folders. No registration
-or issue metadata write is needed. Ordinary cross-issue work continues to use
-native steering or concrete mentions.
+See the [CLI-owned symbolic SoP reference](engineering/fork-development.md#cli-and-daemon)
+for execution and state semantics, and the
+[developer guide](../server/internal/cli/sopdev/DEVELOPMENT.md) for authoring.
+Ordinary cross-issue work continues to use native steering or concrete mentions.
 
 `multica-subissue-distribute` is the parent's child creation and dispatch SOP.
 Labels select query, development or experiment behavior. Children post results,
@@ -34,6 +30,4 @@ measured scores, commits, reasons and evidence in native reply comments and ente
 blocker. Delivery follows the [textual issue workflow](../harness/skills/multica-issue-workflow/SKILL.md);
 `done` stays human.
 
-Keep inter-SOP communication in replies and steering prompts. Issue metadata holds
-native resource bindings and configuration, without copied reports, thread IDs,
-delivery IDs or review dispatch records. SOP task JSON is local execution state.
+Keep inter-SOP communication in replies and steering prompts.

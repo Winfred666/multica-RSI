@@ -63,15 +63,15 @@ func TestRemoteSOPNotesNeverAdmitAgentWork(t *testing.T) {
 			dbfx.Cleanup(t, `DELETE FROM task_token WHERE token_hash=$1`, auth.HashToken(requests[0].AuthToken))
 			var tokenUserID string
 			dbfx.QueryRow(t, `SELECT user_id::text FROM task_token WHERE token_hash=$1`, auth.HashToken(requests[0].AuthToken)).Scan(&tokenUserID)
-			if tokenUserID != userID {
-				t.Fatal("credentials borrowed another user's authority")
+			if tokenUserID != testUserID {
+				t.Fatal("credentials did not use the runtime owner")
 			}
 			authed := middleware.Auth(testHandler.Queries, nil, nil, nil)(http.HandlerFunc(testHandler.CreateComment))
-			callback := withURLParam(newRequest(http.MethodPost, "/comments", map[string]any{"content": "/note !sop-remote inspect {\"args\":[\"--help\"]}"}), "id", f.issueID)
+			callback := withURLParam(newRequest(http.MethodPost, "/comments", map[string]any{"content": "/note callback"}), "id", f.issueID)
 			callback.Header.Set("Authorization", "Bearer "+requests[0].AuthToken)
 			var posted CommentResponse
 			testutil.Call(t, authed.ServeHTTP, callback).Want(http.StatusCreated).JSON(&posted)
-			if posted.AuthorType != scenario.callerType || posted.AuthorID != callerID {
+			if posted.AuthorType != "agent" || posted.AuthorID != f.agentID {
 				t.Fatalf("callback actor=%s/%s", posted.AuthorType, posted.AuthorID)
 			}
 			callback.Header.Set("X-Workspace-ID", "00000000-0000-4000-8000-000000000001")
@@ -86,13 +86,6 @@ func TestRemoteSOPNotesNeverAdmitAgentWork(t *testing.T) {
 			if n := dbfx.Count(t, `SELECT count(*) FROM agent_task_queue WHERE id=$1 AND status='completed' AND started_at IS NULL AND dispatched_at IS NULL AND context->>'type'='remote_sop'`, comment.ID); n != 1 {
 				t.Fatal("missing execution-only log")
 			}
-			testutil.Call(t, testHandler.TakeRemoteSOPs, take).Want(http.StatusOK).JSON(&requests)
-			if len(requests) != 1 || requests[0].ID != posted.ID || requests[0].CallerID != callerID {
-				t.Fatal("callback lost caller provenance")
-			}
-			dbfx.Cleanup(t, `DELETE FROM task_token WHERE token_hash=$1`, auth.HashToken(requests[0].AuthToken))
-			dbfx.Cleanup(t, `DELETE FROM task_message WHERE task_id=$1`, posted.ID)
-			dbfx.Cleanup(t, `DELETE FROM agent_task_queue WHERE id=$1`, posted.ID)
 			testutil.Call(t, testHandler.TakeRemoteSOPs, take).Want(http.StatusOK).JSON(&requests)
 			if len(requests) != 0 {
 				t.Fatal("request consumed twice")
