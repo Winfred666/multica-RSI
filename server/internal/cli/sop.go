@@ -20,6 +20,8 @@ var sopEngine embed.FS
 
 var sopName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*$`)
 
+const DefaultSOPMaxActionDepth = 5
+
 // SOP identifies an executable skill without importing its controller.
 type SOP struct {
 	Name string `json:"name"`

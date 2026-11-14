@@ -32,6 +32,7 @@ var configSetSupportedKeys = []string{
 	"server_url",
 	"app_url",
 	"workspace_id",
+	"sop_max_action_depth",
 	"device_name",
 	"runtime_name",
 	"workspaces_root",
@@ -53,7 +54,7 @@ var configSetCmd = &cobra.Command{
 	Use:   "set <key> <value>",
 	Short: "Set a CLI configuration value",
 	Long: "Supported keys: " +
-		"server_url, app_url, workspace_id, " +
+		"server_url, app_url, workspace_id, sop_max_action_depth, " +
 		"device_name, runtime_name, workspaces_root, max_concurrent_tasks, poll_interval, ws_claim_poll_interval, " +
 		"heartbeat_interval, agent_timeout, agent_idle_watchdog, agent_tool_watchdog, " +
 		"codex_semantic_inactivity_timeout, codex_handshake_timeout, " +
@@ -66,7 +67,8 @@ var configSetCmd = &cobra.Command{
 		"neither the flag nor the env var is set. " +
 		"Precedence: --flag > MULTICA_… env > config.json > built-in default. " +
 		"Duration keys take a Go duration (e.g. '10s', '500ms', '1m30s'); " +
-		"most keys require a positive value, while agent_timeout, agent_idle_watchdog, " +
+		"sop_max_action_depth is a positive integer (default 5). " +
+		"Most duration keys require a positive value, while agent_timeout, agent_idle_watchdog, " +
 		"and agent_tool_watchdog also accept '0s' to disable their limit. " +
 		"disable_auto_update and disable_auto_reload take 'true' or 'false' " +
 		"(single-direction: setting one to 'true' turns that behavior off, " +
@@ -100,6 +102,7 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "server_url:", valueOrDefault(cfg.ServerURL, "(not set)"))
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "app_url:", valueOrDefault(cfg.AppURL, "(not set)"))
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "workspace_id:", valueOrDefault(cfg.WorkspaceID, "(not set)"))
+	fmt.Fprintf(os.Stdout, "%-34s %s\n", "sop_max_action_depth:", intOrDefault(cfg.SOPMaxActionDepth, strconv.Itoa(cli.DefaultSOPMaxActionDepth)))
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "device_name:", valueOrDefault(cfg.DeviceName, "(not set)"))
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "runtime_name:", valueOrDefault(cfg.RuntimeName, "(not set)"))
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "workspaces_root:", valueOrDefault(cfg.WorkspacesRoot, "(not set)"))
@@ -164,6 +167,16 @@ func applyConfigSet(cfg *cli.CLIConfig, key, value string) error {
 		cfg.AppURL = value
 	case "workspace_id":
 		cfg.WorkspaceID = value
+	case "sop_max_action_depth":
+		if value == "" {
+			cfg.SOPMaxActionDepth = 0
+			return nil
+		}
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 1 {
+			return fmt.Errorf("sop_max_action_depth must be a positive integer")
+		}
+		cfg.SOPMaxActionDepth = n
 	case "device_name":
 		cfg.DeviceName = value
 	case "runtime_name":

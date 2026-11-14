@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -124,13 +123,7 @@ func TestSOPDeveloperKit(t *testing.T) {
 				t.Fatal("init overwrote a populated directory")
 			}
 			var out, stderr bytes.Buffer
-			err = ValidateSOP(context.Background(), dir, &out, &stderr)
-			if rich {
-				// Report the existing controller for explicit migration, never rewrite it.
-				if err == nil || !strings.Contains(out.String(), "cycle: route -> review -> inspect -> route") {
-					t.Fatalf("legacy cycle not reported: %v, %s%s", err, &out, &stderr)
-				}
-			} else if err != nil || out.String() != "{\"status\": \"valid\"}\n" {
+			if err := ValidateSOP(context.Background(), dir, &out, &stderr); err != nil || out.String() != "{\"status\": \"valid\"}\n" {
 				t.Fatalf("validate: %v, %s%s", err, &out, &stderr)
 			}
 			if err := os.WriteFile(filepath.Join(dir, "controller.py"), []byte("workflow = None"), 0644); err != nil {

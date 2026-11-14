@@ -2,6 +2,7 @@
 import argparse
 import ast
 import inspect
+import os
 import re
 import textwrap
 
@@ -79,6 +80,9 @@ class Workflow:
                 len(initial) != 1 or initial[0].final):
             raise ValueError('Declare unique states and one initial state')
         self.initial = initial[0].name
+        self.max_action_depth = int(os.environ.get('MULTICA_SOP_MAX_ACTION_DEPTH', '5'))
+        if self.max_action_depth < 1:
+            raise ValueError('SoP maximum action depth must be positive')
         for node in nodes:
             if not re.fullmatch(r'[a-z][a-z0-9_-]*' if isinstance(node, Option) else r'[a-z][a-z0-9_]*', node.name) or node.name in {'init', 'repaired', 'error', 'blocked'}:
                 raise ValueError('Invalid or reserved node name: ' + node.name)
@@ -108,39 +112,28 @@ class Workflow:
         return options
 
     def validate_graph(self, resolved=None, *, reply_guidance=False):
-        """Trace declarations only. Never call option factories, actions or selectors."""
+        """Every automatic node needs an exit; State-to-State cycles are allowed."""
         edges = {name: tuple(branch.routes.values()) for name, branch in self.branches.items()}
         edges.update({name: (option.target,) for name, option in self.options.items()})
-        for state in self.states.values():
-            options = (resolved or {}).get(state.name, () if callable(state.options) else self.choices(state, {}))
-            edges[state.name] = tuple(option.name if option.name in self.options else option.target
-                                      for option in options)
-        visited, path = set(), []
-
-        def visit(name):
-            if name in path:
-                cycle = path[path.index(name):] + [name]
-                raise ValueError('Workflow graph must be a DAG; cycle: ' + ' -> '.join(cycle) +
-                                 '. Migrate this controller explicitly.')
-            if name in visited:
-                return
-            path.append(name)
-            for target in edges.get(name, ()):
-                visit(target)
-            path.pop()
-            visited.add(name)
-
-        for name in edges:
-            visit(name)
+        reachable = set(self.states) | {FINISHED}
+        while exits := {name for name, targets in edges.items() if any(target in reachable for target in targets)} - reachable:
+            reachable.update(exits)
+        stranded = edges.keys() - reachable
+        if stranded:
+            raise ValueError('Automatic nodes must reach a State or FINISHED: ' + ', '.join(sorted(stranded)))
 
         if reply_guidance:
-            def check(target, action):
+            def check(target, action, visited):
+                key = (target, action)
+                if key in visited:
+                    return
+                visited = visited | {key}
                 if target in self.options:
                     option = self.options[target]
-                    check(option.target, option.action)
+                    check(option.target, option.action, visited)
                 elif target in self.branches:
                     for destination in edges[target]:
-                        check(destination, action)
+                        check(destination, action, visited)
                 elif target in self.states and isinstance(self.states[target].owner, dict) and 'issue_id' in self.states[target].owner:
                     tree = ast.parse(textwrap.dedent(inspect.getsource(action))) if action else ast.parse('')
                     returns = (node.value if isinstance(node, ast.Return) else node.body
@@ -153,7 +146,7 @@ class Workflow:
             for state in self.states.values():
                 if state.owner and not (isinstance(state.owner, dict) and 'issue_id' in state.owner):
                     for option in self.choices(state, {}) if not callable(state.options) else ():
-                        check(option.target, option.action)
+                        check(option.target, option.action, set())
 
     def is_finished(self, phase):
         return phase == FINISHED or self.states[phase].final
@@ -181,7 +174,6 @@ class Workflow:
         view = state.view(context) if state.view else {}
         options = self.choices(state, context)
         self.validate_options(options)
-        self.validate_graph(context.get('resolved_options'))
         context.setdefault('option_diagrams', {})[state.name] = {option.name: option.diagram() for option in options}
         context.setdefault('option_targets', {})[state.name] = {option.name: option.target for option in options}
         text = result.pop('instruction', None) or view.get('instruction') or state.description
@@ -199,14 +191,21 @@ class Workflow:
             if args.extra:
                 raise context['error']('invalid_input', 'Choose an option before providing its parameters')
             return self.guidance(state, context)
+        option = self.select_option(args, context, state)
+        result = self.execute_option(option, args, context)
+        target = result.get('phase', state.name) if result.get('accepted', True) else state.name
+        if target == FINISHED:
+            return {**result, 'phase': FINISHED, 'instruction': ''}
+        return self.guidance(self.states[target], context, {**result, 'phase': target})
+
+    def select_option(self, args, context, state):
         options = self.choices(state, context)
         self.validate_options(options)
-        self.validate_graph(context.get('resolved_options'))
         context.setdefault('option_diagrams', {})[state.name] = {option.name: option.diagram() for option in options}
         context.setdefault('option_targets', {})[state.name] = {option.name: option.target for option in options}
         matches = [option for option in options if option.name == args.event]
         if not matches:
-            raise context['error']('invalid_transition', 'Choose one of the returned options for ' + phase)
+            raise context['error']('invalid_transition', 'Choose one of the returned options for ' + state.name)
         parsed, errors = [], []
         for option in matches:
             parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
@@ -230,55 +229,64 @@ class Workflow:
             raise context['error']('invalid_input', errors[0] if errors else 'Choose a single returned option')
         option, values = parsed[0]
         vars(args).update(vars(values))
-        result = {}
-        automatic = False
-        while True:
-            # Automatic entry uses inputs already collected at a State, or fixed bindings.
-            if automatic and option.params:
-                for param in option.params:
-                    name = param.kwargs.get('dest', param.flag.lstrip('-').replace('-', '_'))
-                    value = getattr(args, name, param.kwargs.get('default'))
-                    if value is None and param.value is not None:
-                        value = param.value
-                    if value is not None and param.kwargs.get('type'):
-                        convert = param.kwargs['type']
-                        try:
-                            value = [convert(item) for item in value] if isinstance(value, list) else convert(value)
-                        except (TypeError, ValueError) as error:
-                            raise context['error']('invalid_action_input', str(error)) from error
-                    if param.required and (value is None or value == [] or isinstance(value, str) and not value.strip()):
-                        raise context['error']('invalid_action_input', param.flag + ' must be bound before action ' + option.name)
-                    if param.value is not None and str(value) != str(param.value):
-                        raise context['error']('invalid_action_input', 'Use the returned ' + param.flag + ' value')
-                    if value is not None and 'choices' in param.kwargs:
-                        values = value if isinstance(value, list) else [value]
-                        if any(item not in param.kwargs['choices'] for item in values):
-                            raise context['error']('invalid_action_input', 'Invalid ' + param.flag + ' for action ' + option.name)
-                    setattr(args, name, value)
-            current = option.action(args, context) if option.action else {}
-            result.update(current or {})
-            if not result.get('accepted', True):
-                return self.guidance(state, context, {**result, 'phase': state.name})
-            target = (current or {}).get('phase', option.target)
-            if option.target in self.branches:
-                target = option.target
-            elif target != option.target:
+        return option
+
+    def bind_inputs(self, option, args, context):
+        for param in option.params:
+            name = param.kwargs.get('dest', param.flag.lstrip('-').replace('-', '_'))
+            value = getattr(args, name, param.kwargs.get('default'))
+            if value is None and param.value is not None:
+                value = param.value
+            if value is not None and param.kwargs.get('type'):
+                convert = param.kwargs['type']
+                try:
+                    value = [convert(item) for item in value] if isinstance(value, list) else convert(value)
+                except (TypeError, ValueError) as error:
+                    raise context['error']('invalid_action_input', str(error)) from error
+            if param.required and (value is None or value == [] or isinstance(value, str) and not value.strip()):
+                raise context['error']('invalid_action_input', param.flag + ' must be bound before action ' + option.name)
+            if param.value is not None and str(value) != str(param.value):
+                raise context['error']('invalid_action_input', 'Use the returned ' + param.flag + ' value')
+            if value is not None and 'choices' in param.kwargs:
+                values = value if isinstance(value, list) else [value]
+                if any(item not in param.kwargs['choices'] for item in values):
+                    raise context['error']('invalid_action_input', 'Invalid ' + param.flag + ' for action ' + option.name)
+            setattr(args, name, value)
+
+    def resolve_target(self, option, result, args, context):
+        target = option.target
+        if target not in self.branches:
+            if result.get('phase', target) != target:
                 raise context['error']('invalid_action_output', 'Action must use its declared target: ' + option.name)
-            while target in self.branches:
-                branch = self.branches[target]
-                if branch.select:
-                    route = branch.select(args, context)
-                    if route not in branch.routes:
-                        raise context['error']('invalid_branch_output', 'Return a declared route for branch ' + branch.name)
-                    target = branch.routes[route]
-                else:
-                    target = (current or {}).get('phase')
-                    if target not in branch.routes.values():
-                        raise context['error']('invalid_branch_output', 'Return a declared phase for branch ' + branch.name)
-            if target not in self.options:
-                break
-            option = self.options[target]
-            automatic = True
-        if target == FINISHED:
-            return {**result, 'phase': FINISHED, 'instruction': ''}
-        return self.guidance(self.states[target], context, {**result, 'phase': target})
+            return target
+        visited = set()
+        while target in self.branches:
+            if target in visited:
+                raise context['error']('invalid_branch_output', 'Automatic branch loop: ' + target)
+            visited.add(target)
+            branch = self.branches[target]
+            if branch.select:
+                route = branch.select(args, context)
+                if route not in branch.routes:
+                    raise context['error']('invalid_branch_output', 'Return a declared route for branch ' + branch.name)
+                target = branch.routes[route]
+            else:
+                target = result.get('phase')
+                if target not in branch.routes.values():
+                    raise context['error']('invalid_branch_output', 'Return a declared phase for branch ' + branch.name)
+        return target
+
+    def execute_option(self, option, args, context, depth=1):
+        if depth > self.max_action_depth:
+            raise context['error']('action_depth_exceeded',
+                                   'SoP action depth exceeds ' + str(self.max_action_depth))
+        if depth > 1:
+            self.bind_inputs(option, args, context)
+        result = option.action(args, context) if option.action else {}
+        result = result or {}
+        if not result.get('accepted', True):
+            return result
+        target = self.resolve_target(option, result, args, context)
+        if target in self.options:
+            return {**result, **self.execute_option(self.options[target], args, context, depth + 1)}
+        return {**result, 'phase': target}

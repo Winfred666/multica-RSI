@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/multica-ai/multica/server/internal/cli"
@@ -58,8 +59,17 @@ var sopRunCmd = &cobra.Command{
 				}
 				stateRoot = filepath.Join(stateRoot, "multica")
 			}
+			cfg, err := cli.LoadCLIConfigForProfile(resolveProfile(cmd))
+			if err != nil {
+				return err
+			}
+			depth := cfg.SOPMaxActionDepth
+			if depth == 0 {
+				depth = cli.DefaultSOPMaxActionDepth
+			}
 			env := append(os.Environ(), "MULTICA_SERVER_URL="+tryResolveServerURL(cmd),
-				"MULTICA_WORKSPACE_ID="+resolveWorkspaceID(cmd), "MULTICA_TOKEN="+resolveToken(cmd))
+				"MULTICA_WORKSPACE_ID="+resolveWorkspaceID(cmd), "MULTICA_TOKEN="+resolveToken(cmd),
+				"MULTICA_SOP_MAX_ACTION_DEPTH="+strconv.Itoa(depth))
 			err = cli.RunSOP(cmd.Context(), sop, filepath.Join(stateRoot, "sop", sop.Name), workdir, args[1:], env, cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr())
 			var exit *exec.ExitError
 			if errors.As(err, &exit) {

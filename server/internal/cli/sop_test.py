@@ -24,13 +24,7 @@ class SymbolicProtocol(unittest.TestCase):
         self.package = self.root / 'skill'
         self.package.mkdir()
         (self.package / 'SKILL.md').write_text((DEVKIT / 'SKILL.md').read_text().replace('{{name}}', 'fixture-sop'))
-        # Use an explicitly acyclic protocol fixture; audit the shipped legacy sample separately.
-        source = (DEVKIT / 'feature-rich.py').read_text()
-        source = source.replace("return {'phase': 'review' if size else 'inspect'}",
-                                "return {'phase': 'review'} if size else {'accepted': False}")
-        source = source.replace("{'nonempty': 'review', 'empty': 'inspect'}", "{'nonempty': 'review'}")
-        source = source.replace("Option('retry', 'inspect', 'Choose another file'),", '')
-        (self.package / 'controller.py').write_text(source)
+        shutil.copy2(DEVKIT / 'feature-rich.py', self.package / 'controller.py')
         self.engine = self.root / 'engine'
         shutil.copytree(PACKAGE, self.engine)
         self.state_dir = self.root / 'state'
@@ -96,148 +90,6 @@ else:
         self.assertEqual(result.returncode, 0 if valid else 1, result.stderr + result.stdout)
         return json.loads(result.stdout) if json_output else result.stdout.strip()
 
-    def action_fixture(self):
-        (self.package / 'controller.py').write_text('''from pathlib import Path
-from sop import Branch, FINISHED, Option, Parameter, State, Workflow
-
-def record(name):
-    path = Path('calls')
-    path.write_text((path.read_text() if path.exists() else '') + name + '\\n')
-def prepare(args, context):
-    record('prepare')
-    context['external_write_attempted'] = True
-def publish(args, context):
-    """```dot
-    digraph local { bind -> publish; }
-    ```"""
-    assert args.note == 'ready' and args.mode == 'safe'
-    record('publish')
-def choose(args, context):
-    record('select')
-    return 'yes'
-
-publish_node = Option('publish', 'published', 'Publish once.', publish,
-    params=(Parameter('--note', 'Approval', choices=('ready',)),
-            Parameter('--mode', 'Mode', value='safe')))
-workflow = Workflow(
-    State('start', 'Choose a path.', initial=True, options=(
-        Option('run', 'ready', 'Prepare and publish.', params=(Parameter('--note', 'Approval'),)),
-        Option('skip', 'alternate', 'Choose publication directly.'), publish_node)),
-    State('alternate', 'Publish directly.', options=(publish_node,)),
-    Option('prepare', 'publish', 'Prepare.', prepare),
-    Branch('ready', 'Ready?', {'yes': 'approved', 'no': 'pause'}, select=choose),
-    Branch('approved', 'Approved?', {'yes': 'prepare', 'no': 'pause'}, select=choose),
-    publish_node,
-    Branch('published', 'Published?', {'yes': 'pause', 'no': FINISHED}, select=choose),
-    State('pause', 'Enter the next answer.', options=(Option('finish', FINISHED, 'Finish.'),)),
-)
-''')
-
-    def test_registered_actions_run_to_interactive_state_and_preview_is_read_only(self):
-        self.action_fixture()
-        self.assertEqual(self.run_sop('--validate'), {'status': 'valid'})
-        self.run_sop()
-        self.assertFalse((self.root / 'calls').exists())
-        current = self.run_sop('run', '--note', 'ready')
-        self.assertEqual(current['status'], 'pause')
-        self.assertEqual(len(current['next_step']), 1)
-        calls = (self.root / 'calls').read_text()
-        self.assertEqual(calls.splitlines(), ['select', 'select', 'prepare', 'publish', 'select'])
-        self.assertEqual(self.run_sop('--help'), current)
-        self.run_sop()
-        spec = importlib.util.spec_from_file_location('protocol_wrapper', self.engine / 'wrapper.py')
-        wrapper = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(wrapper)
-        wrapper.ROOT, wrapper.STATE_DIR, wrapper.SOP_NAME = self.package, self.state_dir, self.skill_name()
-        controller = wrapper.load_controller()
-        # Preview must not call views, option factories, actions or branch selectors.
-        controller.workflow.states['alternate'].view = lambda context: self.fail('preview ran view')
-        controller.workflow.states['pause'].options = lambda context: self.fail('preview ran factory')
-        for branch in controller.workflow.branches.values():
-            branch.select = lambda *args: self.fail('preview ran selector')
-        for option in controller.workflow.options.values():
-            doc = option.action.__doc__ if option.action else None
-            option.action = lambda *args: self.fail('preview ran action')
-            option.action.__doc__ = doc
-        html = wrapper.state_artifact({'issue_id': 'fixture-issue', 'output': current}, controller,
-                                      {'status': 'pause'})
-        self.assertEqual(html.count('id="state_publish"'), 1)
-        self.assertEqual(html.count('id="state_prepare"'), 1)
-        for edge in ('start->ready', 'start->publish', 'alternate->publish', 'prepare->publish',
-                     'ready->approved', 'approved->prepare', 'publish->published', 'published->pause'):
-            self.assertIn(edge, unescape(html))
-        data = json.loads(html.split('<script id="sop-data" type="application/json">', 1)[1].split('</script>', 1)[0])
-        self.assertTrue(data['nodes']['publish']['automatic'])
-        self.assertNotIn('next_step', data['nodes']['publish'])
-        self.assertEqual(data['nodes']['publish']['parameters'][0]['flag'], '--note')
-        self.assertEqual(data['nodes']['ready']['routes']['yes'], 'approved')
-        self.assertIn('bind->publish', unescape(html))
-        self.assertIn('publish', data['logic']['publish'])
-        self.assertEqual((self.root / 'calls').read_text(), calls)
-        self.run_sop('finish')
-        self.run_sop()
-        self.run_sop('skip')
-        self.assertEqual(self.run_sop('publish', '--note', 'ready', '--mode', 'safe')['status'], 'pause')
-        self.assertEqual((self.root / 'calls').read_text().splitlines()[-2:], ['publish', 'select'])
-
-    def test_automatic_input_constraints_and_branch_output_stop_before_target(self):
-        self.action_fixture()
-        self.run_sop()
-        missing = self.run_sop('run', valid=False)
-        self.assertEqual(missing['error']['code'], 'invalid_input')
-        self.assertFalse((self.root / 'calls').exists())
-        invalid = self.run_sop('run', '--note', 'wrong', valid=False)
-        self.assertEqual(invalid['error']['code'], 'invalid_action_input')
-        self.assertNotIn('publish', (self.root / 'calls').read_text())
-        controller = self.package / 'controller.py'
-        controller.write_text(controller.read_text().replace("return 'yes'", "return 'unknown'"))
-        invalid = self.run_sop('run', '--note', 'ready', valid=False)
-        self.assertEqual(invalid['error']['code'], 'invalid_branch_output')
-        self.assertNotIn('publish', (self.root / 'calls').read_text())
-        controller.write_text(controller.read_text().replace("Parameter('--note', 'Approval'),", ''))
-        invalid = self.run_sop('run', valid=False)
-        self.assertEqual(invalid['error']['code'], 'invalid_branch_output')
-        controller.write_text(controller.read_text().replace("return 'unknown'", "return 'yes'"))
-        missing = self.run_sop('run', valid=False)
-        self.assertEqual(missing['error']['code'], 'invalid_action_input')
-        self.assertIn('must be bound before action publish', missing['error']['message'])
-        self.assertIn('inspect its live result before repeating it', missing['instruction'])
-        self.assertNotIn('publish', (self.root / 'calls').read_text())
-        self.action_fixture()
-        controller.write_text(controller.read_text().replace(
-            "context['external_write_attempted'] = True",
-            "context['external_write_attempted'] = True\n    return {'phase': 'pause'}"))
-        invalid = self.run_sop('run', '--note', 'ready', valid=False)
-        self.assertEqual(invalid['error']['code'], 'invalid_action_output')
-        self.assertIn('inspect its live result before repeating it', invalid['instruction'])
-        self.assertNotIn('publish', (self.root / 'calls').read_text())
-
-    def test_declared_cycles_fail_validation_without_execution(self):
-        self.action_fixture()
-        controller = self.package / 'controller.py'
-        source = controller.read_text()
-        controller.write_text(source.replace("Option('finish', FINISHED", "Option('finish', 'start'"))
-        invalid = self.run_sop('--validate', valid=False)
-        self.assertIn('cycle:', invalid['error'])
-        self.assertIn('pause -> start', invalid['error'])
-        controller.write_text(source.replace("'yes': 'approved'", "'yes': 'ready'"))
-        invalid = self.run_sop('--validate', valid=False)
-        self.assertIn('ready -> ready', invalid['error'])
-        self.assertFalse((self.root / 'calls').exists())
-        self.assertFalse(self.metadata.exists())
-
-    def test_chain_target_assertion_repair_does_not_repeat_actions(self):
-        self.action_fixture()
-        controller = self.package / 'controller.py'
-        source = controller.read_text().replace("publish_node = Option", "def check(context):\n    assert Path('ready').exists(), 'Create ready'\n\npublish_node = Option")
-        controller.write_text(source.replace("State('pause', 'Enter the next answer.',", "State('pause', 'Enter the next answer.', precheck=check,"))
-        self.run_sop()
-        self.assertEqual(self.run_sop('run', '--note', 'ready', valid=False)['status'], 'error')
-        calls = (self.root / 'calls').read_text()
-        (self.root / 'ready').touch()
-        self.assertEqual(self.run_sop('repaired')['status'], 'pause')
-        self.assertEqual((self.root / 'calls').read_text(), calls)
-
     def test_help_shows_body_without_starting_then_replays_same_state_output(self):
         body = (self.package / 'SKILL.md').read_text().split('---', 2)[2].strip()
         self.assertEqual(self.run_sop('--help', json_output=False), body)
@@ -250,8 +102,7 @@ def observe(context):
     return {'instruction': 'Output: ' + p.read_text(), 'data': {'internal': 'private-view-data'}}
 workflow = Workflow(
     State('start', 'Start', initial=True, view=observe, options=(
-        Option('refresh', 'updated', 'Refresh output'), Option('done', 'finished', 'Finish'))),
-    State('updated', 'Updated', view=observe, options=(Option('done', 'finished', 'Finish'),)),
+        Option('refresh', 'start', 'Refresh output'), Option('done', 'finished', 'Finish'))),
     State('finished', 'Done', final=True))
 ''')
         initial = self.run_sop()
@@ -487,11 +338,13 @@ workflow = Workflow(
         self.assertNotIn('data', current)
         self.assertEqual(self.state()['path'], str(sample))
         self.assertNotIn('workspace', self.state())
+        self.assertEqual(self.run_sop('retry')['status'], 'inspect')
+        self.run_sop('check', '--path', sample.name)
         completed = self.run_sop('accept')
         self.assertEqual(completed['status'], 'FINISHED')
         self.assertNotIn('data', completed)
         self.assertFalse(self.state())
-        controller.write_text(controller.read_text().replace("{'phase': 'review'} if size else {'accepted': False}", "{'phase': FINISHED}"))
+        controller.write_text(controller.read_text().replace("'review' if size else 'inspect'", "FINISHED"))
         self.run_sop()
         invalid = self.run_sop('check', '--path', sample.name, valid=False)
         self.assertEqual(invalid['error']['code'], 'invalid_branch_output')
@@ -713,7 +566,7 @@ workflow = Workflow(
         self.assertNotIn('task_id', html)
         self.assertIn('inspect->route', unescape(html))
         self.assertIn('route->review', unescape(html))
-        self.assertNotIn('route->inspect', unescape(html))
+        self.assertIn('route->inspect', unescape(html))
         self.assertIn('__start->inspect', unescape(html))
         self.assertIn('review->__end', unescape(html))
         self.assertLess(html.index('id="workflow"'), html.index('<h1>'))

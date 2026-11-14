@@ -26,6 +26,9 @@ type CLIConfig struct {
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	Token       string `json:"token,omitempty"`
 
+	// SOPMaxActionDepth bounds consecutive actions between interactive States; 0 uses 5.
+	SOPMaxActionDepth int `json:"sop_max_action_depth,omitempty"`
+
 	// DeviceName is the human-readable label shown in the server's Runtimes
 	// UI for the daemon started with this profile. When multiple daemons run
 	// on the same host under different profiles (typical for shared servers

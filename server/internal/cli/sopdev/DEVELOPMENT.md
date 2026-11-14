@@ -1,12 +1,14 @@
 # Symbolic SoP developer kit
 
-The CLI supplies the Python engine and Workflow API. A skill supplies its
+Use `multica sop docs` for symbolic SoP creation guidance. The CLI supplies the
+Python engine and Workflow API; no separate authoring skill is needed. A skill supplies its
 instructions and controller. Python 3 is required; no engine package install
 or copied wrapper is needed.
 
 ## Start
 
 ```sh
+multica sop docs
 multica sop dev init .agents/skills/my-sop --minimal
 # Or: multica sop dev init .agents/skills/my-sop --feature-rich
 multica sop dev validate .agents/skills/my-sop
@@ -16,7 +18,8 @@ multica sop run my-sop
 `init` accepts an empty or nonexistent directory. The directory's name becomes
 the skill name (lowercase, with punctuation replaced by hyphens). Minimal is
 the default. Feature-rich adds file inspection, parameters, branching and review.
-Both include this searchable `DEVELOPMENT.md`; `multica sop dev docs` prints it.
+Both include this searchable `DEVELOPMENT.md`; `multica sop docs` prints it.
+`multica sop dev docs` remains a compatible spelling of the same guide.
 
 ## Skill files
 
@@ -49,14 +52,52 @@ workflow = Workflow(
   state. State names use lowercase letters, numbers and underscores; start with
   a letter. `init`, `repaired`, `error` and `blocked` are runtime names.
 - `Option(name, target, prompt, action=None, params=(...))` offers a callback.
-  Its target is a state, a Branch, or `FINISHED`. Actions receive `(args, context)`.
+  Its target is a State, a registered Option, a Branch, or `FINISHED`. Actions
+  receive `(args, context)`. Register reusable Options once as Workflow nodes;
+  State choices may reference their names or reuse the same Option objects.
 - `Parameter('--path', 'File to inspect')` declares an option input. Parameters
   are required by default; use `required=False` for optional inputs. Argument
   parser options such as `type=Path` and `action='store_true'` are supported.
-- `Branch(name, description, {'label': 'state', ...})` declares automatic routes.
-  Its action returns `{'phase': 'state'}` using a declared destination, not a label.
+- `Branch(name, description, {'label': 'node', ...}, select=callback)` declares
+  automatic routes to States, registered Options or other Branches. A selector
+  receives `(args, context)` and returns a declared route label. Without `select`,
+  the preceding action returns `{'phase': 'node'}` using a declared destination.
 - `FINISHED` completes the procedure and clears its issue metadata key. A named
   `State(..., final=True)` also completes it and has no options.
+
+## Registered action chains
+
+```python
+from sop import Branch, FINISHED, Option, State, Workflow
+
+publish = Option('publish', 'answer', 'Publish.', lambda args, context: {})
+workflow = Workflow(
+    State('ready', 'Choose run.', initial=True,
+          options=(Option('run', 'route', 'Run.'),)),
+    Branch('route', 'Choose next.', {'go': 'publish'},
+           select=lambda args, context: 'go'),
+    publish,
+    State('answer', 'Wait for input.', options=(
+        Option('again', 'ready', 'Repeat.'),
+        Option('finish', FINISHED, 'Finish.'))),
+)
+```
+
+States pause for interaction or new input. Registered actions and diamonds execute
+fluently until a State or `FINISHED`; bind required inputs before automatic entry.
+State cycles, including staying in one State, are allowed. Engine validation
+requires every registered automatic node to have a path to a State or `FINISHED`;
+it rejects automatic-only components with no exit, not State cycles.
+
+Actions execute recursively with a default limit of five consecutive Options.
+Use `multica config set sop_max_action_depth 5` to configure a profile's limit;
+an empty value restores the default. The next State callback starts a fresh
+budget. Diamonds do not consume action depth; a selected diamond-only loop fails.
+An action must use its declared target. Chains are not transactions: preserve
+repair/reconciliation rules without automatic retries or an execution journal.
+HTML shows each registered Option once with the same incoming/outgoing edges.
+Validation and compilation never execute actions, selectors or option factories.
+Human approval still gates broad propagation.
 
 ## Controller hooks and context
 
@@ -88,7 +129,7 @@ owner/option factories; arbitrary dynamic Python return values are not proved.
 It works directly on a directory, without an issue or task context.
 
 `multica sop run NAME --help` shows the skill body before starting, or replays
-the current saved guidance. Authoring docs are only under `sop dev`.
+the current saved guidance. Use `multica sop docs` for authoring guidance, not a creator skill.
 
 Config is optional and DEBUG is off by default. To enable compiled HTML previews,
 add `config.json` containing `{"DEBUG": true}`. The engine derives the state

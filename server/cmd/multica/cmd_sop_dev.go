@@ -32,14 +32,16 @@ var sopDevInitCmd = &cobra.Command{
 	},
 }
 
-var sopDevDocsCmd = &cobra.Command{
-	Use:   "docs",
-	Short: "Read the developer guide and template examples",
-	Args:  cobra.NoArgs,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		_, err := fmt.Fprint(cmd.OutOrStdout(), cli.SOPDeveloperDocs())
-		return err
-	},
+func newSOPDocsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "docs",
+		Short: "Read the developer guide and template examples",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, err := fmt.Fprint(cmd.OutOrStdout(), cli.SOPDeveloperDocs())
+			return err
+		},
+	}
 }
 
 var sopDevValidateCmd = &cobra.Command{
@@ -60,6 +62,6 @@ func init() {
 	sopDevInitCmd.Flags().Bool("minimal", false, "Start with a single state and finish option (default)")
 	sopDevInitCmd.Flags().Bool("feature-rich", false, "Start with parameters, branching and review")
 	sopDevInitCmd.MarkFlagsMutuallyExclusive("minimal", "feature-rich")
-	sopDevCmd.AddCommand(sopDevInitCmd, sopDevDocsCmd, sopDevValidateCmd)
-	sopCmd.AddCommand(sopDevCmd)
+	sopDevCmd.AddCommand(sopDevInitCmd, newSOPDocsCmd(), sopDevValidateCmd)
+	sopCmd.AddCommand(sopDevCmd, newSOPDocsCmd())
 }

@@ -149,19 +149,18 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   not copied wrappers. `--help` is passed to the selected SoP unchanged.
   An option action's `this_round_reply_guidance` replaces the invocation's
   instruction and omits all top-level next steps. Stored guidance, ownership and
-  transitions remain intact for later resume/help. The creator's
-  [greeting example](../../harness/skills/create-symbolic-sop/assets/multica-greeting/SKILL.md)
-  demonstrates natural-reply handover, the existing questionnaire JSON and strict
-  silence after direct publication. This adds no provider-stop mechanism.
+  transitions remain intact for later resume/help. Use `multica sop docs` for
+  authoring guidance. This adds no provider-stop mechanism.
   The daemon executes remote `/note !sop <name> <JSON argv>` requests through the
   same CLI in the target working directory with scoped credentials. Execution
   is bound to issue/workspace context and requires no task ID.
   The obsolete `remote-sop` CLI command and wrapper-presence resolver are removed.
 
-- **SoP developer kit.** Authoring lives under `multica sop dev`: `init DIRECTORY`
+- **SoP developer kit.** `multica sop docs` is the canonical authoring guide;
+  `multica sop dev docs` prints the same guide for compatibility. `multica sop dev init DIRECTORY`
   accepts an empty or nonexistent directory with `--minimal` (default) or
   `--feature-rich`; both write a semantic controller, `SKILL.md` and a searchable
-  `DEVELOPMENT.md`. `docs` prints the embedded guide; `validate DIRECTORY` reuses
+  `DEVELOPMENT.md`. `multica sop dev validate DIRECTORY` reuses
   the resolver's metadata reader and the engine's Workflow validation without
   issue/task context. Ordinary `sop list`, `sop run` and procedure help are unchanged.
 
@@ -173,14 +172,16 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 - **Registered option actions.** The CLI Workflow accepts reusable `Option` nodes
   and `Branch(select=...)` routes through options/diamonds until an interactive
   State. HTML renders those same nodes once without running their logic. The
-  validator reports declared cycles with a concrete path; existing cyclic
-  controllers require explicit migration, not automatic rewriting. Rollout to
-  other SoPs remains subject to human protocol approval.
+  validator requires automatic nodes to have a path to a State or `FINISHED`,
+  while allowing State-to-State loops. Consecutive actions recurse with a default
+  limit of 5, configurable through `config set sop_max_action_depth`; selected
+  diamond-only loops are rejected. Rollout remains subject to human approval.
 
-- **Symbolic SoP protocol changes.** Update `harness/skills/create-symbolic-sop`
-  and its template first; require human approval before mechanically propagating
-  the approved protocol to other symbolic SoPs and distributions. The approved
-  template derives its graph from `controller.workflow` without `DEBUG.md`, shows
+- **Symbolic SoP protocol changes.** Update the CLI-owned engine and
+  `server/internal/cli/sopdev/DEVELOPMENT.md`, served by `multica sop docs`, not
+  the obsolete authoring skill. Require human approval before mechanically
+  propagating the approved protocol to other symbolic SoPs and distributions. The
+  CLI runtime derives its graph from `controller.workflow` without `DEBUG.md`, shows
   agent JSON and rendered DOT logic from action docstrings before the final
   issue/SoP metadata. Workflow states, option targets and explicit Branch routes
   supply the global graph; action docstrings supply only local logic. Graphs fit the
@@ -190,9 +191,9 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   `ensure_command` reuses tools on PATH or installs their declared OS package
   when missing; Graphviz and bubblewrap use it. Failed installation returns an
   actionable wrapper exception. Help does not install dependencies.
-  Native small-circle start and double-circle stop markers have non-clickable boundary links. The creator's
-  `scripts/check.py` validates a selected package and checks its shared runtime in
-  temporary template fixtures. CLI `--help` replays a recorded decision or shows
+  Native small-circle start and double-circle stop markers have non-clickable boundary links.
+  `multica sop dev validate DIRECTORY` checks a selected package with the CLI-owned engine.
+  CLI `--help` replays a recorded decision or shows
   the skill body without starting a run. The R-262 canonical template stores serialized
   JSON in one `sop.<skill-name>` issue metadata key, with no local task state file.
   It resumes across tasks/agents, rebinds replayed commands to the current checkout,
