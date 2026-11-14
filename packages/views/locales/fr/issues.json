@@ -1902,6 +1902,9 @@
     "submit": "Envoyer",
     "answered": "Répondu",
     "submitting": "Envoi…",
-    "submitted": "Envoyé. En attente de confirmation du workflow."
+    "submitted": "Envoyé. En attente de confirmation du workflow.",
+    "source_thread": "Discussion source",
+    "loading_context": "Chargement de la discussion source…",
+    "context_unavailable": "Discussion source indisponible. Ouvrez le lien source."
   }
 }

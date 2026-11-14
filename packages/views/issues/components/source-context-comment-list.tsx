@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { SourceContextCommentSnapshot } from "@multica/core/types";
 import { cn } from "@multica/ui/lib/utils";
 import { ReadonlyContent } from "../../editor";
@@ -13,6 +14,7 @@ export function SourceContextCommentList({
   addedComments,
   removedCommentIds,
   className,
+  renderContent,
 }: {
   comments: SourceContextCommentSnapshot[];
   anchorCommentId: string;
@@ -21,6 +23,7 @@ export function SourceContextCommentList({
   addedComments?: SourceContextCommentSnapshot[];
   removedCommentIds?: string[];
   className?: string;
+  renderContent?: (comment: SourceContextCommentSnapshot) => ReactNode;
 }) {
   const { t } = useT("issues");
   const changedComments = new Set(changedCommentIds ?? []);
@@ -57,6 +60,7 @@ export function SourceContextCommentList({
         return (
           <li
             key={comment.id}
+            data-source-comment-id={comment.id}
             className="border-l-2 pl-3 transition-colors duration-150 hover:border-l-foreground/50"
           >
             <div
@@ -85,7 +89,7 @@ export function SourceContextCommentList({
                 {comment.deleted === true ? (
                   <p className="italic text-muted-foreground">{t(($) => $.comment.deleted_placeholder)}</p>
                 ) : (
-                  <ReadonlyContent content={comment.content} />
+                  renderContent ? renderContent(comment) : <ReadonlyContent content={comment.content} />
                 )}
               </div>
             </div>

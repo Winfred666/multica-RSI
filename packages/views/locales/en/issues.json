@@ -1902,6 +1902,9 @@
     "submit": "Submit",
     "answered": "Answered",
     "submitting": "Submitting…",
-    "submitted": "Submitted. Waiting for workflow confirmation."
+    "submitted": "Submitted. Waiting for workflow confirmation.",
+    "source_thread": "Source thread",
+    "loading_context": "Loading source thread…",
+    "context_unavailable": "Source thread unavailable. Open the source link."
   }
 }

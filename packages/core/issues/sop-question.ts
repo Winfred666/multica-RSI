@@ -1,3 +1,4 @@
+import { fromMarkdown } from "mdast-util-from-markdown";
 import { z } from "zod";
 import { parseWithFallback } from "../api/schema";
 import type { TimelineEntry } from "../types";
@@ -92,4 +93,20 @@ export function sopSelection(question: SOPQuestion): { index: number; values: Re
     if (matches) return { index, values };
   }
   return undefined;
+}
+
+export function sopQuestionLink(content: string): { href: string; commentId: string; prose: string; title: string } | null {
+  if (!content.includes("#comment-")) return null;
+  for (const paragraph of fromMarkdown(content).children) {
+    if (paragraph.type !== "paragraph" || paragraph.children.length !== 1) continue;
+    const node = paragraph.children[0]!;
+    const href = node.type === "link" ? node.url : node.type === "text" ? node.value.trim() : "";
+    const target = /\/issues\/[^/#?]+#comment-([0-9a-f-]{36})$/i.exec(href);
+    if (!target || !/^(https?:\/\/|\/(?!\/))/.test(href)) continue;
+    const title = node.type === "link" ? node.children.map((child) => child.type === "text" ? child.value : "").join("") : "";
+    const start = paragraph.position!.start.offset!;
+    const end = paragraph.position!.end.offset!;
+    return { href, commentId: target[1]!, title, prose: (content.slice(0, start) + content.slice(end)).trim() };
+  }
+  return null;
 }

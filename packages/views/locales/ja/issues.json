@@ -1832,6 +1832,9 @@
     "submit": "送信",
     "answered": "回答済み",
     "submitting": "送信中…",
-    "submitted": "送信済み。ワークフローの確認を待っています。"
+    "submitted": "送信済み。ワークフローの確認を待っています。",
+    "source_thread": "元のスレッド",
+    "loading_context": "元のスレッドを読み込み中…",
+    "context_unavailable": "元のスレッドを表示できません。元のリンクを開いてください。"
   }
 }

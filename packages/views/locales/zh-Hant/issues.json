@@ -1832,6 +1832,9 @@
     "submit": "提交",
     "answered": "已回答",
     "submitting": "提交中…",
-    "submitted": "已提交，等待工作流程確認。"
+    "submitted": "已提交，等待工作流程確認。",
+    "source_thread": "來源討論串",
+    "loading_context": "正在載入來源討論串…",
+    "context_unavailable": "來源討論串無法使用。請開啟來源連結。"
   }
 }

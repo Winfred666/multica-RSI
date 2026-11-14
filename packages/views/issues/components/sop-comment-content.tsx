@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useWorkspaceId } from "@multica/core/hooks";
+import { sourceContextPreviewOptions } from "@multica/core/issues/queries";
+import { useWSEvent, useWSReconnect } from "@multica/core/realtime";
 import { useCreateComment } from "@multica/core/issues/mutations";
-import { parseSOPComment, sopAnswerContent, sopParameters, sopSelection, type SOPQuestion } from "@multica/core/issues/sop-question";
-import type { TimelineEntry } from "@multica/core/types";
+import { parseSOPComment, sopQuestionLink, sopAnswerContent, sopParameters, sopSelection, type SOPQuestion } from "@multica/core/issues/sop-question";
+import type { CommentCreatedPayload, CommentDeletedPayload, SourceContextCommentSnapshot, TimelineEntry } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
 import { Code } from "@multica/ui/icons";
 import { DeferredTooltip } from "../../common/deferred-tooltip";
@@ -11,6 +15,7 @@ import { Badge } from "@multica/ui/components/ui/badge";
 import { Input } from "@multica/ui/components/ui/input";
 import { ReadonlyContent } from "../../editor";
 import { useT } from "../../i18n";
+import { SourceContextCommentList } from "./source-context-comment-list";
 
 export function SOPRawToggle({ entry, pressed, onClick, className }: {
   entry: TimelineEntry;
@@ -19,7 +24,7 @@ export function SOPRawToggle({ entry, pressed, onClick, className }: {
   className?: string;
 }) {
   const { t } = useT("editor");
-  if (!parseSOPComment(entry)) return null;
+  if (!parseSOPComment(entry) && !forwardLink(entry)) return null;
   const label = t(($) => $.attachment.view_source);
   return <DeferredTooltip content={label} trigger={
     <Button type="button" variant={pressed ? "secondary" : "ghost"} size="icon-sm" className={className}
@@ -36,10 +41,85 @@ export function SOPCommentContent({ issueId, entry, currentUserId, raw = false }
   raw?: boolean;
 }) {
   const question = parseSOPComment(entry);
-  if (!question) return <ReadonlyContent content={entry.content ?? ""} attachments={entry.attachments} />;
+  if (!question) {
+    const link = forwardLink(entry);
+    if (link) return raw
+      ? <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-caption">{entry.content}</pre>
+      : <SOPSourceThread entry={entry} link={link} currentUserId={currentUserId} />;
+    return <ReadonlyContent content={entry.content ?? ""} attachments={entry.attachments} />;
+  }
   return question.kind === "remote"
     ? <pre className={`overflow-x-auto whitespace-pre-wrap break-all font-mono text-caption${raw ? "" : " rounded-md bg-muted/50 p-3"}`}>{raw ? entry.content : [question.sop, ...question.args].join(" ")}</pre>
     : <SOPContent key={entry.content} issueId={issueId} entry={entry} question={question} currentUserId={currentUserId} raw={raw} />;
+}
+
+function forwardLink(entry: TimelineEntry) {
+  return entry.type === "comment" && !entry.deleted_at ? sopQuestionLink(entry.content ?? "") : null;
+}
+
+function SourcePermalink({ href, title }: { href: string; title: string }) {
+  return <a href={href} className="block truncate text-caption text-muted-foreground underline underline-offset-2" title={title}>{title}</a>;
+}
+
+function sourceEntry(comment: SourceContextCommentSnapshot): TimelineEntry {
+  return { id: comment.id, type: "comment", actor_type: comment.author.type, actor_id: comment.author.id,
+    content: comment.content, created_at: comment.created_at, parent_id: comment.parent_id,
+    deleted_at: comment.deleted ? comment.updated_at : undefined };
+}
+
+function SOPSourceThread({ entry, link, currentUserId }: {
+  entry: TimelineEntry;
+  link: NonNullable<ReturnType<typeof sopQuestionLink>>;
+  currentUserId?: string;
+}) {
+  const { t } = useT("issues");
+  const wsId = useWorkspaceId();
+  const preview = useQuery(sourceContextPreviewOptions(wsId, link.commentId));
+  const viewport = useRef<HTMLDivElement>(null);
+  const sourceId = preview.data?.source_issue.id;
+  const refresh = useCallback(() => { void preview.refetch(); }, [preview.refetch]);
+  const onComment = useCallback((payload: unknown) => {
+    if ((payload as CommentCreatedPayload).comment?.issue_id === sourceId) refresh();
+  }, [refresh, sourceId]);
+  const onDelete = useCallback((payload: unknown) => {
+    if ((payload as CommentDeletedPayload).issue_id === sourceId) refresh();
+  }, [refresh, sourceId]);
+  useWSEvent("comment:created", onComment);
+  useWSEvent("comment:updated", onComment);
+  useWSEvent("comment:deleted", onDelete);
+  useWSReconnect(refresh);
+  const anchor = preview.data?.comment_thread.find((comment) => comment.id === link.commentId);
+  const question = anchor && parseSOPComment(sourceEntry(anchor));
+  useLayoutEffect(() => {
+    const window = viewport.current;
+    const card = window?.querySelector<HTMLElement>(`[data-source-comment-id="${link.commentId}"]`);
+    if (!window || !card) return;
+    let initial = true;
+    const resize = () => {
+      window.style.height = `${card.getBoundingClientRect().height + 24}px`;
+      if (initial) { window.scrollTop = window.scrollHeight; initial = false; }
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [link.commentId, !!question]);
+  if (preview.isError || (preview.data && question?.kind !== "render")) return <div className="space-y-2">
+    <ReadonlyContent content={entry.content ?? ""} attachments={entry.attachments} />
+    {preview.isError && <p role="alert" className="text-caption text-muted-foreground">{t(($) => $.sop.context_unavailable)}</p>}
+  </div>;
+  return <div className="space-y-3">
+    {link.prose && <ReadonlyContent content={link.prose} attachments={entry.attachments} />}
+    <section className="min-w-0 rounded-md border" aria-label={t(($) => $.sop.source_thread)}>
+      <div className="border-b px-3 py-2"><SourcePermalink href={link.href} title={preview.data?.source_issue.title || link.title || link.href} /></div>
+      {preview.data ? <div ref={viewport} tabIndex={0} className="overflow-y-auto overscroll-contain p-3" data-sop-source-window>
+        <SourceContextCommentList comments={preview.data.comment_thread} anchorCommentId={link.commentId}
+          renderContent={(comment) => comment.id === link.commentId
+            ? <SOPCommentContent issueId={preview.data.source_issue.id} entry={sourceEntry(comment)} currentUserId={currentUserId} />
+            : <ReadonlyContent content={comment.content} />} />
+      </div> : <p role="status" className="p-3 text-caption text-muted-foreground">{t(($) => $.sop.loading_context)}</p>}
+    </section>
+  </div>;
 }
 
 function SOPContent({ issueId, entry, question, currentUserId, raw }: {

@@ -57,3 +57,15 @@ it("recognizes remote invocations without inventing execution status, leaving ma
     expect(parseSOPComment(entry(content))).toBeNull();
   }
 });
+
+it("recognizes standalone source question permalinks", async () => {
+  const { sopQuestionLink } = await import("./sop-question");
+  const id = "11111111-1111-4111-8111-111111111111";
+  const href = `https://app.example/acme/issues/source#comment-${id}`;
+  const prose = `For the owner.\n\n[Source title](${href})`;
+  expect(sopQuestionLink(prose)).toEqual({ href, commentId: id, title: "Source title", prose: "For the owner." });
+  expect(sopQuestionLink(href)?.commentId).toBe(id);
+  for (const content of [`See [source](${href}).`, `\`\`\`\n${href}\n\`\`\``, `[source](javascript:alert(1))`]) {
+    expect(sopQuestionLink(content)).toBeNull();
+  }
+});

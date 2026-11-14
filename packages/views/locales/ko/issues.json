@@ -1832,6 +1832,9 @@
     "submit": "제출",
     "answered": "응답 완료",
     "submitting": "제출 중…",
-    "submitted": "제출했습니다. 워크플로 확인을 기다리는 중입니다."
+    "submitted": "제출했습니다. 워크플로 확인을 기다리는 중입니다.",
+    "source_thread": "원본 스레드",
+    "loading_context": "원본 스레드 불러오는 중…",
+    "context_unavailable": "원본 스레드를 사용할 수 없습니다. 원본 링크를 여세요."
   }
 }

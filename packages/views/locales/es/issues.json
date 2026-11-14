@@ -1902,6 +1902,9 @@
     "submit": "Enviar",
     "answered": "Respondida",
     "submitting": "Enviando…",
-    "submitted": "Enviada. Esperando confirmación del flujo de trabajo."
+    "submitted": "Enviada. Esperando confirmación del flujo de trabajo.",
+    "source_thread": "Hilo de origen",
+    "loading_context": "Cargando el hilo de origen…",
+    "context_unavailable": "El hilo de origen no está disponible. Abre el enlace de origen."
   }
 }

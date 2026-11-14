@@ -166,6 +166,11 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   JSON through normal target-authorized comment APIs. A denied edit leaves a
   short system notice, without granting editing rights. Missing questionnaire
   references skip cleanup.
+  On the web frontend, standalone question permalinks mirror the source thread
+  in a nested window sized to the question and initially scrolled to it. The
+  source title/link and raw content remain accessible. Mirrored and delivered
+  questionnaire content uses the existing renderer; the engine owns completion
+  delivery. See [forwarded question links #69](https://github.com/Winfred666/multica-RSI/issues/69).
   The obsolete `remote-sop` CLI command and wrapper-presence resolver are removed.
 
 - **SoP developer kit.** `multica sop docs` is the canonical authoring guide;

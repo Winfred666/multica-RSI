@@ -1832,6 +1832,9 @@
     "submit": "提交",
     "answered": "已回答",
     "submitting": "提交中…",
-    "submitted": "已提交，等待工作流确认。"
+    "submitted": "已提交，等待工作流确认。",
+    "source_thread": "来源讨论串",
+    "loading_context": "正在加载来源讨论串…",
+    "context_unavailable": "来源讨论串不可用。请打开来源链接。"
   }
 }
