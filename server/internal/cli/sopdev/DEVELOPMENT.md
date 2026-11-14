@@ -107,6 +107,11 @@ an assertion failure enters the engine's repair flow. States can declare these
 hooks and an `owner={'id': agent_id, 'name': agent_name}` (or an owner callable).
 `Workflow(..., handoff=callback)` supports scripted ownership handoffs.
 
+Addressed questionnaire JSON includes frontend-ignored `how_to_step` guidance for
+posting `/note !sop-remote NAME {"que_comment_id":"<this-comment-id>","args":[...]}`
+as an ordinary comment. Use the rendered questionnaire comment's ID and the chosen
+command's argument strings after `multica sop run NAME`; no self-ID readback is needed.
+
 `context['issue_id']` and `context['workspace_id']` identify execution. Mutable
 `context['state']` is stored in the issue's `sop.<name>` metadata key. Return
 `{'instruction': '...'}` for guidance, `{'phase': 'destination'}` for a branch,

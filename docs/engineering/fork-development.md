@@ -224,6 +224,9 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   and the existing redacted, ordinary state JSON, not the masked invocation reply.
   `content` supplies native `/note` or agent-mention syntax; only the three destination
   IDs are encoded, and the execution assignee is unchanged.
+  Rendered JSON adds frontend-ignored `how_to_step` text with the ordinary comment-post
+  command for `/note !sop-remote <skill-name>` and a questionnaire-comment-ID placeholder;
+  the renderer does not post/read back to discover its ID.
   Controller validation checks that the final action on a declared normal-agent
   to addressed-state path returns `this_round_reply_guidance`. Stage 3 owns forwarding
   and rendering; this adds no state/question schema or remote-call dispatch.

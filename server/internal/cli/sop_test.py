@@ -342,6 +342,36 @@ workflow = Workflow(
         self.assertFalse(self.metadata.exists())
         self.assertFalse((self.root / 'calls').exists())
 
+    def test_addressed_questionnaire_includes_comment_step_hint(self):
+        spec = importlib.util.spec_from_file_location('protocol_wrapper', self.engine / 'wrapper.py')
+        wrapper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(wrapper)
+        wrapper.ROOT, wrapper.STATE_DIR, wrapper.SOP_NAME = self.package, self.state_dir, self.skill_name()
+        controller = wrapper.load_controller()
+        owner = {'issue_id': 'destination', 'thread': 'target-thread', 'id': 'reader', 'content': '/note'}
+        context = {'issue_id': 'source', 'state': {'reply_parent': 'source-thread'}}
+        rendered = {'status': 'review', 'instruction': 'Choose.', 'next_step': [
+            {'instruction': 'Accept.', 'command': 'multica sop run fixture-sop accept'}]}
+        posted = []
+
+        def post(*words):
+            self.assertEqual(words[:3], ('comment', 'add', 'source'))
+            self.assertEqual(words[-2:], ('--parent', 'source-thread'))
+            posted.append(Path(words[words.index('--content-file') + 1]).read_text())
+
+        with patch.object(wrapper, 'state_owner', return_value=owner), patch.object(wrapper, 'multica', side_effect=post):
+            wrapper.render_addressed_state(context, controller, {'ok': True, 'state_changed': True, 'status': 'review'}, rendered)
+        self.assertEqual(len(posted), 1)
+        header, body = posted[0].split('\n', 1)
+        self.assertTrue(header.startswith('/note !sop-render fixture-sop '))
+        question = json.loads(body)
+        hint = question.pop('how_to_step')
+        self.assertEqual(question, rendered)
+        self.assertIn('/note !sop-remote fixture-sop {"que_comment_id":"<this-comment-id>","args":[...]}', hint)
+        self.assertIn("multica issue comment add destination --parent '<this-comment-id>' --content-file '<answer-file>'", hint)
+        self.assertIn('this questionnaire comment', hint)
+        self.assertNotIn('how_to_step', rendered)
+
     def test_metadata_failures_preserve_saved_state(self):
         self.run_sop()
         saved = self.metadata.read_bytes()

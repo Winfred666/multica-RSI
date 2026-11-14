@@ -641,6 +641,14 @@ def render_addressed_state(context, controller, result, rendered):
     if not owner or 'issue_id' not in owner:
         return
     destination = {key: owner[key] for key in ('issue_id', 'thread', 'id')}
+    answer = '/note !sop-remote ' + controller.SOP_NAME + ' {"que_comment_id":"<this-comment-id>","args":[...]}'
+    command = shlex.join(['multica', 'issue', 'comment', 'add', owner['issue_id'],
+                          '--parent', '<this-comment-id>', '--content-file', '<answer-file>'])
+    rendered = {**rendered, 'how_to_step': (
+        'Save ' + answer + ' in a UTF-8 file, then post it with: ' + command + '. '
+        'Replace <this-comment-id> with the ID of this questionnaire comment and <answer-file> with the file path. '
+        'Replace [...] with the chosen next_step command arguments after multica sop run ' + controller.SOP_NAME +
+        ', filling its placeholders; args must be a JSON array of strings.')}
     with tempfile.TemporaryDirectory(prefix='.sop-', dir=Path.cwd()) as directory:
         body = Path(directory) / 'handoff.md'
         body.write_text(owner['content'] + ' !sop-render ' + controller.SOP_NAME + ' ' + json.dumps(destination) +
