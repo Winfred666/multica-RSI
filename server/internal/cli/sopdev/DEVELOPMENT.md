@@ -95,7 +95,8 @@ an empty value restores the default. The next State callback starts a fresh
 budget. Diamonds do not consume action depth; a selected diamond-only loop fails.
 An action must use its declared target. Chains are not transactions: preserve
 repair/reconciliation rules without automatic retries or an execution journal.
-HTML shows each registered Option once with the same incoming/outgoing edges.
+HTML shows each registered Option once as a plain label, styled like arrow labels,
+with the same incoming/outgoing edges.
 Validation and compilation never execute actions, selectors or option factories.
 Human approval still gates broad propagation.
 

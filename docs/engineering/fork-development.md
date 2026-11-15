@@ -183,7 +183,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 - **Registered option actions.** The CLI Workflow accepts reusable `Option` nodes
   and `Branch(select=...)` routes through options/diamonds until an interactive
-  State. HTML renders those same nodes once without running their logic. The
+  State. HTML renders registered actions once as plain arrow-style labels, without
+  ellipse outlines or running their logic. The
   validator requires automatic nodes to have a path to a State or `FINISHED`,
   while allowing State-to-State loops. Consecutive actions recurse with a default
   limit of 5, configurable through `config set sop_max_action_depth`; selected
