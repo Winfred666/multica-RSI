@@ -40,63 +40,33 @@ and `monitor` available to its imports:
 from sop import FINISHED, Option, State, Workflow
 
 workflow = Workflow(
-    State('ready', 'Choose finish.', initial=True, options=(
-        Option('finish', FINISHED, 'Complete the procedure'),
-    )),
+    State('ready', 'Choose finish.', initial=True),
+    Option('finish', prompt='Complete the procedure'),
+    edges=(('ready', 'finish'), ('finish', FINISHED)),
 )
 ```
 
-## States, options and completion
+## Pair graph
 
-- `State(name, description, initial=True, options=(...))` declares the one initial
-  state. State names use lowercase letters, numbers and underscores; start with
-  a letter. `init`, `repaired`, `error` and `blocked` are runtime names.
-- `Option(name, target, prompt, action=None, params=(...))` offers a callback.
-  Its target is a State, a registered Option, a Branch, or `FINISHED`. Actions
-  receive `(args, context)`. Register reusable Options once as Workflow nodes;
-  State choices may reference their names or reuse the same Option objects.
-- `Parameter('--path', 'File to inspect')` declares an option input. Parameters
-  are required by default; use `required=False` for optional inputs. Argument
-  parser options such as `type=Path` and `action='store_true'` are supported.
-- `Branch(name, description, {'label': 'node', ...}, select=callback)` declares
-  automatic routes to States, registered Options or other Branches. A selector
-  receives `(args, context)` and returns a declared route label. Without `select`,
-  the preceding action returns `{'phase': 'node'}` using a declared destination.
-- `FINISHED` completes the procedure and clears its issue metadata key. A named
-  `State(..., final=True)` also completes it and has no options.
-
-## Registered action chains
-
-```python
-from sop import Branch, FINISHED, Option, State, Workflow
-
-publish = Option('publish', 'answer', 'Publish.', lambda args, context: {})
-workflow = Workflow(
-    State('ready', 'Choose run.', initial=True,
-          options=(Option('run', 'route', 'Run.'),)),
-    Branch('route', 'Choose next.', {'go': 'publish'},
-           select=lambda args, context: 'go'),
-    publish,
-    State('answer', 'Wait for input.', options=(
-        Option('again', 'ready', 'Repeat.'),
-        Option('finish', FINISHED, 'Finish.'))),
-)
-```
-
-States pause for interaction or new input. Registered actions and diamonds execute
-fluently until a State or `FINISHED`; bind required inputs before automatic entry.
-State cycles, including staying in one State, are allowed. Engine validation
-requires every registered automatic node to have a path to a State or `FINISHED`;
-it rejects automatic-only components with no exit, not State cycles.
-
-Actions execute recursively with a default limit of five consecutive Options.
-Use `multica config set sop_max_action_depth 5` to configure a profile's limit;
-an empty value restores the default. The next State callback starts a fresh
-budget. Diamonds do not consume action depth; a selected diamond-only loop fails.
-An action must use its declared target. Chains are not transactions: preserve
-repair/reconciliation rules without automatic retries or an execution journal.
-Validation and compilation never execute actions, selectors or option factories.
-Human approval still gates broad propagation.
+- Declare each State, Option and Branch once with a unique name. `edges` contains
+  only `(source_name, destination_name)` pairs. States pause; Options execute
+  `(args, context)` callbacks; Branch selectors return an outgoing destination
+  name. A Branch without a selector uses the preceding action's `phase`.
+- `State(..., initial=True)` declares the one initial State. `final=True` and
+  `FINISHED` complete the procedure and clear its issue metadata key.
+- Choices are outgoing State edges. Direct State choices use the destination
+  name as the command and its description as the prompt. An optional
+  `State(..., options=factory)` returns declared destination names or
+  parameter-bound Options for that invocation only; it cannot add routes.
+- `Option(name, prompt, action=None, params=())` declares a command and inputs.
+  `Parameter('--path', 'File to inspect')` is required unless `required=False`;
+  argparse settings such as `type=Path` and `action='store_true'` are supported.
+- Every automatic branch must reach a State or `FINISHED`. Validation reports
+  action-only cycles/dead ends by path; State retry loops remain valid. Validation
+  and previews never execute callbacks or factories.
+- Consecutive Options share the configured `sop_max_action_depth` budget
+  (default five); reaching a State resets it. Branches do not consume depth.
+  Actions must follow declared edges. Chains are not transactions or retries.
 
 ## Controller hooks and context
 

@@ -27,8 +27,8 @@ class Parameter:
 
 
 class Option:
-    def __init__(self, name, target, prompt, action=None, *, params=()):
-        self.name, self.target, self.prompt = name, target, prompt
+    def __init__(self, name, prompt='', action=None, *, params=()):
+        self.name, self.prompt = name, prompt
         self.action, self.params = action, tuple(params)
 
     def callback(self):
@@ -41,16 +41,16 @@ class Option:
 
 
 class State:
+    params = ()
+
     def __init__(self, name, description, *, initial=False, final=False,
-                 options=(), precheck=None, view=None, owner=None):
-        self.name, self.description, self.owner = name, description, owner
+                 options=None, precheck=None, view=None, owner=None):
+        self.name, self.description, self.prompt, self.owner = name, description, description, owner
         self.initial, self.final = initial, final
         self.options, self.precheck, self.view = options, precheck, view
 
-    def choices(self, context):
-        options = tuple(self.options(context) if callable(self.options) else self.options)
-        context.setdefault('resolved_options', {})[self.name] = options
-        return options
+    def callback(self):
+        return [self.name.lower()]
 
 
 class Completed(Exception):
@@ -60,19 +60,26 @@ class Completed(Exception):
 
 
 class Branch:
-    """An automatic transition selected by a callback, or the preceding action phase."""
-    def __init__(self, name, description, routes, *, select=None):
-        self.name, self.description, self.routes = name, description, dict(routes)
+    """Select an outgoing destination, or use the preceding action's phase."""
+    params = ()
+    callback = State.callback
+
+    def __init__(self, name, description, *, select=None):
+        self.name, self.description, self.prompt = name, description, description
         self.select = select
 
 
 class Workflow:
     FINISHED = FINISHED
 
-    def __init__(self, *nodes, params=(), handoff=None):
+    def __init__(self, *nodes, edges=(), params=(), handoff=None):
         self.states = {node.name: node for node in nodes if isinstance(node, State)}
         self.branches = {node.name: node for node in nodes if isinstance(node, Branch)}
         self.options = {node.name: node for node in nodes if isinstance(node, Option)}
+        self.nodes = {node.name: node for node in nodes}
+        self.nodes[FINISHED] = State(FINISHED, 'Finish.', final=True)
+        self.edges = tuple(dict.fromkeys(tuple(edge) for edge in edges))
+        self.adjacency = {name: [] for name in self.nodes}
         self.params, self.handoff = tuple(params), handoff
         states = tuple(self.states.values())
         initial = [state for state in states if state.initial]
@@ -84,69 +91,73 @@ class Workflow:
         if self.max_action_depth < 1:
             raise ValueError('SoP maximum action depth must be positive')
         for node in nodes:
-            if not re.fullmatch(r'[a-z][a-z0-9_-]*' if isinstance(node, Option) else r'[a-z][a-z0-9_]*', node.name) or node.name in {'init', 'repaired', 'error', 'blocked'}:
+            if not re.fullmatch(r'[a-z][a-z0-9_-]*' if isinstance(node, Option) else r'[a-z][a-z0-9_]*', node.name) or node.name in {'init', 'repaired', 'error', 'blocked'} or isinstance(node, Option) and node.name == 'quit':
                 raise ValueError('Invalid or reserved node name: ' + node.name)
-        for branch in self.branches.values():
-            if not branch.routes or any(target not in self.states.keys() | self.branches.keys() | self.options.keys() | {FINISHED} for target in branch.routes.values()):
-                raise ValueError('Branch routes must name declared nodes or FINISHED: ' + branch.name)
+        for edge in self.edges:
+            if len(edge) != 2:
+                raise ValueError('Edges must be (source, destination) pairs: ' + repr(edge))
+            source, destination = edge
+            if source not in self.nodes or destination not in self.nodes:
+                raise ValueError('Edge needs declared nodes: ' + source + ' -> ' + destination)
+            self.adjacency[source].append(destination)
         for state in states:
-            if state.final and (callable(state.options) or state.options):
+            if state.options is not None and not callable(state.options):
+                raise ValueError('State choices come from edges; options must be a runtime factory')
+            if state.final and (state.options or self.adjacency[state.name]):
                 raise ValueError('Final states cannot have options')
-            if not callable(state.options):
-                self.validate_options(self.choices(state, {}))
-        self.validate_options(self.options.values())
         self.validate_graph()
 
-    def validate_options(self, options):
-        for option in options:
-            if option.target not in self.states.keys() | self.branches.keys() | self.options.keys() | {FINISHED} or not re.fullmatch(r'[a-z][a-z0-9_-]*', option.name) or option.name in {'init', 'repaired', 'quit'}:
-                raise ValueError('Option needs a command name and a declared target: ' + option.name)
-
     def choices(self, state, context):
-        options = tuple(self.options[option] if isinstance(option, str) else option
-                        for option in state.choices(context))
-        for option in options:
-            if option.name in self.options and option is not self.options[option.name]:
-                raise ValueError('Reuse the registered option: ' + option.name)
+        options = state.options(context) if state.options else self.adjacency[state.name]
+        options = tuple(options)
+        if any((option if isinstance(option, str) else option.name) not in self.adjacency[state.name] for option in options):
+            raise ValueError('Choose a declared destination for ' + state.name)
+        options = tuple(self.nodes[option] if isinstance(option, str) else option for option in options)
         context.setdefault('resolved_options', {})[state.name] = options
         return options
 
-    def validate_graph(self, resolved=None, *, reply_guidance=False):
-        """Every automatic node needs an exit; State-to-State cycles are allowed."""
-        edges = {name: tuple(branch.routes.values()) for name, branch in self.branches.items()}
-        edges.update({name: (option.target,) for name, option in self.options.items()})
-        reachable = set(self.states) | {FINISHED}
-        while exits := {name for name, targets in edges.items() if any(target in reachable for target in targets)} - reachable:
-            reachable.update(exits)
-        stranded = edges.keys() - reachable
-        if stranded:
-            raise ValueError('Automatic nodes must reach a State or FINISHED: ' + ', '.join(sorted(stranded)))
+    def graph(self):
+        return self.nodes, self.edges
 
-        if reply_guidance:
-            def check(target, action, visited):
-                key = (target, action)
-                if key in visited:
-                    return
-                visited = visited | {key}
-                if target in self.options:
-                    option = self.options[target]
-                    check(option.target, option.action, visited)
-                elif target in self.branches:
-                    for destination in edges[target]:
-                        check(destination, action, visited)
-                elif target in self.states and isinstance(self.states[target].owner, dict) and 'issue_id' in self.states[target].owner:
+    def validate_graph(self, *, reply_guidance=False):
+        """Every action path must reach a State or FINISHED; States end the walk."""
+        nodes, adjacency = self.nodes, self.adjacency
+        checked = set()
+
+        def visit(name, path, action=None, require_reply=False):
+            node = nodes.get(name)
+            if name == FINISHED or isinstance(node, State):
+                if (reply_guidance and require_reply and isinstance(node, State) and
+                        isinstance(node.owner, dict) and 'issue_id' in node.owner):
                     tree = ast.parse(textwrap.dedent(inspect.getsource(action))) if action else ast.parse('')
-                    returns = (node.value if isinstance(node, ast.Return) else node.body
-                               for node in ast.walk(tree) if isinstance(node, (ast.Return, ast.Lambda)))
+                    returns = (item.value if isinstance(item, ast.Return) else item.body
+                               for item in ast.walk(tree) if isinstance(item, (ast.Return, ast.Lambda)))
                     if not any(isinstance(value, ast.Dict) and any(
                             isinstance(key, ast.Constant) and key.value == 'this_round_reply_guidance'
                             for key in value.keys) for value in returns):
-                        raise ValueError('Final action into addressed state ' + target +
-                                         ' must return this_round_reply_guidance')
-            for state in self.states.values():
-                if state.owner and not (isinstance(state.owner, dict) and 'issue_id' in state.owner):
-                    for option in self.choices(state, {}) if not callable(state.options) else ():
-                        check(option.target, option.action, set())
+                        raise ValueError('Final action into addressed state ' + name +
+                                         ' must return this_round_reply_guidance: ' + ' -> '.join(map(str, (*path, name))))
+                return
+            if name in path:
+                raise ValueError('Action-only cycle: ' + ' -> '.join(map(str, (*path, name))))
+            if node is None or not adjacency[name]:
+                raise ValueError('Action path must reach a State or FINISHED: ' + ' -> '.join(map(str, (*path, name))))
+            if isinstance(node, Option):
+                action = node.action
+            key = (name, id(action), require_reply)
+            if key in checked:
+                return
+            for destination in adjacency[name]:
+                visit(destination, (*path, name), action, require_reply)
+            checked.add(key)
+
+        for state in self.states.values():
+            require_reply = bool(state.owner) and not (isinstance(state.owner, dict) and 'issue_id' in state.owner)
+            for destination in adjacency[state.name]:
+                visit(destination, (state.name,), require_reply=require_reply)
+        for name, node in nodes.items():
+            if not isinstance(node, State):
+                visit(name, ())
 
     def is_finished(self, phase):
         return phase == FINISHED or self.states[phase].final
@@ -173,9 +184,6 @@ class Workflow:
         result = dict(result or {})
         view = state.view(context) if state.view else {}
         options = self.choices(state, context)
-        self.validate_options(options)
-        context.setdefault('option_diagrams', {})[state.name] = {option.name: option.diagram() for option in options}
-        context.setdefault('option_targets', {})[state.name] = {option.name: option.target for option in options}
         text = result.pop('instruction', None) or view.get('instruction') or state.description
         result.setdefault('data', view.get('data'))
         return {**result, 'phase': state.name, 'instruction': text,
@@ -192,7 +200,7 @@ class Workflow:
                 raise context['error']('invalid_input', 'Choose an option before providing its parameters')
             return self.guidance(state, context)
         option = self.select_option(args, context, state)
-        result = self.execute_option(option, args, context)
+        result = self.execute_node(option, args, context, parsed=True)
         target = result.get('phase', state.name) if result.get('accepted', True) else state.name
         if target == FINISHED:
             return {**result, 'phase': FINISHED, 'instruction': ''}
@@ -200,10 +208,7 @@ class Workflow:
 
     def select_option(self, args, context, state):
         options = self.choices(state, context)
-        self.validate_options(options)
-        context.setdefault('option_diagrams', {})[state.name] = {option.name: option.diagram() for option in options}
-        context.setdefault('option_targets', {})[state.name] = {option.name: option.target for option in options}
-        matches = [option for option in options if option.name == args.event]
+        matches = [option for option in options if option.name.lower() == args.event]
         if not matches:
             raise context['error']('invalid_transition', 'Choose one of the returned options for ' + state.name)
         parsed, errors = [], []
@@ -253,40 +258,28 @@ class Workflow:
                     raise context['error']('invalid_action_input', 'Invalid ' + param.flag + ' for action ' + option.name)
             setattr(args, name, value)
 
-    def resolve_target(self, option, result, args, context):
-        target = option.target
-        if target not in self.branches:
-            if result.get('phase', target) != target:
-                raise context['error']('invalid_action_output', 'Action must use its declared target: ' + option.name)
-            return target
-        visited = set()
-        while target in self.branches:
-            if target in visited:
-                raise context['error']('invalid_branch_output', 'Automatic branch loop: ' + target)
-            visited.add(target)
-            branch = self.branches[target]
-            if branch.select:
-                route = branch.select(args, context)
-                if route not in branch.routes:
-                    raise context['error']('invalid_branch_output', 'Return a declared route for branch ' + branch.name)
-                target = branch.routes[route]
-            else:
-                target = result.get('phase')
-                if target not in branch.routes.values():
-                    raise context['error']('invalid_branch_output', 'Return a declared phase for branch ' + branch.name)
-        return target
-
-    def execute_option(self, option, args, context, depth=1):
-        if depth > self.max_action_depth:
-            raise context['error']('action_depth_exceeded',
-                                   'SoP action depth exceeds ' + str(self.max_action_depth))
-        if depth > 1:
-            self.bind_inputs(option, args, context)
-        result = option.action(args, context) if option.action else {}
+    def execute_node(self, node, args, context, depth=0, result=None, *, parsed=False):
+        if isinstance(node, State):
+            return {**(result or {}), 'phase': node.name}
+        if isinstance(node, Option):
+            depth += 1
+            if depth > self.max_action_depth:
+                raise context['error']('action_depth_exceeded',
+                                       'SoP action depth exceeds ' + str(self.max_action_depth))
+            if not parsed:
+                self.bind_inputs(node, args, context)
+            result = (node.action(args, context) if node.action else {}) or {}
+            if not result.get('accepted', True):
+                return result
         result = result or {}
-        if not result.get('accepted', True):
-            return result
-        target = self.resolve_target(option, result, args, context)
-        if target in self.options:
-            return {**result, **self.execute_option(self.options[target], args, context, depth + 1)}
-        return {**result, 'phase': target}
+        destinations = self.adjacency[node.name]
+        branch = isinstance(node, Branch)
+        target = (node.select(args, context) if branch and node.select else result.get('phase'))
+        if not branch and len(destinations) == 1:
+            target = destinations[0]
+            if target not in self.branches and result.get('phase', target) != target:
+                raise context['error']('invalid_action_output', 'Action must use a declared destination: ' + node.name)
+        if target not in destinations:
+            raise context['error']('invalid_branch_output' if branch else 'invalid_action_output',
+                                   'Return a declared destination for ' + node.name)
+        return {**result, **self.execute_node(self.nodes[target], args, context, depth, result)}

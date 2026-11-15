@@ -203,9 +203,7 @@ def precheck(context):
 
 
 workflow = Workflow(
-    State('ready', 'Create and dispatch a query, dev or exp child from this parent issue.',
-          initial=True, precheck=precheck, options=(
-        Option('create', 'finished', 'Create one child with its branch and sandbox prepared.', create_action, params=(
+    Option('create', 'Create one child with its branch and sandbox prepared.', create_action, params=(
             Parameter('--spec-file', 'Child issue specification JSON', type=Path),
             Parameter('--tag', required=False, choices=('query', 'dev', 'exp'), default='query'),
             Parameter('--start', required=False, action='store_true'),
@@ -213,8 +211,10 @@ workflow = Workflow(
             Parameter('--direction', required=False, choices=('min', 'max')),
             Parameter('--experiment-group', required=False),
             Parameter('--experiment-group-size', required=False, type=int))),
-    )),
+    State('ready', 'Create and dispatch a query, dev or exp child from this parent issue.',
+          initial=True, precheck=precheck),
     State('finished', 'Child prepared.',
           final=True, precheck=precheck),
+    edges=(('ready', 'create'), ('create', 'finished')),
     params=(Parameter('--repo', required=False, type=Path),),
 )

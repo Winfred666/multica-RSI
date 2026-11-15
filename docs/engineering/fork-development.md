@@ -202,8 +202,9 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   propagating the approved protocol to other symbolic SoPs and distributions. The
   CLI runtime derives its graph from `controller.workflow` without `DEBUG.md`, shows
   agent JSON and rendered DOT logic from action docstrings before the final
-  issue/SoP metadata. Workflow states, option targets and explicit Branch routes
-  supply the global graph; action docstrings supply only local logic. Graphs fit the
+  issue/SoP metadata. Workflow source/destination pairs drive execution, validation
+  and the global graph; action docstrings supply only local logic. Validation stops at each State,
+  preserves State retry loops and reports action-only cycles/dead ends by path. Graphs fit the
   viewport width in landscape and scroll horizontally at natural size in portrait.
   Graphviz `dot -Tsvg` compiles all DOT diagrams to embedded SVG on the CLI host;
   previews have no external renderer or network dependency. The wrapper's

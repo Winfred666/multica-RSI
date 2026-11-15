@@ -27,13 +27,17 @@ def review(context):
 
 
 workflow = Workflow(
-    State('inspect', 'Choose a file.', initial=True, view=describe, options=(
-        Option('check', 'route', 'Inspect the file', inspect_file,
-               params=(Parameter('--path', 'File to inspect'),)),
-    )),
-    Branch('route', 'Route by file size', {'nonempty': 'review', 'empty': 'inspect'}),
-    State('review', 'Review the file.', view=review, options=(
-        Option('accept', FINISHED, 'Accept and complete'),
-        Option('retry', 'inspect', 'Choose another file'),
-    )),
+    Option('check', 'Inspect the file', inspect_file,
+           params=(Parameter('--path', 'File to inspect'),)),
+    State('inspect', 'Choose a file.', initial=True, view=describe),
+    Branch('route', 'Route by file size'),
+    Option('accept', 'Accept and complete'),
+    Option('retry', 'Choose another file'),
+    State('review', 'Review the file.', view=review),
+    edges=(
+        ('inspect', 'check'), ('check', 'route'),
+        ('route', 'review'), ('route', 'inspect'),
+        ('review', 'accept'), ('accept', FINISHED),
+        ('review', 'retry'), ('retry', 'inspect'),
+    ),
 )

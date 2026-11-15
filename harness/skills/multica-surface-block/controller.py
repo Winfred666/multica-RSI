@@ -105,11 +105,13 @@ def precheck(context):
 
 
 workflow = Workflow(
-    State('confirm', CONFIRM, initial=True, precheck=precheck,
-          options=(Option('confirm', 'describe', 'Confirm the barrier is outside this issue scope.'),)),
-    State('describe', DESCRIBE, precheck=precheck,
-          options=(Option('continue', 'finished', 'Mark blocked and send one concise parent help request through native steering.', block,
-                          params=(Parameter('--reason', 'Concrete blocker and required parent help'),
-                                  Parameter('--parent-thread', 'Original assignment comment on the parent, when available', required=False))),)),
+    Option('confirm', 'Confirm the barrier is outside this issue scope.'),
+    State('confirmation', CONFIRM, initial=True, precheck=precheck),
+    Option('continue', 'Mark blocked and send one concise parent help request through native steering.', block,
+           params=(Parameter('--reason', 'Concrete blocker and required parent help'),
+                   Parameter('--parent-thread', 'Original assignment comment on the parent, when available', required=False))),
+    State('describe', DESCRIBE, precheck=precheck),
     State('finished', 'Issue is blocked; parent help was requested when applicable.', final=True, precheck=precheck),
+    edges=(('confirmation', 'confirm'), ('confirm', 'describe'),
+           ('describe', 'continue'), ('continue', 'finished')),
 )

@@ -512,28 +512,13 @@ def state_artifact(context, controller, result):
                           if (owner := state_owner(controller.workflow, name, context)) else '') + '>];' for name in states)
     for branch in controller.workflow.branches.values():
         diagram += f'\n{quote(branch.name)} [id={quote("state_" + branch.name)}, shape=diamond, label={quote(branch.description)}];'
-        diagram += '\n' + '\n'.join(f'{quote(branch.name)} -> {quote(node(target))} [label={quote(label)}];'
-                                     for label, target in branch.routes.items())
-    edges = {(state.name, option.name): option.target for state in states.values()
-             if not callable(state.options) for option in controller.workflow.choices(state, {})}
-    for source, targets in context.get('option_targets', {}).items():
-        edges.update({(source, name): target for name, target in targets.items()})
     registered = controller.workflow.options
-    edges = {key: key[1] if key[1] in registered else target for key, target in edges.items()}
     for option in registered.values():
         diagram += f'\n{quote(option.name)} [id={quote("state_" + option.name)}, shape=plain, style="", fontsize=12, class="action", label={quote(option.name)}];'
-        diagram += f'\n{quote(option.name)} -> {quote(node(option.target))};'
-    logic = {name: {name: option.diagram()} for name, option in registered.items()}
-    logic.update(context.get('option_diagrams', {}))
-    for state in states.values():
-        if not callable(state.options):
-            logic[state.name] = {option.name: option.diagram() for option in controller.workflow.choices(state, {})}
-    logic = {state: {name: graph_svg(source, f'logic_{state}_{name}')
-                     for name, source in charts.items()
-                     if source}
-             for state, charts in logic.items()}
-    diagram += '\n' + '\n'.join(f'{quote(source)} -> {quote(node(target))} [id="option_{index}", label={quote(option)}];'
-                                for index, ((source, option), target) in enumerate(edges.items()))
+    logic = {name: {name: graph_svg(source, 'logic_' + name)}
+             for name, option in registered.items() if (source := option.diagram())}
+    _, edges = controller.workflow.graph()
+    diagram += '\n' + '\n'.join(f'{quote(source)} -> {quote(node(target))};' for source, target in edges)
     # Start is diagram-only; FINISHED owns the ringed-circle completion action.
     boundaries = ['__start [shape=point, label="", fillcolor=black, color=black, width=0.05, height=0.05];',
                   '__end [id="state_FINISHED", shape=doublecircle, label="", style=filled, fillcolor=black, color=black, width=0.2, height=0.2, fixedsize=true];',
@@ -557,32 +542,26 @@ def state_artifact(context, controller, result):
         nodes[state.name] = response({'status': state.name,
                                      'next_step': {**callback(state.description), 'alternatives': choices}})
     for option in registered.values():
-        nodes[option.name] = {'instruction': option.prompt, 'automatic': True, 'target': option.target,
+        nodes[option.name] = {'instruction': option.prompt, 'automatic': True, 'destinations': controller.workflow.adjacency[option.name],
                               'parameters': [{'flag': param.flag, 'prompt': param.prompt,
                                               'required': param.required, 'value': param.value}
                                              for param in option.params]}
     for branch in controller.workflow.branches.values():
-        nodes[branch.name] = {'instruction': branch.description, 'automatic': True, 'routes': branch.routes}
+        nodes[branch.name] = {'instruction': branch.description, 'automatic': True, 'destinations': controller.workflow.adjacency[branch.name]}
     nodes[FINISHED] = {'status': FINISHED, 'instruction': finished_instruction(controller)}
-    # Bind edges before current-round reply guidance masks the state's options.
-    links = {f'option_{index}': {
-        'decision': next((option for option in nodes[source]['next_step']
-                          if shlex.split(option['command'])[len(runtime_command())] == name), None),
-        'source': source, 'option': name}
-        for index, (source, name) in enumerate(edges)}
     if context.get('output'):
         nodes[phase] = agent_decision(context['output'])
     templates = ''.join(f'<template id="chart_{state}_{name}"><div class="diagram">{redact(svg)}</div></template>'
                         for state, charts in logic.items() for name, svg in charts.items())
     logic = {state: {name: f'chart_{state}_{name}' for name in charts} for state, charts in logic.items()}
-    payload = json.dumps(redact({'nodes': nodes, 'edges': links, 'decision': nodes[phase], 'logic': logic}),
+    payload = json.dumps(redact({'nodes': nodes, 'edges': edges, 'decision': nodes[phase], 'logic': logic}),
                          separators=(',', ':')).replace('<', '\\u003c')
     return ('<!doctype html><html lang="en"><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1"><title>' + escape(controller.SOP_NAME) + '</title>'
             '<style>body{font:15px system-ui;margin:8px}pre{white-space:pre-wrap;overflow-wrap:anywhere;overflow-x:auto}'
             '.diagram{margin:0;max-width:100%;overflow-x:auto}.diagram svg{display:block;max-width:none;margin:auto}'
             '@media(orientation:landscape){.diagram{overflow-x:hidden}.diagram svg{max-width:100%;height:auto}}'
-            '[role="button"]{cursor:pointer}.edge path{pointer-events:stroke}.edge text,.action text{paint-order:stroke;stroke:white;stroke-width:3px}'
+            '[role="button"]{cursor:pointer}.action text{paint-order:stroke;stroke:white;stroke-width:3px}'
             'h1{font-size:18px}</style>'
             '<div class="diagram" id="workflow">' + graph_svg(diagram, 'workflow_graph') + '</div>'
             '<h1>' + escape(controller.SOP_NAME) + '</h1><pre id="detail" aria-live="polite">'
@@ -602,8 +581,6 @@ def state_artifact(context, controller, result):
             'event.preventDefault();show(value,charts)}}};'
             'for(const [name,value] of Object.entries(data.nodes)){'
             'const node=document.getElementById(`state_${name}`);bind(node,value,data.logic[name])}'
-            'for(const [id,edge] of Object.entries(data.edges)){'
-            'bind(document.getElementById(id),edge.decision,{[edge.option]:data.logic[edge.source]?.[edge.option]})}'
             'show(data.decision,data.logic[data.decision.status]);'
             '</script></html>')
 

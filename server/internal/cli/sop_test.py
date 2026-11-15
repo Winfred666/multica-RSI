@@ -99,9 +99,11 @@ def observe(context):
     p.write_text(p.read_text() + 'x' if p.exists() else 'x')
     return {'instruction': 'Output: ' + p.read_text(), 'data': {'internal': 'private-view-data'}}
 workflow = Workflow(
-    State('start', 'Start', initial=True, view=observe, options=(
-        Option('refresh', 'start', 'Refresh output'), Option('done', 'finished', 'Finish'))),
-    State('finished', 'Done', final=True))
+    Option('refresh', 'Refresh output'),
+    State('start', 'Start', initial=True, view=observe),
+    State('done', 'Done', final=True),
+    edges=(('start', 'refresh'), ('refresh', 'start'), ('start', 'done')),
+)
 ''')
         initial = self.run_sop()
         self.assertEqual(set(self.state()), {'status', 'output', 'runtime'})
@@ -187,8 +189,11 @@ tool.chmod(0o755)
 from wrapper import ensure_command
 def install(args, context): ensure_command('dot', 'graphviz')
 workflow = Workflow(
-    State('start', 'Start', initial=True, options=(Option('install', 'finished', 'Install', install),)),
-    State('finished', 'Done', final=True))
+    Option('install', 'Install', install),
+    State('start', 'Start', initial=True),
+    State('finished', 'Done', final=True),
+    edges=(('start', 'install'), ('install', 'finished')),
+)
 ''')
         self.run_sop('--help', json_output=False)
         self.run_sop()
@@ -207,8 +212,7 @@ workflow = Workflow(
 
     def test_dynamic_options_branches_and_completion(self):
         controller = self.package / 'controller.py'
-        controller.write_text(controller.read_text() + "\nchoices = workflow.states['inspect'].options\n"
-                              "workflow.states['inspect'].options = lambda context: choices\n")
+        controller.write_text(controller.read_text() + "\nworkflow.states['inspect'].options = lambda context: ('check',)\n")
         sample = self.root / 'sample.txt'
         sample.touch()
         initial = self.run_sop()
@@ -234,6 +238,19 @@ workflow = Workflow(
         invalid = self.run_sop('check', '--path', sample.name, valid=False)
         self.assertEqual(invalid['error']['code'], 'invalid_branch_output')
 
+    def test_selected_and_branch_action_inputs_convert_once(self):
+        from argparse import Namespace
+        from sop import Branch, FINISHED, Option, Parameter, State, Workflow
+        payload = Parameter('--payload', type=json.loads, default='{"ready": true}')
+        workflow = Workflow(
+            State('ready', 'Ready', initial=True),
+            Option('parse', action=lambda args, context: {'data': args.payload}, params=(payload,)),
+            Branch('route', 'Route', select=lambda args, context: 'parse'),
+            edges=(('ready', 'parse'), ('ready', 'route'), ('route', 'parse'), ('parse', FINISHED)))
+        for event in ('parse', 'route'):
+            args = Namespace(event=event, extra=['--payload', '{"ready": true}'] if event == 'parse' else [])
+            self.assertEqual(workflow.step(args, {'error': RuntimeError}, 'ready')['data'], {'ready': True})
+
     def test_assertion_repair_does_not_repeat_action(self):
         (self.package / 'controller.py').write_text('''from pathlib import Path
 from sop import Option, State, Workflow
@@ -244,8 +261,11 @@ def check(context):
     if context['result']['data'] != {'internal': 'private-action-data'}: raise AssertionError('Lost internal result')
     if not Path('ready').exists(): raise AssertionError('Create ready')
 workflow = Workflow(
-    State('start', 'Start', initial=True, options=(Option('write', 'finished', 'Write once', write),)),
-    State('finished', 'Done', final=True, precheck=check))
+    Option('write', 'Write once', write),
+    State('start', 'Start', initial=True),
+    State('finished', 'Done', final=True, precheck=check),
+    edges=(('start', 'write'), ('write', 'finished')),
+)
 ''')
         self.run_sop()
         failed = self.run_sop('write', valid=False)
@@ -315,6 +335,29 @@ workflow = Workflow(
         self.assertFalse(list(self.root.rglob('.state')))
         self.assertFalse(list(self.root.rglob('.errors')))
 
+    def test_graph_rejects_action_cycles_and_every_dead_end_branch(self):
+        from sop import Branch, Option, State, Workflow
+        nodes = (State('inspect', 'Inspect.', initial=True), Option('check', 'Check.'),
+      Branch('route', 'Route.'), State('review', 'Review.'), Option('dead', 'Dead.'))
+        edges = (('inspect', 'check'), ('check', 'route'), ('route', 'review'), ('review', 'inspect'))
+        with self.assertRaisesRegex(ValueError, 'dead'):
+            Workflow(*nodes, edges=edges)
+        with self.assertRaisesRegex(ValueError, 'inspect -> check -> route -> dead'):
+            Workflow(*nodes, edges=(*edges, ('route', 'dead')))
+        with self.assertRaisesRegex(ValueError, 'inspect -> check -> route -> check'):
+            Workflow(*nodes[:-1], edges=(*edges, ('route', 'check')))
+        workflow = Workflow(*nodes[:-1], edges=edges)
+        self.assertEqual(workflow.graph()[1], edges)
+        state = workflow.states['inspect']
+        state.options = lambda context: self.fail('Validation must not execute factories')
+        workflow.validate_graph()
+        self.assertEqual(workflow.graph()[1], edges)
+        state.options = lambda context: ('missing',)
+        with self.assertRaisesRegex(ValueError, 'declared destination'):
+            workflow.choices(state, {})
+        with self.assertRaisesRegex(ValueError, 'Edges must be .* pairs'):
+            Workflow(*nodes[:-1], edges=(('inspect', 'label', 'check'),))
+
     def test_addressed_entry_validation_requires_guidance_on_final_action(self):
         source = """from pathlib import Path
 from sop import Branch, FINISHED, Option, State, Workflow
@@ -325,12 +368,21 @@ def final(args, context):
     Path('calls').touch()
     return FINAL_RESULT
 workflow = Workflow(
-    State('ready', 'Prepare.', initial=True, owner={'id': 'host', 'name': 'Host'},
-          options=(Option('ask', 'last', 'Ask.', earlier),)),
-    Option('last', 'route', 'Last action.', final),
-    Branch('route', 'Choose.', {'go': 'addressed'}),
-    State('addressed', 'Question.', owner={'issue_id': 'destination'},
-          options=(Option('finish', FINISHED, 'Finish.'),)))
+    Option('ask', 'Ask.', earlier),
+    State('ready', 'Prepare.', initial=True, owner={'id': 'host', 'name': 'Host'}),
+    Option('last', 'Last action.', final),
+    Branch('route', 'Choose.'),
+    Option('finish', 'Finish.'),
+    State('addressed', 'Question.', owner={'issue_id': 'destination'}),
+    edges=(
+        ('ready', 'ask'),
+        ('ask', 'last'),
+        ('last', 'route'),
+        ('route', 'addressed'),
+        ('addressed', 'finish'),
+        ('finish', FINISHED),
+    ),
+)
 """
         controller = self.package / 'controller.py'
         controller.write_text(source.replace('FINAL_RESULT', '{}'))
@@ -385,8 +437,11 @@ workflow = Workflow(
         (self.package / 'controller.py').write_text("""from sop import Option, State, Workflow
 def reject(args, context):
     return {'accepted': False, 'instruction': 'Not accepted.'}
-workflow = Workflow(State('ready', 'Choose.', initial=True,
-    options=(Option('reject', 'ready', 'Reject.', reject),)))
+workflow = Workflow(
+    Option('reject', 'Reject.', reject),
+    State('ready', 'Choose.', initial=True),
+    edges=(('ready', 'reject'), ('reject', 'ready')),
+)
 """)
         self.run_sop()
         self.assertEqual(self.run_sop('reject', valid=False)['status'], 'ready')
@@ -511,35 +566,29 @@ workflow = Workflow(State('ready', 'Choose.', initial=True,
         self.assertEqual(filename, 'fixture-sop-state.html')
         self.assertIn('fixture-issue', html)
         self.assertNotIn('task_id', html)
-        self.assertIn('inspect->route', unescape(html))
+        self.assertIn('inspect->check', unescape(html))
         self.assertIn('route->review', unescape(html))
         self.assertIn('route->inspect', unescape(html))
         self.assertIn('__start->inspect', unescape(html))
-        self.assertIn('review->__end', unescape(html))
+        self.assertIn('accept->__end', unescape(html))
         self.assertLess(html.index('id="workflow"'), html.index('<h1>'))
         data = json.loads(html.split('<script id="sop-data" type="application/json">', 1)[1].split('</script>', 1)[0])
         self.assertEqual(data['nodes']['inspect']['next_step'], initial['next_step'])
         self.assertIn(controller.workflow.states['inspect'].description, data['nodes']['inspect']['instruction'])
         self.assertEqual(data['nodes']['review'], current)
         self.assertEqual(data['decision'], current)
-        review_edge = next(edge for edge in data['edges'].values() if edge['source'] == 'review')
-        self.assertEqual(review_edge['decision'], resumed['next_step'][0])
         self.assertTrue(all('data' not in decision for decision in data['nodes'].values()))
-        self.assertNotIn('private-legacy-data', html)
-        self.assertNotIn('private-workspace', html)
-        self.assertEqual(data['edges']['option_0']['decision'], initial['next_step'][0])
-        self.assertEqual(data['edges']['option_0']['source'], 'inspect')
-        self.assertEqual(data['edges']['option_0']['option'], 'check')
-        self.assertIn('Read file size', unescape(html))
         self.assertNotIn('<svg', json.dumps(data))
+        self.assertEqual(data['edges'], [list(edge) for edge in controller.workflow.edges])
+        self.assertEqual(data['nodes']['check']['destinations'], ['route'])
         for charts in data['logic'].values():
             for template in charts.values():
                 self.assertEqual(html.count(f'<template id="{template}">'), 1)
         overview = html.split('<div class="diagram" id="workflow">', 1)[1].split('</div>', 1)[0]
         self.assertNotIn('Read file size', overview)
-        local = html.split(f'<template id="{data["logic"]["inspect"]["check"]}">', 1)[1].split('</template>', 1)[0]
+        local = html.split(f'<template id="{data["logic"]["check"]["check"]}">', 1)[1].split('</template>', 1)[0]
         self.assertIn('Read file size', local)
-        controller.workflow.states['inspect'].options[0].action.__doc__ = ('```dot\n'
+        controller.workflow.options['check'].action.__doc__ = ('```dot\n'
             'digraph local { check [label="Local check?", shape=diamond]; check -> done; }\n```')
         changed = wrapper.state_artifact(context, controller, result)
         changed_overview = changed.split('<div class="diagram" id="workflow">', 1)[1].split('</div>', 1)[0]
