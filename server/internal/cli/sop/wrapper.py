@@ -546,6 +546,14 @@ def state_artifact(context, controller, result):
     diagram = 'digraph workflow {\nrankdir=LR; bgcolor="transparent";\nnode [shape=box];\n'
     for key, value in preview['nodes'].items():
         attributes = ['id=' + quote('state_' + key), 'label=' + quote(value['name'])]
+        owner = getattr(controller.workflow.nodes[key], 'owner', None)
+        target = owner.get('issue_id') if isinstance(owner, dict) else None
+        if isinstance(target, str) and target and not re.search(r'[{}<>]', target):
+            issue = multica('get', target)
+            app_url = os.environ.get('MULTICA_APP_URL', '').rstrip('/')
+            link = app_url + '/' + context['workspace_id'] + '/issues/' + issue['id']
+            attributes[1] = 'label=' + quote(value['name'] + '\n' + issue['title'])
+            attributes += ['URL=' + quote(link), 'target="_blank"']
         if value['kind'] == 'action':
             attributes += ['shape=plain', 'style=""', 'fontsize=12']
         elif value['kind'] == 'branch':
@@ -560,7 +568,8 @@ def state_artifact(context, controller, result):
         diagram += quote(key) + ' [' + ', '.join(attributes) + '];\n'
     diagram += '__start [shape=point, label="", fillcolor=black, color=black, width=0.05, height=0.05];\n'
     diagram += '__start -> ' + quote(preview['initial']) + ';\n'
-    diagram += '\n'.join(quote(source) + ' -> ' + quote(target) + ';'
+    diagram += '\n'.join(quote(source) + ' -> ' + quote(target) +
+                         (' [arrowhead=none]' if preview['nodes'][target]['kind'] == 'action' else '') + ';'
                          for source, target in preview['edges']) + '\n}'
     data = {'template': preview, 'current': current, 'actions': context.get('action_outputs', {})}
     payload = json.dumps(redact(data), separators=(',', ':')).replace('<', '\\u003c')
@@ -586,7 +595,7 @@ def state_artifact(context, controller, result):
             'const node=document.getElementById(`state_${name}`);if(!node)continue;'
             'node.setAttribute("tabindex","0");node.setAttribute("role","button");'
             'node.onclick=()=>show(name);node.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){'
-            'event.preventDefault();show(name)}}}'
+            'if(event.target.closest("a"))return;event.preventDefault();show(name)}}}'
             'show(' + quote(phase if phase in preview['nodes'] else preview['initial']) + ');'
             '</script></html>')
 

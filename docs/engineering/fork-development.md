@@ -204,7 +204,10 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   propagating the approved protocol to other symbolic SoPs and distributions. The
   CLI runtime derives its graph from `controller.workflow` without `DEBUG.md`.
   One declaration-only JSON supplies static templates and HTML with compact action
-  nodes and unlabeled links. Resolved live state/action output stays separate;
+  nodes and unlabeled curved links, with no arrowheads entering actions. Static
+  addressed owners show their target issue title linked to its permalink; dynamic
+  owners keep their placeholders without executing hooks. Resolved live state/action
+  output stays separate;
   reply guidance belongs to its action node, never State choices. Explicit preview
   strings preserve placeholders without calling runtime hooks or factories. Graphs fit the
   viewport width in landscape and scroll horizontally at natural size in portrait.
