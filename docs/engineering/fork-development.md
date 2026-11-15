@@ -161,6 +161,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   Execution tokens reuse target-agent/runtime-owner credential storage and
   completed audit logs; they do not authenticate as the comment sender.
   SoPs are bound to issue/workspace context and require no task ID.
+  State owners route handoffs and questionnaires only. The engine does not
+  reject actions by caller identity; ordinary API authentication is unchanged.
   When `que_comment_id` identifies a matching rendered questionnaire, successful
   execution deletes the answer comment and adds its `args` to the questionnaire
   JSON through normal target-authorized comment APIs. A denied edit leaves a

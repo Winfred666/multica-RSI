@@ -44,6 +44,8 @@ State guidance instead of handing off.
   routing needs it; return `{'phase': 'destination'}` to select a declared edge.
 - Save procedure data in `context['state']`. A State's `view(context)` returns
   its live `instruction`; its `owner` names the human/agent who acts next.
+  Ownership routes guidance and questionnaires; it does not authorize actions.
+  SoP actions use the caller's ordinary API session without an extra identity gate.
 - `FINISHED` or `State(..., final=True)` completes the procedure and clears its
   issue metadata. `--help` recalls saved guidance without executing actions.
 

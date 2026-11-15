@@ -321,9 +321,6 @@ def transition(args, context, controller):
                 context.pop('assertion', None)
                 initial = context.get('initial')
                 result = error.result
-            owner = state_owner(workflow, result['phase'] if result else phase, context)
-            if owner and 'issue_id' not in owner and context['agent_id'] != owner['id']:
-                raise SystemExit('Rejected: this action belongs to ' + owner['name'] + '.')
             if result is None:
                 if args.error is not None or args.error_file is not None:
                     message = args.error if args.error is not None else args.error_file.read_text(encoding='utf-8')

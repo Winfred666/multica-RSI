@@ -239,6 +239,23 @@ workflow = Workflow(
         self.run_sop('accept')
         self.assertFalse(self.state())
 
+    def test_state_owner_routes_without_authorizing_actions(self):
+        (self.package / 'controller.py').write_text('''from sop import FINISHED, Option, State, Workflow
+workflow = Workflow(
+    State('ready', 'Ready.', initial=True, owner={'id': 'peer', 'name': 'Peer'}),
+    Option('accept', 'Accept.'),
+    edges=(('ready', 'accept'), ('accept', FINISHED)),
+)
+''')
+        for actor in (None, 'another-agent'):
+            with self.subTest(actor=actor):
+                self.env.pop('MULTICA_AGENT_ID', None)
+                if actor:
+                    self.env['MULTICA_AGENT_ID'] = actor
+                self.assertEqual(self.run_sop()['status'], 'ready')
+                self.assertEqual(self.run_sop('accept')['status'], 'FINISHED')
+                self.assertFalse(self.state())
+
     def test_selected_and_branch_action_inputs_convert_once(self):
         from argparse import Namespace
         from sop import Branch, FINISHED, Option, Parameter, State, Workflow
