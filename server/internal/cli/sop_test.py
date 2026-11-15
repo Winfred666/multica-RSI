@@ -209,33 +209,35 @@ workflow = Workflow(
             self.assertEqual(wrapper.ensure_command('dot', 'graphviz'), str(binaries / 'dot'))
         self.assertEqual((binaries / 'installs').read_text().splitlines()[-1], 'Graphviz.Graphviz')
 
-    def test_dynamic_options_branches_and_completion(self):
+    def test_feature_rich_handoff_and_same_agent_continuation(self):
         controller = self.package / 'controller.py'
-        controller.write_text(controller.read_text() + "\nworkflow.states['inspect'].options = lambda context: ('check',)\n")
-        sample = self.root / 'sample.txt'
-        sample.touch()
+        controller.write_text(controller.read_text() + "\nworkflow.states['ready'].options = lambda context: ('submit',)\n")
+        self.env['MULTICA_AGENT_ID'] = 'author'
         initial = self.run_sop()
-        self.assertEqual(initial['status'], 'inspect')
+        self.assertEqual(initial['status'], 'ready')
         self.assertIsInstance(initial['next_step'], list)
         self.assertTrue(all(set(option) == {'instruction', 'command'} for option in initial['next_step']))
-        empty = self.run_sop('check', '--path', sample.name)
-        self.assertEqual(empty['status'], 'inspect')
-        sample.write_text('Ready for review.')
-        current = self.run_sop('check', '--path', sample.name)
+        request = ('submit', '--reviewer-id', 'peer', '--reviewer-name', 'Mara', '--summary', 'Check the change')
+        current = self.run_sop(*request)
         self.assertEqual(current['status'], 'review')
-        self.assertNotIn('data', current)
-        self.assertEqual(self.state()['path'], str(sample))
-        self.assertNotIn('workspace', self.state())
-        self.assertEqual(self.run_sop('retry')['status'], 'inspect')
-        self.run_sop('check', '--path', sample.name)
+        self.assertEqual(set(current), {'status', 'instruction'})
+        self.assertIn('[@Mara](mention://agent/peer)', current['instruction'])
+        self.assertIn('Please review: Check the change.', current['instruction'])
+        self.assertIn('end this turn; do not choose for the reviewer', current['instruction'])
+        self.env['MULTICA_AGENT_ID'] = 'peer'
+        resumed = self.run_sop('--help')
+        self.assertIn('Review: Check the change.', resumed['instruction'])
+        self.assertTrue(resumed['next_step'][0]['command'].endswith(' accept'))
         completed = self.run_sop('accept')
         self.assertEqual(completed['status'], 'FINISHED')
         self.assertNotIn('data', completed)
         self.assertFalse(self.state())
-        controller.write_text(controller.read_text().replace("'review' if size else 'inspect'", "FINISHED"))
         self.run_sop()
-        invalid = self.run_sop('check', '--path', sample.name, valid=False)
-        self.assertEqual(invalid['error']['code'], 'invalid_branch_output')
+        continued = self.run_sop(*request)
+        self.assertIn('Review: Check the change.', continued['instruction'])
+        self.assertTrue(continued['next_step'][0]['command'].endswith(' accept'))
+        self.run_sop('accept')
+        self.assertFalse(self.state())
 
     def test_selected_and_branch_action_inputs_convert_once(self):
         from argparse import Namespace
@@ -310,7 +312,7 @@ workflow = Workflow(
         self.assertEqual(self.run_sop('--help'), replay)
         self.assertEqual(self.metadata.read_bytes(), saved)
         controller.write_text(source)
-        self.assertEqual(self.run_sop()['status'], 'inspect')
+        self.assertEqual(self.run_sop()['status'], initial['status'])
         skill = self.package / 'SKILL.md'
         original = skill.read_text()
         skill.write_text(original.replace('fixture-sop', 'other-sop'))

@@ -1,34 +1,38 @@
-from pathlib import Path
-from sop import Branch, FINISHED, Option, Parameter, State, Workflow
+from sop import FINISHED, Option, Parameter, State, Workflow
 
 
-def inspect_file(args, context):
-    path = Path(args.path)
-    if not path.is_file():
-        raise context['error']('missing_file', 'Choose an existing file.')
-    size = path.stat().st_size
-    context['state'].update(path=str(path.resolve()), size=size)
-    return {'phase': 'review' if size else 'inspect'}
+def submit(args, context):
+    context['state'].update(
+        summary=args.summary,
+        reviewer={'id': args.reviewer_id, 'name': args.reviewer_name},
+    )
+    if args.reviewer_id == context['agent_id']:
+        return {}
+    return {'this_round_reply_guidance': (
+        f"Reply in this issue to [@{args.reviewer_name}](mention://agent/{args.reviewer_id}): "
+        f"Please review: {args.summary}. Run `multica sop run {context['skill']}` "
+        "in this checkout for your choices. Then end this turn; do not choose for the reviewer."
+    )}
 
 
 def review(context):
-    state = context['state']
-    return {'instruction': f"Review {state['path']} ({state['size']} bytes), then accept or retry."}
+    return {'instruction': f"Review: {context['state']['summary']}. Choose accept when satisfied."}
 
 
 workflow = Workflow(
-    Option('check', 'Inspect the file', inspect_file,
-           params=(Parameter('--path', 'File to inspect'),)),
-    State('inspect', 'Choose a file to inspect. Relative paths use the caller directory.', initial=True),
-    Branch('route', 'Route by file size'),
+    State('ready', 'Submit a request to a named reviewer.', initial=True),
+    Option('submit', 'Request peer review', submit,
+           params=(Parameter('--reviewer-id', 'Reviewer agent UUID'),
+                   Parameter('--reviewer-name', 'Reviewer name'),
+                   Parameter('--summary', 'What the reviewer should check')),
+           this_round_reply_guidance_preview=(
+               'Reply in this issue to [@{reviewer_name}](mention://agent/{reviewer_id}): '
+               'Please review: {summary}. Run `multica sop run {skill}` in this checkout '
+               'for your choices. Then end this turn; do not choose for the reviewer.')),
+    State('review', 'Review the request.', view=review,
+          preview='Review: {summary}. Choose accept when satisfied.',
+          owner=lambda context: context['state']['reviewer']),
     Option('accept', 'Accept and complete'),
-    Option('retry', 'Choose another file'),
-    State('review', 'Review the file.', view=review,
-          preview='Review {path} ({size} bytes), then accept or retry.'),
-    edges=(
-        ('inspect', 'check'), ('check', 'route'),
-        ('route', 'review'), ('route', 'inspect'),
-        ('review', 'accept'), ('accept', FINISHED),
-        ('review', 'retry'), ('retry', 'inspect'),
-    ),
+    edges=(('ready', 'submit'), ('submit', 'review'),
+           ('review', 'accept'), ('accept', FINISHED)),
 )
