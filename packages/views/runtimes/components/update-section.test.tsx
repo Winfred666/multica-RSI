@@ -133,6 +133,10 @@ describe("UpdateSection non-release versions", () => {
     "v0.4.17-12-gabc1234",
     "v0.4.17-dirty",
     "v0.4.17-rc1",
+    "v0.4.17-sop-dirty",
+    "v0.4.17-sop-12-gabc1234",
+    "v0.4.17-sop-sop",
+    "v0.4.17-SOP",
     "v0.4",
   ];
 
@@ -150,23 +154,43 @@ describe("UpdateSection non-release versions", () => {
     });
   }
 
-  it("still offers the update on a release version behind the latest", async () => {
-    renderSection({ runtimeId: "runtime-1", currentVersion: "v0.4.17" });
+  it.each([
+    ["v0.4.20", "v0.4.17", true],
+    ["v0.4.20", "v0.4.20", false],
+    ["v0.4.20", "0.4.20-sop", false],
+    ["v0.4.20-sop", "v0.4.20", false],
+    ["v0.4.20-sop", "v0.4.20-sop", false],
+    ["v0.4.20", "v0.4.17-sop", true],
+    ["0.4.20-sop", "v0.4.17", true],
+    ["v0.5.0-sop", "v0.4.20-sop", true],
+    ["v1.0.0-sop", "v0.99.99-sop", true],
+    ["v0.4.9-sop", "v0.4.20-sop", false],
+  ])(
+    "compares latest %s with current %s (update: %s)",
+    async (latestVersion, currentVersion, hasUpdate) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({ tag_name: latestVersion }),
+        }),
+      );
+      renderSection({ runtimeId: "runtime-1", currentVersion });
 
-    expect(
-      await screen.findByRole("button", { name: "Update" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("available")).toBeInTheDocument();
-    expect(screen.queryByText("Local build")).not.toBeInTheDocument();
-  });
-
-  it("reports a release version on the latest tag as Latest", async () => {
-    renderSection({ runtimeId: "runtime-1", currentVersion: LATEST });
-
-    expect(await screen.findByText("Latest")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Update" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Local build")).not.toBeInTheDocument();
-  });
+      if (hasUpdate) {
+        expect(
+          await screen.findByRole("button", { name: "Update" }),
+        ).toBeInTheDocument();
+        expect(screen.getByText("available")).toBeInTheDocument();
+        expect(screen.queryByText("Latest")).not.toBeInTheDocument();
+      } else {
+        expect(await screen.findByText("Latest")).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: "Update" }),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByText("available")).not.toBeInTheDocument();
+      }
+      expect(screen.queryByText("Local build")).not.toBeInTheDocument();
+    },
+  );
 });

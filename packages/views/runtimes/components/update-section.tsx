@@ -38,8 +38,8 @@ async function fetchLatestVersion(): Promise<string | null> {
 }
 
 /**
- * Parses a released CLI version ("v0.4.17" / "0.4.17") into comparable parts,
- * or null when the string is not a release version.
+ * Parses a released CLI version with an optional "v" prefix and "-sop" suffix
+ * into comparable numeric parts, or null for a non-release version.
  *
  * A daemon built from source reports a `git describe` string
  * ("v0.4.17-12-gabc1234") or the ldflags default ("dev"), and neither can be
@@ -48,7 +48,7 @@ async function fetchLatestVersion(): Promise<string | null> {
  * loop decides the same question.
  */
 function parseReleaseVersion(v: string): number[] | null {
-  const parts = v.trim().replace(/^v/, "").split(".");
+  const parts = v.trim().replace(/^v/, "").replace(/-sop$/, "").split(".");
   if (parts.length !== 3) return null;
   const parsed: number[] = [];
   for (const part of parts) {
