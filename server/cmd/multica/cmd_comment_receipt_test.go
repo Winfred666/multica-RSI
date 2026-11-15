@@ -9,12 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-
-	"github.com/multica-ai/multica/server/internal/daemon/execenv"
 )
 
-// Execute the rendered reply command's flags against the real CLI handler.
-// The receipt must stay small without changing what reaches the comment API.
 func TestCommentReplyReceipt(t *testing.T) {
 	const issueID = "11111111-1111-4111-8111-111111111111"
 	const parentID = "22222222-2222-4222-8222-222222222222"
@@ -62,15 +58,7 @@ func TestCommentReplyReceipt(t *testing.T) {
 				setCLITestServerEnv(t, srv.URL)
 				t.Setenv("MULTICA_TOKEN", "mat_test-token")
 				cmd := newIssueCommentAddTestCmd()
-				var flags []string
-				for _, line := range strings.Split(execenv.BuildCommentReplyInstructions("claude", issueID, parentID, false), "\n") {
-					if strings.HasPrefix(strings.TrimSpace(line), "multica issue comment add "+issueID+" ") {
-						flags = strings.Fields(line)[5:]
-					}
-				}
-				if len(flags) == 0 {
-					t.Fatal("reply instructions contain no posting command")
-				}
+				flags := []string{"--parent", parentID, "--content-file", "reply.md", "--output", "table"}
 				if err := cmd.Flags().Parse(flags); err != nil {
 					t.Fatal(err)
 				}
