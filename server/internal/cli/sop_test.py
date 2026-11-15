@@ -1,7 +1,6 @@
 """Shared Python engine protocol tests using CLI-owned semantic examples."""
 import importlib.util
 import io
-from html import unescape
 import json
 import os
 from pathlib import Path
@@ -522,94 +521,92 @@ workflow = Workflow(
             for name in ('independent', 'issue_id', 'comment_id', 'task_id'):
                 self.assertNotIn(('name="' + name + '"').encode(), body)
 
-    def test_configured_preview_uses_actual_workflow(self):
-        controller_path = self.package / 'controller.py'
-        source = controller_path.read_text().replace(
-            "return {'phase': 'review' if size else 'inspect'}",
-            "return {'phase': 'review' if size else 'inspect', 'this_round_reply_guidance': 'Reply once.'}")
-        controller_path.write_text(source + "\nworkflow.states['review'].owner = {'id': 'reviewer', 'name': 'Reviewer'}\n")
-        self.env['MULTICA_AGENT_ID'] = 'previous-owner'
-        sample = self.root / 'sample.txt'
-        sample.write_text('Ready for review.')
+    def test_configured_preview_uses_pair_declarations_and_resolved_output(self):
+        (self.package / 'controller.py').write_text('''from sop import Branch, FINISHED, Option, Parameter, State, Workflow
+def publish(args, context):
+    context['state']['note'] = args.note
+    return {'this_round_reply_guidance': 'Published ' + args.note + '.'}
+def review(context):
+    return {'instruction': 'Review ' + context['state'].get('note', 'draft') + '.'}
+workflow = Workflow(
+    State('start', 'Choose <literal>.', initial=True),
+    Option('publish', 'Publish.', publish, params=(Parameter('--note', 'Note'),),
+           this_round_reply_guidance_preview='Published {note}.'),
+    Branch('route', 'Select review.', select=lambda args, context: 'review'),
+    State('review', 'Review the publication.', view=review, preview='Review {note}.'),
+    State('complete', 'Complete the review.', final=True),
+    edges=(('start', 'publish'), ('start', 'review'), ('start', 'route'), ('start', FINISHED),
+           ('publish', 'route'), ('route', 'review'), ('review', 'complete')))
+''')
         initial = self.run_sop()
-        current = self.run_sop('check', '--path', sample.name)
-        self.assertEqual(current, {'status': 'review', 'instruction': 'Reply once.'})
-        self.run_sop(valid=False, json_output=False)  # The previous caller is no longer the state owner.
-        self.env['MULTICA_AGENT_ID'] = 'reviewer'
+        current = self.run_sop('publish', '--note', 'report')
+        self.assertEqual(current, {'status': 'review', 'instruction': 'Published report.'})
         resumed = self.run_sop('--help')
-        self.assertIn('Review ' + str(sample), resumed['instruction'])
-        self.assertEqual(resumed['next_step'][0]['instruction'], 'Accept and complete')
-        self.assertEqual(self.run_sop(), resumed)
+        self.assertIn('Review report.', resumed['instruction'])
+        self.assertEqual(resumed['next_step'][0]['command'], 'multica sop run fixture-sop complete')
         spec = importlib.util.spec_from_file_location('protocol_wrapper', self.engine / 'wrapper.py')
         wrapper = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(wrapper)
         wrapper.ROOT, wrapper.STATE_DIR, wrapper.SOP_NAME = self.package, self.state_dir, self.skill_name()
         (self.package / 'config.json').write_text('{"DEBUG": true}')
-        with patch.dict(sys.modules), patch.object(sys, 'path', [str(self.engine), str(self.package), *sys.path]):
-            sys.modules.pop('sop', None)
-            sys.modules.pop('monitor', None)
-            controller = wrapper.load_controller()
-        state = self.state()
-        context = {'issue_id': 'fixture-issue', 'skill': 'fixture-sop', 'state': state, 'argv': ['check', '--path', sample.name],
-                   'prior_status': 'inspect', 'output': {**current, 'workspace': 'private-workspace'}}
-        result = {'status': 'review', 'state_changed': True, 'accepted': True}
-        with patch.dict(os.environ, MULTICA_ISSUE_ID='fixture-issue',
-                        MULTICA_WORKSPACE_ID='fixture-workspace', MULTICA_TOKEN='fixture-token',
-                        MULTICA_SERVER_URL='http://fixture.invalid'), patch.object(wrapper, 'publish_shared_artifact') as upload:
-            wrapper.publish_artifacts(context, controller, result)
-        config_reference, config = upload.call_args_list[0].args
-        self.assertEqual(config_reference['filename'], 'fixture-sop-config.json')
-        self.assertEqual(json.loads(config), {'DEBUG': True})
+        controller = wrapper.load_controller()
+        def forbidden(*args):
+            self.fail('Static compilation evaluated a runtime hook')
+        workflow = controller.workflow
+        workflow.options['publish'].action = workflow.branches['route'].select = forbidden
+        for state in workflow.states.values():
+            state.precheck = state.owner = state.options = forbidden
+            if state.view:
+                state.view = forbidden
+        preview = wrapper.compile_preview(controller)
+        self.assertEqual(set(preview['nodes']), {'start', 'publish', 'route', 'review', 'complete', 'FINISHED'})
+        self.assertEqual(preview['edges'], [list(pair) for pair in workflow.graph()[1]])
+        self.assertEqual(preview['nodes']['start']['instruction'], 'Choose <literal>.')
+        self.assertEqual(preview['nodes']['review']['instruction'], 'Review {note}.')
+        self.assertEqual([{k: v for k, v in choice.items() if k != 'node'}
+                          for choice in preview['nodes']['start']['next_step']], initial['next_step'][:-1])
+        self.assertEqual(preview['nodes']['complete']['next_step'], [])
+        self.assertNotIn('next_step', preview['nodes']['FINISHED'])
+        self.assertEqual(preview['nodes']['publish']['destinations'], ['route'])
+        self.assertEqual(preview['nodes']['route']['destinations'], ['review'])
+        self.assertEqual(preview['nodes']['publish']['parameters'][0]['flag'], '--note')
+        self.assertEqual(preview['nodes']['publish']['this_round_reply_guidance'], 'Published {note}.')
+        self.assertTrue(all('target' not in node and 'routes' not in node for node in preview['nodes'].values()))
+        workflow.states['review'].preview = None
+        with self.assertRaisesRegex(ValueError, 'State review.*explicit static preview'):
+            wrapper.compile_preview(controller)
+        workflow.states['review'].preview = 'Review {note}.'
+        context = {'issue_id': 'fixture-issue', 'argv': ['publish', '--note', 'report'],
+                   'output': {**resumed, 'workspace': 'private-workspace', 'data': {'private': True}},
+                   'action_outputs': {'publish': {'this_round_reply_guidance': 'Published report.'}}}
+        with patch.object(wrapper, 'publish_shared_artifact') as upload:
+            wrapper.publish_artifacts(context, controller, {'status': 'review', 'state_changed': True})
+        self.assertEqual(json.loads(upload.call_args_list[0].args[1]), {'DEBUG': True})
         reference, html = upload.call_args.args
-        self.assertEqual(reference['issue_id'], 'fixture-issue')
-        filename = reference['filename']
-        self.assertEqual(filename, 'fixture-sop-state.html')
-        self.assertIn('fixture-issue', html)
-        self.assertNotIn('task_id', html)
-        self.assertIn('inspect->check', unescape(html))
-        self.assertIn('route->review', unescape(html))
-        self.assertIn('route->inspect', unescape(html))
-        self.assertIn('__start->inspect', unescape(html))
-        self.assertIn('accept->__end', unescape(html))
-        self.assertLess(html.index('id="workflow"'), html.index('<h1>'))
+        self.assertEqual(reference['filename'], 'fixture-sop-state.html')
         data = json.loads(html.split('<script id="sop-data" type="application/json">', 1)[1].split('</script>', 1)[0])
-        self.assertEqual(data['nodes']['inspect']['next_step'], initial['next_step'])
-        self.assertIn(controller.workflow.states['inspect'].description, data['nodes']['inspect']['instruction'])
-        self.assertEqual(data['nodes']['review'], current)
-        self.assertEqual(data['decision'], current)
-        self.assertTrue(all('data' not in decision for decision in data['nodes'].values()))
+        self.assertEqual(data['template'], preview)
+        self.assertEqual(data['current'], resumed)
+        self.assertEqual(data['actions']['publish'], {'this_round_reply_guidance': 'Published report.'})
+        self.assertTrue(all('data' not in node for node in preview['nodes'].values()))
+        self.assertNotIn('private-workspace', html)
         self.assertNotIn('<svg', json.dumps(data))
-        self.assertEqual(data['edges'], [list(edge) for edge in controller.workflow.edges])
-        self.assertEqual(data['nodes']['check']['destinations'], ['route'])
-        for charts in data['logic'].values():
-            for template in charts.values():
-                self.assertEqual(html.count(f'<template id="{template}">'), 1)
+        self.assertTrue(all('this_round_reply_guidance' not in choice
+                            for node in preview['nodes'].values() for choice in node.get('next_step', [])))
+        for name in preview['nodes']:
+            self.assertEqual(html.count('id="state_' + name + '"'), 1)
         overview = html.split('<div class="diagram" id="workflow">', 1)[1].split('</div>', 1)[0]
-        self.assertNotIn('Read file size', overview)
-        local = html.split(f'<template id="{data["logic"]["check"]["check"]}">', 1)[1].split('</template>', 1)[0]
-        self.assertIn('Read file size', local)
-        controller.workflow.options['check'].action.__doc__ = ('```dot\n'
-            'digraph local { check [label="Local check?", shape=diamond]; check -> done; }\n```')
-        changed = wrapper.state_artifact(context, controller, result)
-        changed_overview = changed.split('<div class="diagram" id="workflow">', 1)[1].split('</div>', 1)[0]
-        self.assertEqual(overview, changed_overview)
-        self.assertNotIn('def inspect_file', html)
-        self.assertNotIn('__start', data['nodes'])
-        self.assertNotIn('__end', data['nodes'])
-        self.assertEqual(data['nodes']['FINISHED']['status'], 'FINISHED')
-        self.assertLess(html.index('id="detail"'), html.index('id="logic"'))
-        self.assertLess(html.index('id="logic"'), html.index('id="metadata"'))
-        self.assertNotIn('<button', html)
+        for edge in overview.split('class="edge"')[1:]:
+            self.assertNotIn('<text', edge.split('</g>', 1)[0])
+        self.assertNotIn('data.edges', html)
+        self.assertNotIn('chart_', html)
         self.assertNotIn('<script src=', html)
-        self.assertNotIn('mermaid', html)
+        self.assertEqual(self.run_sop('complete')['status'], 'complete')
         with patch.object(wrapper.shutil, 'which', return_value=None):
             with self.assertRaisesRegex(wrapper.SOPError, 'no supported package manager'):
                 wrapper.graph_svg('digraph { a -> b; }', 'missing_tool')
         with self.assertRaisesRegex(ValueError, 'Invalid DOT diagram'):
             wrapper.graph_svg('digraph { broken -> }', 'invalid_dot')
-        self.assertNotIn('help', data)
-        for name in controller.workflow.states:
-            self.assertIn(name, html)
 
 
 if __name__ == '__main__':

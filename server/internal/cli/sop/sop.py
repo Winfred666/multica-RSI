@@ -27,27 +27,24 @@ class Parameter:
 
 
 class Option:
-    def __init__(self, name, prompt='', action=None, *, params=()):
+    def __init__(self, name, prompt='', action=None, *, params=(), this_round_reply_guidance_preview=None):
         self.name, self.prompt = name, prompt
         self.action, self.params = action, tuple(params)
+        self.this_round_reply_guidance_preview = this_round_reply_guidance_preview
 
     def callback(self):
         return [self.name, *(word for param in self.params for word in param.words())]
-
-    def diagram(self):
-        doc = inspect.getdoc(self.action) if self.action else ''
-        match = re.search(r'```dot\s*\n(.*?)```', doc or '', re.S)
-        return match.group(1).strip() if match else ''
 
 
 class State:
     params = ()
 
     def __init__(self, name, description, *, initial=False, final=False,
-                 options=None, precheck=None, view=None, owner=None):
+                 options=None, precheck=None, view=None, owner=None, preview=None):
         self.name, self.description, self.prompt, self.owner = name, description, description, owner
         self.initial, self.final = initial, final
         self.options, self.precheck, self.view = options, precheck, view
+        self.preview = preview
 
     def callback(self):
         return [self.name.lower()]
@@ -113,7 +110,6 @@ class Workflow:
         if any((option if isinstance(option, str) else option.name) not in self.adjacency[state.name] for option in options):
             raise ValueError('Choose a declared destination for ' + state.name)
         options = tuple(self.nodes[option] if isinstance(option, str) else option for option in options)
-        context.setdefault('resolved_options', {})[state.name] = options
         return options
 
     def graph(self):
@@ -269,6 +265,8 @@ class Workflow:
             if not parsed:
                 self.bind_inputs(node, args, context)
             result = (node.action(args, context) if node.action else {}) or {}
+            context.setdefault('action_outputs', {})[node.name] = {
+                key: result[key] for key in ('instruction', 'this_round_reply_guidance') if key in result}
             if not result.get('accepted', True):
                 return result
         result = result or {}

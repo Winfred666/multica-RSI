@@ -46,6 +46,15 @@ workflow = Workflow(
 )
 ```
 
+Literal previews let you quickly debug what string a node would return. Literal
+prompts need no extra field. For dynamic text, add a literal preview beside the node:
+
+```python
+State('review', 'Review.', view=review, preview='Review {path}.')
+Option('publish', 'Publish.', publish,
+       this_round_reply_guidance_preview='Published {path}.')  # Optional reply preview
+```
+
 ## Pair graph
 
 - Declare each State, Option and Branch once with a unique name. `edges` contains
@@ -129,9 +138,6 @@ The execution assignee is unchanged. `--thread`/`state.reply_parent` selects the
 source parent; the owner's `thread` is the forwarding destination. Forwarding
 and rendering remain the Stage 3 contract.
 
-Authoring templates remain in the CLI-owned `server/internal/cli/sopdev/`
-directory as `minimal.py` and `feature-rich.py`.
-
 ## Help, validation and preview
 
 `multica sop dev validate DIRECTORY` checks metadata, Python imports and the
@@ -145,10 +151,7 @@ It works directly on a directory, without an issue or task context.
 `multica sop run NAME --help` shows the skill body before starting, or replays
 the current saved guidance. Use `multica sop docs` for authoring guidance, not a creator skill.
 
-Config is optional and DEBUG is off by default. To enable compiled HTML previews,
-add `config.json` containing `{"DEBUG": true}`. The engine derives the state
-graph from Workflow; action docstrings may add local logic in fenced `dot`
-blocks, as shown in the feature-rich controller. The wrapper's `ensure_command`
-helper supplies Graphviz for compilation. Config and previews are published as
-ownerless issue soft-links; `controller.artifacts(context)` can return ordinary
-comment attachments as a filename-to-content mapping.
+`config.json` is optional; DEBUG defaults off. `{"DEBUG": true}` enables compiled
+HTML after state changes. `ensure_command` supplies Graphviz. Config and previews
+are published as ownerless issue soft-links; `controller.artifacts(context)` can
+return ordinary comment attachments as a filename-to-content mapping.

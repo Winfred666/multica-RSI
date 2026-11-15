@@ -484,104 +484,113 @@ def graph_svg(source, identifier):
     result = subprocess.run([dot, '-Tsvg', '-Gid=' + identifier,
                              '-Nfontname=Helvetica', '-Nstyle=filled', '-Nmargin=0.2',
                              '-Nfillcolor=#eef2ff', '-Ncolor=#94a3b8',
-                             '-Efontname=Helvetica', '-Efontsize=12', '-Ecolor=#64748b'], input=source, text=True,
+                             '-Ecolor=#64748b'], input=source, text=True,
                             capture_output=True, timeout=30)
     if result.returncode:
         raise ValueError('Invalid DOT diagram: ' + result.stderr.strip())
     return result.stdout[result.stdout.index('<svg'):]
 
 
-def state_artifact(context, controller, result):
-    """Render the controller's workflow and highlight the current or failed state."""
-    FINISHED = controller.workflow.FINISHED
-    def node(name):
-        return '__end' if name == FINISHED else name
+def compile_preview(controller):
+    """Compile declarations only, without evaluating runtime hooks or factories."""
+    workflow = controller.workflow
+    nodes = {}
 
+    def text(value, location):
+        if not isinstance(value, str):
+            raise ValueError(location + ' needs an explicit static preview string')
+        return value
+
+    def parameters(params):
+        return [{'flag': param.flag, 'prompt': param.prompt, 'required': param.required,
+                 'value': param.value, **{key: value for key, value in param.kwargs.items()
+                                         if key in ('choices', 'default', 'nargs', 'action')}}
+                for param in params]
+
+    declared, edges = workflow.graph()
+    for key, node in declared.items():
+        instruction = node.prompt
+        if isinstance(node, sop.State) and (node.preview is not None or node.view):
+            instruction = node.preview
+        value = {'name': node.name, 'instruction': text(instruction, type(node).__name__ + ' ' + node.name)}
+        nodes[key] = value
+        destinations = [target for source, target in edges if source == key]
+        if key == workflow.FINISHED:
+            value.update(kind='finished', instruction=finished_instruction(controller))
+        elif isinstance(node, sop.State):
+            value.update(kind='state', next_step=[
+                {**callback(declared[target].prompt, declared[target].callback()), 'node': target}
+                for target in destinations])
+        else:
+            value.update(kind='action' if isinstance(node, sop.Option) else 'branch', destinations=destinations)
+            if isinstance(node, sop.Option):
+                value['parameters'] = parameters(node.params)
+                if node.this_round_reply_guidance_preview is not None:
+                    value['this_round_reply_guidance'] = text(node.this_round_reply_guidance_preview, 'Option ' + node.name)
+    return {'initial': workflow.initial, 'parameters': parameters(workflow.params),
+            'nodes': nodes, 'edges': [list(edge) for edge in edges]}
+
+
+def state_artifact(context, controller, result):
+    """Render the static declaration JSON beside the resolved current-state output."""
+    preview = compile_preview(controller)
     status = result['status']
     recovery = context.get('state', {}).get('recovery', {})
     assertion = recovery.get('assertion', {})
     phase = status
     if result.get('error'):
         phase = (assertion.get('result', {}).get('phase') or recovery.get('phase') or
-                 context.get('phase') or context.get('prior_status') or controller.workflow.initial)
-    states = controller.workflow.states
-    quote = json.dumps
-    diagram = 'digraph workflow {\nrankdir=LR; bgcolor="transparent";\nnode [shape=box];\n'
-    diagram += '\n'.join(f'{quote(name)} [id={quote("state_" + name)}, label=<{escape(name)}' +
-                         (f'<br/><font point-size="9">{escape(owner["id"] if "issue_id" in owner else owner["name"])}</font>'
-                          if (owner := state_owner(controller.workflow, name, context)) else '') + '>];' for name in states)
-    for branch in controller.workflow.branches.values():
-        diagram += f'\n{quote(branch.name)} [id={quote("state_" + branch.name)}, shape=diamond, label={quote(branch.description)}];'
-    registered = controller.workflow.options
-    for option in registered.values():
-        diagram += f'\n{quote(option.name)} [id={quote("state_" + option.name)}, shape=plain, style="", fontsize=12, class="action", label={quote(option.name)}];'
-    logic = {name: {name: graph_svg(source, 'logic_' + name)}
-             for name, option in registered.items() if (source := option.diagram())}
-    _, edges = controller.workflow.graph()
-    diagram += '\n' + '\n'.join(f'{quote(source)} -> {quote(node(target))};' for source, target in edges)
-    # Start is diagram-only; FINISHED owns the ringed-circle completion action.
-    boundaries = ['__start [shape=point, label="", fillcolor=black, color=black, width=0.05, height=0.05];',
-                  '__end [id="state_FINISHED", shape=doublecircle, label="", style=filled, fillcolor=black, color=black, width=0.2, height=0.2, fixedsize=true];',
-                  f'__start -> {quote(controller.workflow.initial)};']
-    boundaries.extend(f'{quote(state.name)} -> __end;' for state in states.values() if state.final)
-    diagram += '\n' + '\n'.join(boundaries)
-    if phase in states or phase == FINISHED:
-        color = '#fee2e2' if result.get('error') else '#dcfce7'
-        diagram += f'\n{quote(node(phase))} [fillcolor="{color}", color="#2563eb", penwidth=2];\n'
-    diagram += '\n}'
+                 context.get('phase') or context.get('prior_status') or preview['initial'])
     details = {'issue_id': context['issue_id'], 'sop': controller.SOP_NAME, 'status': status}
     if result.get('error'):
         details.update(failed_state=phase, boundary=assertion.get('boundary'), error=result['error'])
-    nodes = {}
-    for state in states.values():
-        # Other states show declared guidance; previews never run views or option factories.
-        options = context.get('resolved_options', {}).get(state.name, () if callable(state.options) else controller.workflow.choices(state, {}))
-        choices = [callback(option.prompt, option.callback()) for option in options]
-        if state.initial:
-            choices.append(callback('Stop this SOP.', ['quit']))
-        nodes[state.name] = response({'status': state.name,
-                                     'next_step': {**callback(state.description), 'alternatives': choices}})
-    for option in registered.values():
-        nodes[option.name] = {'instruction': option.prompt, 'automatic': True, 'destinations': controller.workflow.adjacency[option.name],
-                              'parameters': [{'flag': param.flag, 'prompt': param.prompt,
-                                              'required': param.required, 'value': param.value}
-                                             for param in option.params]}
-    for branch in controller.workflow.branches.values():
-        nodes[branch.name] = {'instruction': branch.description, 'automatic': True, 'destinations': controller.workflow.adjacency[branch.name]}
-    nodes[FINISHED] = {'status': FINISHED, 'instruction': finished_instruction(controller)}
-    if context.get('output'):
-        nodes[phase] = agent_decision(context['output'])
-    templates = ''.join(f'<template id="chart_{state}_{name}"><div class="diagram">{redact(svg)}</div></template>'
-                        for state, charts in logic.items() for name, svg in charts.items())
-    logic = {state: {name: f'chart_{state}_{name}' for name in charts} for state, charts in logic.items()}
-    payload = json.dumps(redact({'nodes': nodes, 'edges': edges, 'decision': nodes[phase], 'logic': logic}),
-                         separators=(',', ':')).replace('<', '\\u003c')
+    current = agent_decision(context.get('output', {}))
+    quote = json.dumps
+    diagram = 'digraph workflow {\nrankdir=LR; bgcolor="transparent";\nnode [shape=box];\n'
+    for key, value in preview['nodes'].items():
+        attributes = ['id=' + quote('state_' + key), 'label=' + quote(value['name'])]
+        if value['kind'] == 'action':
+            attributes += ['shape=plain', 'style=""', 'fontsize=12']
+        elif value['kind'] == 'branch':
+            attributes += ['shape=diamond']
+        elif value['kind'] == 'finished':
+            attributes += ['shape=doublecircle', 'label=""', 'fillcolor=black', 'color=black',
+                           'width=0.2', 'height=0.2', 'fixedsize=true']
+        if key == phase:
+            attributes += ['color="#2563eb"', 'penwidth=2']
+            if value['kind'] != 'action':
+                attributes += ['fillcolor=' + quote('#fee2e2' if result.get('error') else '#dcfce7')]
+        diagram += quote(key) + ' [' + ', '.join(attributes) + '];\n'
+    diagram += '__start [shape=point, label="", fillcolor=black, color=black, width=0.05, height=0.05];\n'
+    diagram += '__start -> ' + quote(preview['initial']) + ';\n'
+    diagram += '\n'.join(quote(source) + ' -> ' + quote(target) + ';'
+                         for source, target in preview['edges']) + '\n}'
+    data = {'template': preview, 'current': current, 'actions': context.get('action_outputs', {})}
+    payload = json.dumps(redact(data), separators=(',', ':')).replace('<', '\\u003c')
     return ('<!doctype html><html lang="en"><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1"><title>' + escape(controller.SOP_NAME) + '</title>'
             '<style>body{font:15px system-ui;margin:8px}pre{white-space:pre-wrap;overflow-wrap:anywhere;overflow-x:auto}'
             '.diagram{margin:0;max-width:100%;overflow-x:auto}.diagram svg{display:block;max-width:none;margin:auto}'
             '@media(orientation:landscape){.diagram{overflow-x:hidden}.diagram svg{max-width:100%;height:auto}}'
-            '[role="button"]{cursor:pointer}.action text{paint-order:stroke;stroke:white;stroke-width:3px}'
-            'h1{font-size:18px}</style>'
+            '[role="button"]{cursor:pointer}h1{font-size:18px}</style>'
             '<div class="diagram" id="workflow">' + graph_svg(diagram, 'workflow_graph') + '</div>'
-            '<h1>' + escape(controller.SOP_NAME) + '</h1><pre id="detail" aria-live="polite">'
-            + escape(json.dumps(redact(nodes[phase]), indent=2)) + '</pre>'
-            '<div id="logic"></div>'
+            '<h1>' + escape(controller.SOP_NAME) + '</h1><h2>Resolved current state</h2><pre id="current">'
+            + escape(json.dumps(redact(current), indent=2)) + '</pre>'
+            '<h2>Static template</h2><pre id="detail" aria-live="polite"></pre>'
+            '<h2 id="action-heading" hidden>Resolved action output</h2><pre id="action" hidden></pre>'
             '<pre id="metadata">' + escape(json.dumps(redact(details), indent=2)) + '</pre>'
-            + templates +
             '<script id="sop-data" type="application/json">' + payload + '</script>'
             '<script>'
-            'const data=JSON.parse(document.getElementById("sop-data").textContent),detail=document.getElementById("detail"),logic=document.getElementById("logic");'
-            'const show=(value,charts={})=>{detail.textContent=JSON.stringify(value,null,2);logic.replaceChildren();'
-            'for(const [name,id] of Object.entries(charts)){if(!id)continue;'
-            'const heading=document.createElement("h2");'
-            'heading.textContent=name;logic.append(heading,document.getElementById(id).content.cloneNode(true))}};'
-            'const bind=(element,value,charts={})=>{if(!element||!value)return;element.setAttribute("tabindex","0");element.setAttribute("role","button");'
-            'element.onclick=()=>show(value,charts);element.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){'
-            'event.preventDefault();show(value,charts)}}};'
-            'for(const [name,value] of Object.entries(data.nodes)){'
-            'const node=document.getElementById(`state_${name}`);bind(node,value,data.logic[name])}'
-            'show(data.decision,data.logic[data.decision.status]);'
+            'const data=JSON.parse(document.getElementById("sop-data").textContent),detail=document.getElementById("detail"),action=document.getElementById("action");'
+            'const show=name=>{detail.textContent=JSON.stringify(data.template.nodes[name],null,2);'
+            'action.hidden=!data.actions[name];document.getElementById("action-heading").hidden=action.hidden;'
+            'action.textContent=data.actions[name]?JSON.stringify(data.actions[name],null,2):""};'
+            'for(const name of Object.keys(data.template.nodes)){'
+            'const node=document.getElementById(`state_${name}`);if(!node)continue;'
+            'node.setAttribute("tabindex","0");node.setAttribute("role","button");'
+            'node.onclick=()=>show(name);node.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){'
+            'event.preventDefault();show(name)}}}'
+            'show(' + quote(phase if phase in preview['nodes'] else preview['initial']) + ');'
             '</script></html>')
 
 
@@ -712,7 +721,7 @@ def main(argv=None):
     except Exception as error:
         result = exception_result(error, context)
         output = redact(response(result))
-    context['output'] = output
+    context['output'] = rendered
     publish_artifacts(context, controller, result)
     print(redact(context['handoff']) if result['ok'] and context.get('handoff') and
           'this_round_reply_guidance' not in result else json.dumps(output, allow_nan=False))

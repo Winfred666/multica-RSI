@@ -200,13 +200,13 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   `server/internal/cli/sopdev/DEVELOPMENT.md`, served by `multica sop docs`, not
   the obsolete authoring skill. Require human approval before mechanically
   propagating the approved protocol to other symbolic SoPs and distributions. The
-  CLI runtime derives its graph from `controller.workflow` without `DEBUG.md`, shows
-  agent JSON and rendered DOT logic from action docstrings before the final
-  issue/SoP metadata. Workflow source/destination pairs drive execution, validation
-  and the global graph; action docstrings supply only local logic. Validation stops at each State,
-  preserves State retry loops and reports action-only cycles/dead ends by path. Graphs fit the
+  CLI runtime derives its graph from `controller.workflow` without `DEBUG.md`.
+  One declaration-only JSON supplies static templates and HTML with compact action
+  nodes and unlabeled links. Resolved live state/action output stays separate;
+  reply guidance belongs to its action node, never State choices. Explicit preview
+  strings preserve placeholders without calling runtime hooks or factories. Graphs fit the
   viewport width in landscape and scroll horizontally at natural size in portrait.
-  Graphviz `dot -Tsvg` compiles all DOT diagrams to embedded SVG on the CLI host;
+  Graphviz `dot -Tsvg` compiles the graph to embedded SVG on the CLI host;
   previews have no external renderer or network dependency. The wrapper's
   `ensure_command` reuses tools on PATH or installs their declared OS package
   when missing; Graphviz and bubblewrap use it. Failed installation returns an
