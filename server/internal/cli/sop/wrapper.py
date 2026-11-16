@@ -15,7 +15,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 
-from common import publish_shared_artifact, write_artifact
+from common import cli, publish_shared_artifact, write_artifact
 import sop
 import monitor
 
@@ -531,6 +531,21 @@ def compile_preview(controller):
 
 def state_artifact(context, controller, result):
     """Render the static declaration JSON beside the resolved current-state output."""
+    def owner_label(node):
+        try:
+            owner = node.owner(context) if callable(node.owner) else node.owner
+        except KeyError:
+            return '{owner}'
+        if not owner:
+            return ''
+        if 'issue_id' not in owner:
+            return owner['name']
+        if not owner.get('id'):
+            return 'outer:human'
+        name = owner.get('name') or (owner['id'] if '{' in owner['id'] else
+                                     cli('agent', 'get', owner['id'])['name'])
+        return 'outer:' + name
+
     preview = compile_preview(controller)
     status = result['status']
     recovery = context.get('state', {}).get('recovery', {})
@@ -546,7 +561,12 @@ def state_artifact(context, controller, result):
     quote = json.dumps
     diagram = 'digraph workflow {\nrankdir=LR; bgcolor="transparent";\nnode [shape=box];\n'
     for key, value in preview['nodes'].items():
-        attributes = ['id=' + quote('state_' + key), 'label=' + quote(value['name'])]
+        label = escape(value['name'])
+        if value['kind'] == 'state':
+            owner = owner_label(controller.workflow.states[key])
+            if owner:
+                label += '<BR/><FONT POINT-SIZE="10">' + escape(owner) + '</FONT>'
+        attributes = ['id=' + quote('state_' + key), 'label=<' + label + '>']
         if value['kind'] == 'action':
             attributes += ['shape=plain', 'style=""', 'fontsize=12']
         elif value['kind'] == 'branch':
@@ -561,7 +581,7 @@ def state_artifact(context, controller, result):
         diagram += quote(key) + ' [' + ', '.join(attributes) + '];\n'
     diagram += '__start [shape=point, label="", fillcolor=black, color=black, width=0.05, height=0.05];\n'
     diagram += '__start -> ' + quote(preview['initial']) + ';\n'
-    diagram += '\n'.join(quote(source) + ' -> ' + quote(target) + ';'
+    diagram += '\n'.join(quote(source) + ' -> ' + quote(target) + (' [arrowhead=none]' if preview['nodes'][target]['kind'] == 'action' else '') + ';'
                          for source, target in preview['edges']) + '\n}'
     data = {'template': preview, 'current': current, 'actions': context.get('action_outputs', {})}
     payload = json.dumps(redact(data), separators=(',', ':')).replace('<', '\\u003c')
@@ -572,15 +592,15 @@ def state_artifact(context, controller, result):
             '@media(orientation:landscape){.diagram{overflow-x:hidden}.diagram svg{max-width:100%;height:auto}}'
             '[role="button"]{cursor:pointer}h1{font-size:18px}</style>'
             '<div class="diagram" id="workflow">' + graph_svg(diagram, 'workflow_graph') + '</div>'
-            '<h1>' + escape(controller.SOP_NAME) + '</h1><h2>Resolved current state</h2><pre id="current">'
+            '<h1>' + escape(controller.SOP_NAME) + '</h1><h2 id="current-heading" hidden>Resolved current state</h2><pre id="current" hidden>'
             + escape(json.dumps(redact(current), indent=2)) + '</pre>'
             '<h2>Static template</h2><pre id="detail" aria-live="polite"></pre>'
             '<h2 id="action-heading" hidden>Resolved action output</h2><pre id="action" hidden></pre>'
             '<pre id="metadata">' + escape(json.dumps(redact(details), indent=2)) + '</pre>'
             '<script id="sop-data" type="application/json">' + payload + '</script>'
             '<script>'
-            'const data=JSON.parse(document.getElementById("sop-data").textContent),detail=document.getElementById("detail"),action=document.getElementById("action");'
-            'const show=name=>{detail.textContent=JSON.stringify(data.template.nodes[name],null,2);'
+            'const data=JSON.parse(document.getElementById("sop-data").textContent),detail=document.getElementById("detail"),action=document.getElementById("action"),current=document.getElementById("current"),currentHeading=document.getElementById("current-heading");'
+            'const show=(name,clicked=true)=>{current.hidden=currentHeading.hidden=!clicked||name!==' + quote(phase) + ';detail.textContent=JSON.stringify(data.template.nodes[name],null,2);'
             'action.hidden=!data.actions[name];document.getElementById("action-heading").hidden=action.hidden;'
             'action.textContent=data.actions[name]?JSON.stringify(data.actions[name],null,2):""};'
             'for(const name of Object.keys(data.template.nodes)){'
@@ -588,7 +608,7 @@ def state_artifact(context, controller, result):
             'node.setAttribute("tabindex","0");node.setAttribute("role","button");'
             'node.onclick=()=>show(name);node.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){'
             'event.preventDefault();show(name)}}}'
-            'show(' + quote(phase if phase in preview['nodes'] else preview['initial']) + ');'
+            'show(' + quote(phase if phase in preview['nodes'] else preview['initial']) + ',false);'
             '</script></html>')
 
 

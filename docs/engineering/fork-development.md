@@ -189,6 +189,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   and DEBUG-compiled HTML with ownerless CLI upload/renew and soft-attach to the
   current issue. IDs persist in the CLI-managed `independent_artifacts` list;
   controller-supplied ordinary comment attachments and DEBUG triggers are unchanged.
+  HTML State labels show agent names in smaller text, `outer:<agent name>` for addressed agents,
+  or `outer:human` for an empty outer agent; unresolved owners retain placeholders. Resolved state appears only when selected.
 
 - **Symbolic SoP protocol changes.** Update the CLI-owned engine and
   `server/internal/cli/sopdev/DEVELOPMENT.md`, served by `multica sop docs`, not
@@ -196,7 +198,7 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   propagating the approved protocol to other symbolic SoPs and distributions. The
   CLI runtime derives its graph from `controller.workflow` without `DEBUG.md`.
   One declaration-only JSON supplies static templates and HTML with compact action
-  nodes and unlabeled links. Resolved live state/action output stays separate;
+  nodes and unlabeled links without arrowheads entering actions. Resolved live state/action output stays separate;
   reply guidance belongs to its action node, never State choices. Explicit preview
   strings preserve placeholders without calling runtime hooks or factories. Graphs fit the
   viewport width in landscape and scroll horizontally at natural size in portrait.

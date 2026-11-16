@@ -585,6 +585,8 @@ workflow = Workflow(
         with self.assertRaisesRegex(ValueError, 'State review.*explicit static preview'):
             wrapper.compile_preview(controller)
         workflow.states['review'].preview = 'Review {note}.'
+        for state in workflow.states.values():
+            state.owner = None
         context = {'issue_id': 'fixture-issue', 'argv': ['publish', '--note', 'report'],
                    'output': {**resumed, 'workspace': 'private-workspace', 'data': {'private': True}},
                    'action_outputs': {'publish': {'this_round_reply_guidance': 'Published report.'}}}
