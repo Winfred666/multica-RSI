@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/testutil"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -234,6 +235,8 @@ func TestWorkerReplyReconcileBoundaries(t *testing.T) {
 				}
 				if mode == "registration_failure" || mode == "completed_before_registration" {
 					h.Queries = db.New(registration)
+					h.TaskService = service.NewTaskService(h.Queries, h.TxStarter, h.Hub, h.Bus, h.TaskService.Wakeup)
+					h.TaskService.CommentCreated = h.commentCreated
 				}
 				testutil.Call(t, h.CreateComment, req).Want(http.StatusCreated).JSON(&response)
 				if (mode == "registration_failure" || mode == "completed_before_registration") && registration.calls != 1 {

@@ -15,7 +15,6 @@ import (
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
-	"github.com/multica-ai/multica/server/pkg/dbid"
 	"github.com/multica-ai/multica/server/pkg/plugincontract"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 	publicapiv1 "github.com/multica-ai/multica/server/pkg/publicapi/v1"
@@ -674,24 +673,19 @@ func (h *Handler) CreatePluginComment(w http.ResponseWriter, r *http.Request) {
 		authorID = caller.Installation.ID
 	}
 
-	createdComment, err := h.Queries.CreateComment(r.Context(), db.CreateCommentParams{
-		ID:          dbid.NewV7(),
-		IssueID:     issue.ID,
-		WorkspaceID: caller.WorkspaceID,
+	createdComment, _, err := h.TaskService.CreateComment(r.Context(), issue, db.CreateCommentParams{
 		AuthorType:  authorType,
 		AuthorID:    authorID,
 		Content:     content,
 		Type:        "comment",
 		ParentID:    parentID,
 		ViaPluginID: caller.Installation.ID,
-	})
+	}, service.CommentOptions{})
 	if err != nil {
 		publicapiv1.WriteProblem(w, r, http.StatusInternalServerError, "internal_error", "failed to create the comment")
 		return
 	}
 	comment := createdComment.Comment()
-
-	h.TaskService.PublishCommentCreated(r.Context(), issue, createdComment, commentToResponse(comment, nil, nil))
 
 	writeJSON(w, http.StatusCreated, publicPluginComment(comment))
 }

@@ -152,8 +152,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   An option action's `this_round_reply_guidance` replaces the invocation's
   instruction and omits all top-level next steps. Stored guidance, ownership and
   transitions remain intact for later resume/help. Use `multica sop docs` for
-  authoring guidance. Automatic final replies use ordinary comment triggering,
-  including peer mentions. This adds no provider-stop mechanism.
+  authoring guidance. API comments and automatic final replies use one shared create-comment
+  lifecycle for persistence, publication, thread reopening and action dispatch. This adds no provider-stop mechanism.
   Comment ingress recognizes the standalone `!sop-remote` marker and queues
   ordinary durable tasks for the assignee. `/note` stays inert. The backend
   forwards unchanged text; only the daemon/CLI parses names and payloads.

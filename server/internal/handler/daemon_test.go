@@ -2529,110 +2529,68 @@ func TestClaimTaskByRuntime_TaskWorkspaceMismatch_CancelsAndRejects(t *testing.T
 }
 
 // A silent agent's final output is a normal reply, including peer dispatch.
-func TestCompleteTask_CommentTriggered_SynthesizesCommentWhenAgentSilent(t *testing.T) {
-	if testHandler == nil {
-		t.Skip("database not available")
-	}
+func TestCompleteTask_CommentPathsShareLifecycle(t *testing.T) {
+	for _, path := range []string{"comment", "completion"} {
+		t.Run(path, func(t *testing.T) {
+			if testHandler == nil {
+				t.Skip("database not available")
+			}
 
-	var agentID, runtimeID string
-	dbfx.QueryRow(t, `SELECT a.id, a.runtime_id FROM agent a WHERE a.workspace_id = $1 LIMIT 1`, testWorkspaceID).Scan(&agentID, &runtimeID)
-	setWorkspaceIssuePrefixForTest(t, "MUL")
-	issueID := dbfx.Issue(t, "mul-3310 agent output fixture", testutil.Cols{"status": "in_progress", "number": 3310})
-	triggerCommentID := dbfx.Comment(t, issueID, "please take a look")
-	peerID := createHandlerTestAgent(t, "Final reply recipient", nil)
-	taskID := dbfx.Task(t, agentID, testutil.Cols{
-		"runtime_id":          runtimeID,
-		"issue_id":            issueID,
-		"trigger_comment_id":  triggerCommentID,
-		"originator_user_id":  testUserID,
-		"accountable_user_id": testUserID,
-		"status":              "running",
-		"started_at":          testutil.Raw("now()"),
-	})
-	agentFinalOutput := fmt.Sprintf(
-		"sure, see MUL-3310, issue/MUL-3310, feature/MUL-3310, [MUL-3310](mention://issue/%s). [@Peer](mention://agent/%s) Please review.",
-		issueID, peerID,
-	)
-	for range 2 {
-		req := withURLParam(newOwnerDaemonRequest("POST", "/api/daemon/tasks/"+taskID+"/complete", map[string]any{"output": agentFinalOutput}), "taskId", taskID)
-		testutil.Call(t, testHandler.CompleteTask, req).Want(http.StatusOK)
-		var seen int
-		var content, parentID, sourceTaskID string
-		dbfx.QueryRow(t, `
+			var agentID, runtimeID string
+			dbfx.QueryRow(t, `SELECT a.id, a.runtime_id FROM agent a WHERE a.workspace_id = $1 LIMIT 1`, testWorkspaceID).Scan(&agentID, &runtimeID)
+			setWorkspaceIssuePrefixForTest(t, "MUL")
+			issueID := dbfx.Issue(t, "mul-3310 agent output fixture", testutil.Cols{"status": "in_progress", "number": 3310})
+			triggerCommentID := dbfx.Comment(t, issueID, "please take a look")
+			peerID := createHandlerTestAgent(t, "Final reply recipient", nil)
+			taskID := dbfx.Task(t, agentID, testutil.Cols{
+				"runtime_id":          runtimeID,
+				"issue_id":            issueID,
+				"trigger_comment_id":  triggerCommentID,
+				"originator_user_id":  testUserID,
+				"accountable_user_id": testUserID,
+				"status":              "running",
+				"started_at":          testutil.Raw("now()"),
+			})
+			agentFinalOutput := fmt.Sprintf(
+				"sure, see MUL-3310, issue/MUL-3310, feature/MUL-3310, [MUL-3310](mention://issue/%s). [@Peer](mention://agent/%s) Please review.",
+				issueID, peerID,
+			)
+			for attempt := range 2 {
+				if path == "comment" && attempt == 0 {
+					req := withURLParam(newRequest(http.MethodPost, "/comments", map[string]any{"content": agentFinalOutput, "parent_id": triggerCommentID}), "id", issueID)
+					req.Header.Set("X-Agent-ID", agentID)
+					req.Header.Set("X-Task-ID", taskID)
+					testutil.Call(t, testHandler.CreateComment, req).Want(http.StatusCreated)
+				} else {
+					output := agentFinalOutput
+					if path == "comment" {
+						output = "completion output must not replace the posted reply"
+					}
+					req := withURLParam(newOwnerDaemonRequest("POST", "/api/daemon/tasks/"+taskID+"/complete", map[string]any{"output": output}), "taskId", taskID)
+					testutil.Call(t, testHandler.CompleteTask, req).Want(http.StatusOK)
+				}
+				var seen int
+				var content, parentID, sourceTaskID string
+				dbfx.QueryRow(t, `
 			SELECT count(*), min(content), min(parent_id::text), min(source_task_id::text)
 			FROM comment WHERE issue_id = $1 AND author_type = 'agent' AND author_id = $2
 		`, issueID, agentID).Scan(&seen, &content, &parentID, &sourceTaskID)
-		if seen != 1 || content != agentFinalOutput || parentID != triggerCommentID || sourceTaskID != taskID {
-			t.Fatalf("synthesized reply: count=%d content=%q parent=%s source=%s", seen, content, parentID, sourceTaskID)
-		}
-		if got := countQueuedCommentTriggerTasks(t, issueID, peerID); got != 1 {
-			t.Fatalf("final reply queued %d peer tasks, want 1", got)
-		}
-		dbfx.QueryRow(t, `
+				if seen != 1 || content != agentFinalOutput || parentID != triggerCommentID || sourceTaskID != taskID {
+					t.Fatalf("synthesized reply: count=%d content=%q parent=%s source=%s", seen, content, parentID, sourceTaskID)
+				}
+				if got := countQueuedCommentTriggerTasks(t, issueID, peerID); got != 1 {
+					t.Fatalf("final reply queued %d peer tasks, want 1", got)
+				}
+				dbfx.QueryRow(t, `
 			SELECT count(*) FROM agent_task_queue t JOIN comment c ON c.id = t.trigger_comment_id
 			WHERE t.issue_id = $1 AND t.agent_id = $2 AND t.originator_user_id = $3
 			AND c.source_task_id = $4 AND c.parent_id = $5
 		`, issueID, peerID, testUserID, taskID, triggerCommentID).Scan(&seen)
-		if seen != 1 {
-			t.Fatal("peer task lost reply trigger or originator lineage")
-		}
-	}
-}
-
-// Companion to the above: when the agent DID post its own comment during the
-// run, CompleteTask must not synthesize a duplicate. Guards against the
-// common case where the fix is over-eager and creates two comments per task.
-func TestCompleteTask_CommentTriggered_SkipsSynthesisWhenAgentAlreadyCommented(t *testing.T) {
-	if testHandler == nil {
-		t.Skip("database not available")
-	}
-
-	var agentID, runtimeID string
-	dbfx.QueryRow(t, `
-		SELECT a.id, a.runtime_id FROM agent a WHERE a.workspace_id = $1 LIMIT 1
-	`, testWorkspaceID).Scan(&agentID, &runtimeID)
-
-	issueID := dbfx.Issue(t, "mul-1198 dedup fixture", testutil.Cols{
-		"status": "in_progress",
-		"number": 81199,
-	})
-
-	triggerCommentID := dbfx.Comment(t, issueID, "please take a look")
-
-	taskID := dbfx.Task(t, agentID, testutil.Cols{
-		"runtime_id":         runtimeID,
-		"issue_id":           issueID,
-		"trigger_comment_id": triggerCommentID,
-		"status":             "running",
-		"started_at":         testutil.Raw("now()"),
-	})
-
-	// Agent posts its own reply during the run — exactly the compliant path.
-	dbfx.Exec(t, `
-		INSERT INTO comment (issue_id, workspace_id, author_type, author_id, content, type, parent_id)
-		VALUES ($1, $2, 'agent', $3, 'done, see PR', 'comment', $4)
-	`, issueID, testWorkspaceID, agentID, triggerCommentID)
-
-	w := httptest.NewRecorder()
-	req := newOwnerDaemonRequest("POST", "/api/daemon/tasks/"+taskID+"/complete",
-		map[string]any{"output": "final terminal text that must NOT become a comment"},
-	)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("taskId", taskID)
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-
-	testHandler.CompleteTask(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("CompleteTask: expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var count int
-	dbfx.QueryRow(t, `
-		SELECT count(*) FROM comment
-		WHERE issue_id = $1 AND author_type = 'agent' AND author_id = $2
-	`, issueID, agentID).Scan(&count)
-	if count != 1 {
-		t.Fatalf("expected 1 agent comment (the agent's own reply), got %d — synthesis duplicated", count)
+				if seen != 1 {
+					t.Fatal("peer task lost reply trigger or originator lineage")
+				}
+			}
+		})
 	}
 }
 

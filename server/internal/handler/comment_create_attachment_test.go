@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/testutil"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -95,6 +96,8 @@ func TestCreateCommentRollsBackWhenAttachmentLinkFails(t *testing.T) {
 
 	h := *testHandler
 	h.TxStarter = &failLinkAttachmentsTxStarter{delegate: testPool}
+	h.TaskService = service.NewTaskService(h.Queries, h.TxStarter, h.Hub, h.Bus, h.TaskService.Wakeup)
+	h.TaskService.CommentCreated = h.commentCreated
 	createCommentWithAttachment(t, &h, issueID, attachmentID).Want(http.StatusInternalServerError)
 
 	if n := dbfx.Count(t, `SELECT count(*) FROM comment WHERE issue_id = $1`, issueID); n != 0 {

@@ -42,6 +42,7 @@ func TestCommentInvocationDeniedNoticePersistsWithoutDisclosure(t *testing.T) {
 	h := *testHandler
 	h.Bus = events.New()
 	h.TaskService = service.NewTaskService(h.Queries, testPool, h.Hub, h.Bus)
+	h.TaskService.CommentCreated = h.commentCreated
 	var notices []CommentResponse
 	h.Bus.Subscribe(protocol.EventCommentCreated, func(event events.Event) {
 		if payload, ok := event.Payload.(map[string]any); ok {
@@ -192,6 +193,7 @@ func TestCommentInvocationDeniedNoticeSkipsDeletedParent(t *testing.T) {
 	h := *testHandler
 	h.Bus = events.New()
 	h.TaskService = service.NewTaskService(h.Queries, testPool, h.Hub, h.Bus)
+	h.TaskService.CommentCreated = h.commentCreated
 	h.Bus.Subscribe(protocol.EventCommentCreated, func(event events.Event) {
 		payload, ok := event.Payload.(map[string]any)
 		if !ok {

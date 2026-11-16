@@ -562,14 +562,7 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 	}
 	h.PRRefresh = ghsnapshot.NewManager(ghClient, queries, txStarter, h.broadcastPRSnapshotApplied)
 	taskSvc.PRSnapshotsEnabled = h.PRRefresh.Enabled()
-	taskSvc.OnAgentCommentCreated = func(ctx context.Context, issue db.Issue, comment db.Comment) {
-		var parent *db.Comment
-		if row, err := queries.GetComment(ctx, comment.ParentID); err == nil {
-			parent = &row
-		}
-		originator := taskSvc.ResolveOriginatorFromTriggerComment(ctx, issue.WorkspaceID, comment.ID)
-		h.triggerTasksForComment(ctx, issue, comment, parent, comment.AuthorType, uuidToString(comment.AuthorID), uuidToString(originator), nil, commentSteerRequest{})
-	}
+	taskSvc.CommentCreated = h.commentCreated
 
 	return h
 }

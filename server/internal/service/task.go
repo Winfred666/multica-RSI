@@ -51,7 +51,7 @@ type TaskService struct {
 	Metrics   *obsmetrics.BusinessMetrics
 	Wakeup    TaskWakeupNotifier
 
-	OnAgentCommentCreated func(context.Context, db.Issue, db.Comment)
+	CommentCreated func(context.Context, db.Issue, db.CreateCommentRow, CommentOptions) []CommentTriggerOutcome
 	// PRSnapshotsEnabled reports whether the server can refresh GitHub check snapshots.
 	PRSnapshotsEnabled bool
 	// Entitlements supplies Cloud's workspace-scoped issue-count instruction.
@@ -7824,26 +7824,20 @@ func (s *TaskService) createAgentComment(ctx context.Context, issueID, agentID p
 	if err != nil {
 		return
 	}
-	created, err := s.Queries.CreateComment(ctx, db.CreateCommentParams{
-		ID:           dbid.NewV7(),
-		IssueID:      issueID,
-		WorkspaceID:  issue.WorkspaceID,
+	var originator pgtype.UUID
+	if task, err := s.Queries.GetAgentTask(ctx, sourceTaskID); err == nil {
+		originator = task.OriginatorUserID
+	}
+	_, _, err = s.CreateComment(ctx, issue, db.CreateCommentParams{
 		AuthorType:   "agent",
 		AuthorID:     agentID,
 		Content:      content,
 		Type:         commentType,
 		ParentID:     parentID,
 		SourceTaskID: sourceTaskID,
-	})
+	}, CommentOptions{OriginatorUserID: util.UUIDToString(originator)})
 	if err != nil {
-		return
-	}
-	comment := created.Comment()
-	commentFields := commentEventFields(comment)
-	commentFields["revision"] = comment.Revision
-	s.PublishCommentCreated(ctx, issue, created, commentFields)
-	if commentType == "comment" && s.OnAgentCommentCreated != nil {
-		s.OnAgentCommentCreated(ctx, issue, comment)
+		slog.Warn("create agent comment failed", "error", err)
 	}
 }
 
