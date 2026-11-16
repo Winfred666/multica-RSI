@@ -204,16 +204,6 @@ def delete_state(context):
 def help_output(context):
     state = read_state(context)
     if state:
-        controller = load_controller()
-        node = controller.workflow.states.get(state['status'])
-        if node and node.owner:
-            replay = {**context, 'state': state, 'phase': state['status'],
-                      'args': arguments(context['argv'], controller), 'error': SOPError,
-                      'cli': lambda *words, write=False: multica(*words)}
-            controller.workflow.before(replay)
-            render_addressed_state(replay, controller,
-                                   {'ok': True, 'state_changed': True, 'status': state['status']},
-                                   state.get('output', state))
         return json.dumps(redact(agent_decision(state.get('output', state))), allow_nan=False)
     return (ROOT / 'SKILL.md').read_text(encoding='utf-8').split('---', 2)[2].strip()
 

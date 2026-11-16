@@ -207,9 +207,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   actionable wrapper exception. Help does not install dependencies.
   Native small-circle start and double-circle stop markers have non-clickable boundary links.
   `multica sop dev validate DIRECTORY` checks a selected package with the CLI-owned engine.
-  CLI `--help` replays a recorded decision and republishes an active addressed
-  questionnaire without running an option or advancing state. With no saved state,
-  it shows the skill body. The R-262 canonical template stores serialized
+  CLI `--help` replays a recorded decision or shows
+  the skill body without starting a run. The R-262 canonical template stores serialized
   JSON in one `sop.<skill-name>` issue metadata key, with no local task state file.
   It resumes across tasks/agents, rebinds replayed commands to the current checkout,
   and deletes only its own key on completion or quit. Required identity is issue
