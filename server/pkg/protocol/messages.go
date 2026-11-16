@@ -153,12 +153,12 @@ type TaskDispatchPayload struct {
 	Description string `json:"description"`
 }
 
-// TaskAvailablePayload carries task wakeups or task-free command delivery.
-// Supplement hints require an exact task ID.
+// TaskAvailablePayload carries content-free task and supplement wakeup hints.
+// Supplement hints require an exact task ID; the daemon claims durable input
+// through the corresponding HTTP endpoint.
 type TaskAvailablePayload struct {
-	Command   *RemoteSOPRequest `json:"command,omitempty"`
-	RuntimeID string            `json:"runtime_id"`
-	TaskID    string            `json:"task_id,omitempty"`
+	RuntimeID string `json:"runtime_id"`
+	TaskID    string `json:"task_id,omitempty"`
 }
 
 // RuntimeProfilesChangedPayload is sent from server to daemon as a wakeup hint

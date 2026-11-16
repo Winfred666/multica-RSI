@@ -297,15 +297,15 @@ func TestNewAPIClient_WorkdirParentEscapeFailsClosed(t *testing.T) {
 	}
 	if _, err := newAPIClient(testCmd()); err == nil {
 		t.Fatal("newAPIClient(): expected fail-closed error from workdir-parent escape, got nil")
-	} else if !strings.Contains(err.Error(), "MULTICA_TOKEN") {
-		t.Fatalf("error should demand an explicit execution token; got %q", err.Error())
+	} else if !strings.Contains(err.Error(), "mat_") {
+		t.Fatalf("error should demand a task-scoped mat_ token; got %q", err.Error())
 	}
 }
 
 // TestNewAPIClient_LeftoverMarkerActionableError verifies that a stale
 // daemon-task marker with no daemon env (the local_directory crash-leftover
 // case) fails closed with an actionable message that names the marker file,
-// rather than an opaque missing-token error.
+// rather than an opaque "requires mat_ token" error.
 func TestNewAPIClient_LeftoverMarkerActionableError(t *testing.T) {
 	chdirWithDaemonTaskMarker(t)
 	t.Setenv("MULTICA_AGENT_ID", "")
@@ -597,7 +597,7 @@ func TestResolveToken_AgentContextSkipsConfig(t *testing.T) {
 	})
 }
 
-func TestNewAPIClient_AgentContextRequiresExplicitToken(t *testing.T) {
+func TestNewAPIClient_AgentContextRequiresTaskToken(t *testing.T) {
 	t.Setenv("MULTICA_SERVER_URL", "http://127.0.0.1:8080")
 	t.Setenv("MULTICA_WORKSPACE_ID", "workspace-123")
 	t.Setenv("MULTICA_AGENT_ID", "agent-123")
@@ -610,8 +610,20 @@ func TestNewAPIClient_AgentContextRequiresExplicitToken(t *testing.T) {
 		if err == nil {
 			t.Fatal("newAPIClient(): expected error without task token")
 		}
-		if !strings.Contains(err.Error(), "MULTICA_TOKEN") {
-			t.Fatalf("newAPIClient() error = %q, want explicit token guidance", err.Error())
+		if !strings.Contains(err.Error(), "mat_ token") {
+			t.Fatalf("newAPIClient() error = %q, want mat_ token guidance", err.Error())
+		}
+	})
+
+	t.Run("member token fails closed", func(t *testing.T) {
+		t.Setenv("MULTICA_TOKEN", "mul_member_token")
+
+		_, err := newAPIClient(testCmd())
+		if err == nil {
+			t.Fatal("newAPIClient(): expected error with member token")
+		}
+		if !strings.Contains(err.Error(), "mat_ token") {
+			t.Fatalf("newAPIClient() error = %q, want mat_ token guidance", err.Error())
 		}
 	})
 
@@ -628,7 +640,7 @@ func TestNewAPIClient_AgentContextRequiresExplicitToken(t *testing.T) {
 	})
 }
 
-func TestNewAPIClient_DaemonPortRequiresExplicitToken(t *testing.T) {
+func TestNewAPIClient_DaemonPortRequiresTaskToken(t *testing.T) {
 	t.Chdir(t.TempDir())
 	redirectTestHome(t, t.TempDir())
 	t.Setenv("MULTICA_SERVER_URL", "http://127.0.0.1:8080")
@@ -646,15 +658,15 @@ func TestNewAPIClient_DaemonPortRequiresExplicitToken(t *testing.T) {
 	if err == nil {
 		t.Fatal("newAPIClient(): expected error without task token")
 	}
-	if !strings.Contains(err.Error(), "MULTICA_TOKEN") {
-		t.Fatalf("newAPIClient() error = %q, want explicit token guidance", err.Error())
+	if !strings.Contains(err.Error(), "mat_ token") {
+		t.Fatalf("newAPIClient() error = %q, want mat_ token guidance", err.Error())
 	}
 	if !strings.Contains(err.Error(), "MULTICA_DAEMON_PORT") || !strings.Contains(err.Error(), "remove") {
 		t.Fatalf("newAPIClient() error = %q, want stale port recovery guidance", err.Error())
 	}
 }
 
-func TestNewAPIClient_WorkdirMarkerRequiresExplicitToken(t *testing.T) {
+func TestNewAPIClient_WorkdirMarkerRequiresTaskToken(t *testing.T) {
 	redirectTestHome(t, t.TempDir())
 	t.Setenv("MULTICA_SERVER_URL", "http://127.0.0.1:8080")
 	t.Setenv("MULTICA_AGENT_ID", "")
@@ -671,8 +683,8 @@ func TestNewAPIClient_WorkdirMarkerRequiresExplicitToken(t *testing.T) {
 	if err == nil {
 		t.Fatal("newAPIClient(): expected error without task token")
 	}
-	if !strings.Contains(err.Error(), "MULTICA_TOKEN") {
-		t.Fatalf("newAPIClient() error = %q, want explicit token guidance", err.Error())
+	if !strings.Contains(err.Error(), "mat_ token") {
+		t.Fatalf("newAPIClient() error = %q, want mat_ token guidance", err.Error())
 	}
 }
 

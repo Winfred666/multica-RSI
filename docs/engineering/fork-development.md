@@ -153,22 +153,20 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   instruction and omits all top-level next steps. Stored guidance, ownership and
   transitions remain intact for later resume/help. Use `multica sop docs` for
   authoring guidance. This adds no provider-stop mechanism.
-  The daemon executes remote `!sop-remote <name> <JSON payload>` requests with
-  `{"args":[],"que_comment_id":"optional-question-comment-id"}`.
-  SoPs are bound to issue/workspace context and require no task ID.
-  Questionnaire replies execute in the working directory saved by that SoP, not the assignee's latest task directory.
-  When `que_comment_id` identifies a matching rendered questionnaire, successful
-  execution deletes the answer comment and adds its `args` to the questionnaire
-  JSON. Missing questionnaire references skip cleanup.
+  Bare `!sop-remote <name> <JSON payload>` uses ordinary agent-task delivery
+  without starting a model; `/note` remains inert. The daemon uses the saved SoP
+  working directory. Payloads use `{"args":[],"que_comment_id":"optional-question-comment-id"}`.
+  Successful calls add their `args` to a matching questionnaire; command comments
+  remain in the thread.
   After questionnaire publication, cross-issue owners
   receive a Markdown source link in their declared thread; the source question
   records `que_comment_id` and `forwarded_comment_id`. Same-issue questions do
   not forward. Rendered choices carry `--issue` so recipient answers still use
-  the source issue's state and cleanup. On the web frontend, pending standalone
+  the source issue's state and questionnaire. On the web frontend, pending standalone
   question permalinks mirror the source thread in a nested window sized to the
   question and initially scrolled to it. The source title/link and raw content
   remain accessible, and mirrored questions use the existing renderer. The
-  engine owns completion delivery: after local accepted-answer cleanup, the
+  engine owns completion delivery: after recording the accepted answer, the
   daemon edits that exact forward to retain owner prose and a plain HTTP(S)
   source URL, then append the accepted static `!sop-render` block. Only content
   and revision are updated. Failures use ordinary publication/daemon error
