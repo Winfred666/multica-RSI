@@ -16,19 +16,12 @@ import (
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
-func (d *Daemon) executeRemoteSOPs(ctx context.Context, runtimeID string) {
-	var requests []protocol.RemoteSOPRequest
-	if err := d.client.postJSON(ctx, "/api/daemon/runtimes/"+url.PathEscape(runtimeID)+"/remote-sops/take", nil, &requests); err != nil {
-		d.logger.Debug("remote SOP poll failed", "error", err)
-		return
+func (d *Daemon) executeRemoteSOP(ctx context.Context, task Task) (TaskResult, error) {
+	if _, err := d.client.StartTask(ctx, task); err != nil {
+		return TaskResult{}, err
 	}
-	for _, request := range requests {
-		d.executeRemoteSOP(ctx, request)
-	}
-}
-
-// Remote SOPs run directly from heartbeat actions, outside agent task execution.
-func (d *Daemon) executeRemoteSOP(ctx context.Context, request protocol.RemoteSOPRequest) {
+	request := protocol.RemoteSOPRequest{ID: task.TriggerCommentID, AgentID: task.AgentID, IssueID: task.IssueID,
+		WorkspaceID: task.WorkspaceID, Content: task.TriggerCommentContent, WorkDir: task.PriorWorkDir, AuthToken: task.AuthToken}
 	output, code, err := d.runRemoteSOP(ctx, request)
 	diagnostic := ""
 	if err != nil {
@@ -44,9 +37,10 @@ func (d *Daemon) executeRemoteSOP(ctx context.Context, request protocol.RemoteSO
 			}
 		}
 	}
-	if err := d.client.ReportTaskMessages(ctx, request.ID, []TaskMessageData{result}); err != nil {
+	if err := d.client.ReportTaskMessages(ctx, task.ID, []TaskMessageData{{Seq: 1, CallID: request.ID, Type: "tool_use", Tool: "remote-sop", Content: request.Content, CreatedAt: time.Now().UTC()}, result}); err != nil {
 		d.logger.Error("remote SOP result failed", "request_id", request.ID, "error", err)
 	}
+	return TaskResult{Status: "completed"}, err
 }
 
 type remoteSOPCommand struct {
