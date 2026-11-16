@@ -338,11 +338,14 @@ func (h *Handler) attachmentDownloadURLTTL() time.Duration {
 
 // groupAttachments loads attachments for multiple comments and groups them by comment ID.
 func (h *Handler) groupAttachments(r *http.Request, commentIDs []pgtype.UUID) map[string][]AttachmentResponse {
+	return h.groupCommentAttachments(r.Context(), h.resolveWorkspaceID(r), commentIDs, attachmentURLModeFromRequest(r))
+}
+
+func (h *Handler) groupCommentAttachments(ctx context.Context, workspaceID string, commentIDs []pgtype.UUID, mode attachmentURLMode) map[string][]AttachmentResponse {
 	if len(commentIDs) == 0 {
 		return nil
 	}
-	workspaceID := h.resolveWorkspaceID(r)
-	attachments, err := h.Queries.ListAttachmentsByCommentIDs(r.Context(), db.ListAttachmentsByCommentIDsParams{
+	attachments, err := h.Queries.ListAttachmentsByCommentIDs(ctx, db.ListAttachmentsByCommentIDsParams{
 		Column1:     commentIDs,
 		WorkspaceID: parseUUID(workspaceID),
 	})
@@ -350,7 +353,6 @@ func (h *Handler) groupAttachments(r *http.Request, commentIDs []pgtype.UUID) ma
 		slog.Error("failed to load attachments for comments", "error", err)
 		return nil
 	}
-	mode := attachmentURLModeFromRequest(r)
 	grouped := make(map[string][]AttachmentResponse, len(commentIDs))
 	for _, a := range attachments {
 		cid := uuidToString(a.CommentID)

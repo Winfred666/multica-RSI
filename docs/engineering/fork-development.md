@@ -152,12 +152,13 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   An option action's `this_round_reply_guidance` replaces the invocation's
   instruction and omits all top-level next steps. Stored guidance, ownership and
   transitions remain intact for later resume/help. Use `multica sop docs` for
-  authoring guidance. This adds no provider-stop mechanism.
-  Bare `!sop-remote <name> <JSON payload>` uses ordinary agent-task delivery
-  without starting a model; `/note` remains inert. The daemon uses the saved SoP
-  working directory. Payloads use `{"args":[],"que_comment_id":"optional-question-comment-id"}`.
-  Successful calls add their `args` to a matching questionnaire; command comments
-  remain in the thread.
+  authoring guidance. Automatic replies use the normal comment lifecycle.
+  Bare `!sop-remote <name> <JSON payload>` delegates unchanged text to the
+  assignee's daemon without starting a model; `/note` remains inert. The
+  daemon/CLI owns parsing, saved SoP working directories and execution.
+  Payloads use `{"args":[],"que_comment_id":"optional-question-comment-id"}`.
+  Successful calls with a matching questionnaire add its `args` to that
+  questionnaire; command comments remain in the thread.
   After questionnaire publication, cross-issue owners
   receive a Markdown source link in their declared thread; the source question
   records `que_comment_id` and `forwarded_comment_id`. Same-issue questions do

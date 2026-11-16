@@ -65,8 +65,8 @@ in this invocation. Reply guidance belongs to the action, not State `next_step`.
 
 ## Hand off with a reply, not status feedback
 
-Return `{'this_round_reply_guidance': '...'}` to require a peer handoff through
-`multica issue comment add` (not final-response text), or explicit silence. The invocation
+Return `{'this_round_reply_guidance': '...'}` to tell the caller what to reply to
+a named peer/external recipient, or explicitly to stay silent. The invocation
 omits `next_step`, but the transition and destination checks still complete.
 Do not use this field for ordinary same-agent progress; keep normal State guidance.
 

@@ -50,6 +50,8 @@ type TaskService struct {
 	Analytics analytics.Client
 	Metrics   *obsmetrics.BusinessMetrics
 	Wakeup    TaskWakeupNotifier
+
+	CommentCreated func(context.Context, db.Issue, db.CreateCommentRow, CommentOptions) []CommentTriggerOutcome
 	// PRSnapshotsEnabled reports whether the server can refresh GitHub check snapshots.
 	PRSnapshotsEnabled bool
 	// Entitlements supplies Cloud's workspace-scoped issue-count instruction.
@@ -1414,6 +1416,17 @@ func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue
 	return task, nil
 }
 
+func (s *TaskService) EnqueueRemoteSOPTask(ctx context.Context, issue db.Issue, commentID pgtype.UUID) (db.AgentTaskQueue, error) {
+	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, issue.AssigneeID, commentID, nil, false, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{}, OriginNamed, false, "remote_sop")
+}
+
+func IsRemoteSOPTask(task db.AgentTaskQueue) bool {
+	var execution struct {
+		Type string `json:"type"`
+	}
+	return json.Unmarshal(task.Context, &execution) == nil && execution.Type == "remote_sop"
+}
+
 // EnqueueTaskForMention creates a queued task for a mentioned agent on an issue.
 // Unlike EnqueueTaskForIssue, this takes an explicit agent ID rather than
 // deriving it from the issue assignee.
@@ -1458,10 +1471,10 @@ func (s *TaskService) EnqueueTaskForSquadLeaderWithHandoff(ctx context.Context, 
 }
 
 func (s *TaskService) enqueueMentionTask(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, isLeader bool, squadID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID, origin RunOrigin) (db.AgentTaskQueue, error) {
-	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, agentID, triggerCommentID, nil, isLeader, squadID, forceFreshSession, handoffNote, actorUserID, rerunOfTaskID, origin, false)
+	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, agentID, triggerCommentID, nil, isLeader, squadID, forceFreshSession, handoffNote, actorUserID, rerunOfTaskID, origin, false, "")
 }
 
-func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, coalescedCommentIDs []pgtype.UUID, isLeader bool, squadID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID, origin RunOrigin, freshRerun bool) (db.AgentTaskQueue, error) {
+func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, coalescedCommentIDs []pgtype.UUID, isLeader bool, squadID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID, origin RunOrigin, freshRerun bool, taskType string) (db.AgentTaskQueue, error) {
 	if err := guardIssueNotInTriage(ctx, s.Queries, issue.ID, origin); err != nil {
 		return db.AgentTaskQueue{}, err
 	}
@@ -1520,7 +1533,8 @@ func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, iss
 		TriggerEvidenceRefID: attrEvidenceRef,
 		// Stamp the reviewed head so dedup can distinguish this run's target
 		// from a later request against a new HEAD (TEN-356).
-		HeadSha: headShaText(s.ResolveIssueReviewSHA(ctx, issue.ID)),
+		HeadSha:  headShaText(s.ResolveIssueReviewSHA(ctx, issue.ID)),
+		TaskType: pgtype.Text{String: taskType, Valid: taskType != ""},
 	})
 	if err != nil {
 		// A concurrent enqueue for the same (issue, agent) won the race and the
@@ -6203,7 +6217,7 @@ func (s *TaskService) enqueueRerunTask(ctx context.Context, issue db.Issue, agen
 		util.UUIDToString(issue.AssigneeID) == util.UUIDToString(agentID) {
 		return s.enqueueIssueTaskWithCommentPlan(ctx, issue, triggerCommentID, coalescedCommentIDs, true, "", actorUserID, rerunOfTaskID, pgtype.Timestamptz{}, origin, fresh)
 	}
-	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, agentID, triggerCommentID, coalescedCommentIDs, isLeader, squadID, true, "", actorUserID, rerunOfTaskID, origin, fresh)
+	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, agentID, triggerCommentID, coalescedCommentIDs, isLeader, squadID, true, "", actorUserID, rerunOfTaskID, origin, fresh, "")
 }
 
 // The bulk terminal writes below are the sweeper, archive and daemon-recovery
@@ -7806,60 +7820,52 @@ func (s *TaskService) createAgentComment(ctx context.Context, issueID, agentID p
 	if err != nil {
 		return
 	}
-	// Resolve the thread root for thread-level side effects without overwriting
-	// parentID. The stored parent_id must remain the exact comment being replied
-	// to; recursive thread reads recover the root when needed.
-	var rootComment *db.Comment
-	if parentID.Valid {
-		if root, err := s.Queries.GetThreadRoot(ctx, db.GetThreadRootParams{
-			CommentID:   parentID,
-			WorkspaceID: issue.WorkspaceID,
-		}); err == nil {
-			rootComment = &root
-		}
+	var originator pgtype.UUID
+	if task, err := s.Queries.GetAgentTask(ctx, sourceTaskID); err == nil {
+		originator = task.OriginatorUserID
 	}
-	created, err := s.Queries.CreateComment(ctx, db.CreateCommentParams{
-		ID:           dbid.NewV7(),
-		IssueID:      issueID,
-		WorkspaceID:  issue.WorkspaceID,
+	_, _, err = s.CreateComment(ctx, issue, db.CreateCommentParams{
 		AuthorType:   "agent",
 		AuthorID:     agentID,
 		Content:      content,
 		Type:         commentType,
 		ParentID:     parentID,
 		SourceTaskID: sourceTaskID,
-	})
+	}, CommentOptions{OriginatorUserID: util.UUIDToString(originator)})
 	if err != nil {
-		return
+		slog.Warn("create agent comment failed", "error", err)
 	}
+}
+
+// PublishCommentCreated shares post-commit publication and thread reopening for
+// HTTP comments and task output. The payload preserves each caller's wire shape.
+func (s *TaskService) PublishCommentCreated(ctx context.Context, issue db.Issue, created db.CreateCommentRow, payload any) {
 	comment := created.Comment()
-	commentFields := commentEventFields(comment)
-	commentFields["revision"] = comment.Revision
 	s.Bus.Publish(events.Event{
 		Type:        protocol.EventCommentCreated,
 		WorkspaceID: util.UUIDToString(issue.WorkspaceID),
-		ActorType:   "agent",
-		ActorID:     util.UUIDToString(agentID),
+		ActorType:   comment.AuthorType,
+		ActorID:     util.UUIDToString(comment.AuthorID),
 		Payload: map[string]any{
-			"comment":        commentFields,
-			"issue_title":    issue.Title,
-			"issue_status":   issue.Status,
-			"issue_revision": created.IssueRevision,
+			"comment":             payload,
+			"issue_title":         issue.Title,
+			"issue_assignee_type": util.TextToPtr(issue.AssigneeType),
+			"issue_assignee_id":   util.UUIDToPtr(issue.AssigneeID),
+			"issue_status":        issue.Status,
+			"issue_revision":      created.IssueRevision,
 		},
 	})
-	s.AutoUnresolveThreadOnReply(ctx, rootComment, util.UUIDToString(issue.WorkspaceID), "agent", util.UUIDToString(agentID), sourceTaskID)
-}
-
-// AutoUnresolveThreadOnReply clears resolved_at on the thread root when a
-// reply lands in a resolved thread, and broadcasts comment:unresolved. Shared
-// between the user-facing Handler.CreateComment path and the agent-facing
-// TaskService.createAgentComment path so the resolved-then-replied state can
-// never desync (one of the bugs Emacs flagged on PR #2300). Errors are logged
-// — the reply itself already committed, the desync is recoverable on next read.
-func (s *TaskService) AutoUnresolveThreadOnReply(ctx context.Context, parent *db.Comment, workspaceID, actorType, actorID string, sourceTaskID pgtype.UUID) {
-	if parent == nil || !parent.ResolvedAt.Valid {
+	if !comment.ParentID.Valid {
 		return
 	}
+	parent, err := s.Queries.GetThreadRoot(ctx, db.GetThreadRootParams{
+		CommentID: comment.ParentID, WorkspaceID: issue.WorkspaceID,
+	})
+	if err != nil || !parent.ResolvedAt.Valid {
+		return
+	}
+	workspaceID := util.UUIDToString(issue.WorkspaceID)
+	actorType, actorID := comment.AuthorType, util.UUIDToString(comment.AuthorID)
 	// This follow-up write is a consequence of the reply's run, not a new
 	// system action. Preserve that lineage for event subscriptions as well.
 	tx, err := s.TxStarter.Begin(ctx)
@@ -7868,7 +7874,7 @@ func (s *TaskService) AutoUnresolveThreadOnReply(ctx context.Context, parent *db
 		return
 	}
 	defer tx.Rollback(ctx)
-	_, err = tx.Exec(ctx, `SELECT set_config('multica.actor_type',$1,true),set_config('multica.actor_id',$2,true),set_config('multica.source_task_id',$3,true)`, actorType, actorID, util.UUIDToString(sourceTaskID))
+	_, err = tx.Exec(ctx, `SELECT set_config('multica.actor_type',$1,true),set_config('multica.actor_id',$2,true),set_config('multica.source_task_id',$3,true)`, actorType, actorID, util.UUIDToString(comment.SourceTaskID))
 	if err != nil {
 		slog.Warn("auto-unresolve source attribution failed", "error", err)
 		return

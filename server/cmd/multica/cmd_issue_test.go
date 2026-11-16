@@ -4341,7 +4341,7 @@ func TestIssueReadCommandsFailClosedWithoutTaskToken(t *testing.T) {
 
 	cmd := newIssueListTestCmd()
 	err := runIssueList(cmd, nil)
-	if err == nil || !strings.Contains(err.Error(), "MULTICA_TOKEN") {
+	if err == nil || !strings.Contains(err.Error(), "task-scoped mat_ token") {
 		t.Fatalf("issue list error = %v, want missing task token failure", err)
 	}
 }

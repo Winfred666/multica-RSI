@@ -359,7 +359,7 @@ SELECT
         WHEN COALESCE(sqlc.narg('fresh_rerun')::boolean, FALSE)
         THEN '{"fresh_rerun":true}'::jsonb
         ELSE '{}'::jsonb
-    END, '{}'::jsonb),
+    END || CASE WHEN sqlc.narg('task_type')::text IS NOT NULL THEN jsonb_build_object('type', sqlc.narg('task_type')::text) ELSE '{}'::jsonb END, '{}'::jsonb),
     sqlc.narg(originator_user_id),
     sqlc.narg(accountable_user_id),
     sqlc.narg(runtime_mcp_overlay),
@@ -1689,7 +1689,7 @@ WHERE issue_id = $1 AND status IN ('queued', 'dispatched', 'running', 'waiting_l
 -- the agent picks up new comments on the next cycle) but skip if a pending
 -- task already exists (natural dedup).
 SELECT count(*) > 0 AS has_pending FROM agent_task_queue
-WHERE context->>'wakeup_id' IS NULL AND issue_id = $1 AND status IN ('queued', 'dispatched');
+WHERE context->>'wakeup_id' IS NULL AND COALESCE(context->>'type','') <> 'remote_sop' AND issue_id = $1 AND status IN ('queued', 'dispatched');
 
 -- name: HasPendingTaskForIssueAndAgent :one
 -- Returns true if a specific agent already has a queued or dispatched task
@@ -1704,7 +1704,7 @@ WHERE context->>'wakeup_id' IS NULL AND issue_id = $1 AND status IN ('queued', '
 -- When head_sha is empty/NULL (issue has no linked PR) the check falls back to
 -- the pre-TEN-356 (issue_id, agent_id) key so non-PR issues keep coalescing.
 SELECT count(*) > 0 AS has_pending FROM agent_task_queue
-WHERE context->>'wakeup_id' IS NULL AND issue_id = $1 AND agent_id = $2
+WHERE context->>'wakeup_id' IS NULL AND COALESCE(context->>'type','') <> 'remote_sop' AND issue_id = $1 AND agent_id = $2
   AND (
     status IN ('queued', 'dispatched')
     OR (status = 'deferred' AND context->>'channel_issue_media_pending' = 'true')
@@ -1718,7 +1718,7 @@ WHERE context->>'wakeup_id' IS NULL AND issue_id = $1 AND agent_id = $2
 -- Same pending/head rules as HasPendingTaskForIssueAndAgent, scoped to one
 -- root comment and all descendants. NULL selects assignment-level work.
 SELECT count(*) > 0 AS has_pending FROM agent_task_queue
-WHERE context->>'wakeup_id' IS NULL AND issue_id = $1 AND agent_id = $2
+WHERE context->>'wakeup_id' IS NULL AND COALESCE(context->>'type','') <> 'remote_sop' AND issue_id = $1 AND agent_id = $2
   AND (
     status IN ('queued', 'dispatched')
     OR (status = 'deferred' AND context->>'channel_issue_media_pending' = 'true')
@@ -1735,7 +1735,7 @@ WHERE context->>'wakeup_id' IS NULL AND issue_id = $1 AND agent_id = $2
 -- that comment's old queued/dispatched tasks before re-computing triggers.
 -- Carries the same head_sha dedup key as HasPendingTaskForIssueAndAgent (TEN-356).
 SELECT count(*) > 0 AS has_pending FROM agent_task_queue
-WHERE context->>'wakeup_id' IS NULL AND issue_id = @issue_id
+WHERE context->>'wakeup_id' IS NULL AND COALESCE(context->>'type','') <> 'remote_sop' AND issue_id = @issue_id
   AND agent_id = @agent_id
   AND (
     status IN ('queued', 'dispatched')
@@ -1750,7 +1750,7 @@ WHERE context->>'wakeup_id' IS NULL AND issue_id = @issue_id
 -- name: HasPendingTaskForIssueAndAgentExcludingTriggerCommentInThread :one
 -- Thread-scoped edit preview: ignore the comment whose old run save replaces.
 SELECT count(*) > 0 AS has_pending FROM agent_task_queue
-WHERE context->>'wakeup_id' IS NULL AND issue_id = @issue_id
+WHERE context->>'wakeup_id' IS NULL AND COALESCE(context->>'type','') <> 'remote_sop' AND issue_id = @issue_id
   AND agent_id = @agent_id
   AND (
     status IN ('queued', 'dispatched')
@@ -1832,7 +1832,7 @@ SET coalesced_comment_ids = (
     runtime_connected_apps = sqlc.narg('new_runtime_connected_apps')
 WHERE id = (
     SELECT t.id FROM agent_task_queue t
-    WHERE t.context->>'wakeup_id' IS NULL AND t.issue_id = @issue_id
+    WHERE t.context->>'wakeup_id' IS NULL AND COALESCE(t.context->>'type','') <> 'remote_sop' AND t.issue_id = @issue_id
       AND t.agent_id = @agent_id
       AND t.comment_thread_id IS NOT DISTINCT FROM comment_thread_root_id(@new_trigger_comment_id::uuid)
       AND (
@@ -1888,7 +1888,7 @@ SET coalesced_comment_ids = (
     )
 WHERE id = (
     SELECT t.id FROM agent_task_queue t
-    WHERE t.context->>'wakeup_id' IS NULL AND t.issue_id = @issue_id
+    WHERE t.context->>'wakeup_id' IS NULL AND COALESCE(t.context->>'type','') <> 'remote_sop' AND t.issue_id = @issue_id
       AND t.agent_id = @agent_id
       AND t.comment_thread_id IS NOT DISTINCT FROM comment_thread_root_id(@comment_id::uuid)
       AND t.status IN ('dispatched', 'running', 'waiting_local_directory')
@@ -1919,7 +1919,7 @@ SET coalesced_comment_ids = (
     trigger_summary = sqlc.narg('trigger_summary')
 WHERE id = (
     SELECT t.id FROM agent_task_queue t
-    WHERE t.context->>'wakeup_id' IS NULL AND t.issue_id = @issue_id
+    WHERE t.context->>'wakeup_id' IS NULL AND COALESCE(t.context->>'type','') <> 'remote_sop' AND t.issue_id = @issue_id
       AND t.agent_id = @agent_id
       AND t.comment_thread_id IS NOT DISTINCT FROM comment_thread_root_id(@comment_id::uuid)
       AND (

@@ -21,7 +21,6 @@ import (
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
-	"github.com/multica-ai/multica/server/pkg/dbid"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
@@ -102,12 +101,7 @@ type CommentResponse struct {
 // or the SQUAD id for a squad mention — so the client correlates it back to the
 // mention it rendered without the server echoing a private target's name/owner.
 // reason_code is the stable, enumeration-safe admission reason.
-type CommentTriggerOutcome struct {
-	TargetType string             `json:"target_type"` // "agent" | "squad"
-	TargetID   string             `json:"target_id"`
-	Status     DispatchStatus     `json:"status"` // queued | coalesced | deferred | blocked
-	ReasonCode DispatchReasonCode `json:"reason_code"`
-}
+type CommentTriggerOutcome = service.CommentTriggerOutcome
 
 func commentToResponse(c db.Comment, reactions []ReactionResponse, attachments []AttachmentResponse) CommentResponse {
 	if reactions == nil {
@@ -1703,7 +1697,6 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var parentID pgtype.UUID
-	var parentComment *db.Comment
 	if req.ParentID != nil {
 		var parsed pgtype.UUID
 		parsed, ok = parseUUIDOrBadRequest(w, *req.ParentID, "parent_id")
@@ -1716,7 +1709,6 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid parent comment")
 			return
 		}
-		parentComment = &parent
 	}
 
 	attachmentIDs, ok := parseUUIDSliceOrBadRequest(w, req.AttachmentIDs, "attachment_ids")
@@ -1828,22 +1820,7 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 	// entity-encode Markdown syntax characters (>, ", &, <) and corrupt the
 	// source. See issue #1303 / discussion in MUL-1119, MUL-1125.
 
-	// parent_id stores the exact comment being replied to. Thread-level behavior
-	// (for example auto-unresolving a resolved thread) resolves the root
-	// separately so storing a reply-to-reply does not destroy the direct-parent
-	// signal used by trigger decisions.
-	var rootComment *db.Comment
-	if parentID.Valid {
-		if root, err := h.Queries.GetThreadRoot(r.Context(), db.GetThreadRootParams{
-			CommentID:   parentID,
-			WorkspaceID: issue.WorkspaceID,
-		}); err == nil {
-			rootComment = &root
-		}
-	}
-
 	createParams := db.CreateCommentParams{
-		ID:           dbid.NewV7(),
 		IssueID:      issue.ID,
 		WorkspaceID:  issue.WorkspaceID,
 		AuthorType:   authorType,
@@ -1856,58 +1833,16 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 		// replay skips the agents it names.
 		SuppressedAgentIds: suppressAgentIDs,
 	}
-	var created db.CreateCommentRow
-	var err error
-	if len(attachmentIDs) > 0 {
-		// A comment and the attachments it was posted with are one visible
-		// change, and one database outcome. Committing the comment first leaves
-		// a window in which it can gain a reply and be deleted into a
-		// tombstone, and the link would then bind uploaded objects to that
-		// placeholder — invisible, and missed by the prune's storage cleanup
-		// (#8296 review). Inside this transaction the row is not yet visible to
-		// a delete, so there is no window at all. Mirrors the attachment-set
-		// edit in UpdateComment.
-		//
-		// Owner first: the CreateComment statement takes the issue row, and only
-		// then are the attachments locked — the issue -> comment -> child order
-		// LockIssueForDelete, UpdateComment, LockLiveComment and DeleteAttachment
-		// all share. Taking the attachments first inverts it against issue
-		// teardown, which holds the issue and then reaches the same rows through
-		// the issue_id cascade, and Postgres aborts one side. Locking them at all
-		// still pins the requested set: an attachment deleted while this waited
-		// is refused before the comment is committed, rather than the comment
-		// committing without it.
-		tx, beginErr := h.beginWakeupWrite(r.Context())
-		if beginErr != nil {
-			slog.Warn("create comment failed", append(logger.RequestAttrs(r), "error", beginErr, "issue_id", issueID)...)
-			writeError(w, http.StatusInternalServerError, "failed to create comment")
-			return
-		}
-		defer tx.Rollback(r.Context())
-		qtx := h.Queries.WithTx(tx)
-		created, err = qtx.CreateComment(r.Context(), createParams)
-		if err == nil {
-			var missing pgtype.UUID
-			missing, err = lockCommentAttachments(r.Context(), qtx, issue.WorkspaceID, issue.ID, attachmentIDs)
-			if err == nil && missing.Valid {
-				writeError(w, http.StatusConflict, "attachment "+uuidToString(missing)+" is no longer available")
-				return
-			}
-		}
-		if err == nil {
-			err = qtx.LinkAttachmentsToComment(r.Context(), db.LinkAttachmentsToCommentParams{
-				CommentID: created.ID,
-				IssueID:   issue.ID,
-				Column3:   attachmentIDs,
-			})
-		}
-		if err == nil {
-			err = tx.Commit(r.Context())
-		}
-	} else {
-		created, err = wakeupWrite(h, r, func(q *db.Queries) (db.CreateCommentRow, error) {
-			return q.CreateComment(r.Context(), createParams)
-		})
+	created, outcomes, err := h.TaskService.CreateComment(r.Context(), issue, createParams, service.CommentOptions{
+		AttachmentIDs:    attachmentIDs,
+		OriginatorUserID: h.invokeOriginatorFromRequest(r, authorType, authorID),
+		SteerTaskIDs:     steer.TaskIDs, Steer: steer.All,
+		StableAttachmentURLs: attachmentURLModeFromRequest(r) == attachmentURLModeStable,
+	})
+	var missing *service.MissingCommentAttachmentError
+	if errors.As(err, &missing) {
+		writeError(w, http.StatusConflict, missing.Error())
+		return
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		// The issue was deleted, possibly while this waited for its row lock.
@@ -1926,31 +1861,39 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 	resp := commentToResponse(comment, nil, groupedAtt[uuidToString(comment.ID)])
 	resp.IssueRevision = created.IssueRevision
 	slog.Info("comment created", append(logger.RequestAttrs(r), "comment_id", uuidToString(comment.ID), "issue_id", issueID)...)
-	h.publish(protocol.EventCommentCreated, uuidToString(issue.WorkspaceID), authorType, authorID, map[string]any{
-		"comment":             resp,
-		"issue_title":         issue.Title,
-		"issue_assignee_type": textToPtr(issue.AssigneeType),
-		"issue_assignee_id":   uuidToPtr(issue.AssigneeID),
-		"issue_status":        issue.Status,
-		"issue_revision":      created.IssueRevision,
-	})
-
-	// A reply in a resolved thread re-opens it. Done after CreateComment commits
-	// so the reply is visible regardless of the unresolve outcome. Shared with
-	// the agent task path (TaskService.createAgentComment) — both reply paths
-	// must keep the resolved root in sync.
-	h.TaskService.AutoUnresolveThreadOnReply(r.Context(), rootComment, uuidToString(issue.WorkspaceID), authorType, authorID, h.wakeupSourceTaskID(r))
-
-	originatorUserID := h.invokeOriginatorFromRequest(r, authorType, authorID)
-	// The comment is already saved; a blocked mention must not fail the whole
-	// request. Surface the per-target outcomes so the client can show partial
-	// success instead of a silent no-op (MUL-4525 §2).
-	resp.TriggerOutcomes = h.triggerTasksForComment(r.Context(), issue, comment, parentComment, authorType, authorID, originatorUserID, suppressAgentIDs, steer)
+	resp.TriggerOutcomes = outcomes
 	if !steer.empty() {
 		applyCommentSupplements(&resp, h.listCommentSupplements(r.Context(), issue.WorkspaceID, []pgtype.UUID{comment.ID})[uuidToString(comment.ID)])
 	}
 
 	writeJSON(w, http.StatusCreated, resp)
+}
+
+// commentCreated applies the same post-commit actions regardless of who wrote
+// the comment. Plugin and system narration remain non-invoking.
+func (h *Handler) commentCreated(ctx context.Context, issue db.Issue, created db.CreateCommentRow, opts service.CommentOptions) []CommentTriggerOutcome {
+	comment := created.Comment()
+	var attachments []AttachmentResponse
+	if len(opts.AttachmentIDs) > 0 {
+		mode := attachmentURLModeSigned
+		if opts.StableAttachmentURLs {
+			mode = attachmentURLModeStable
+		}
+		attachments = h.groupCommentAttachments(ctx, uuidToString(issue.WorkspaceID), []pgtype.UUID{comment.ID}, mode)[uuidToString(comment.ID)]
+	}
+	resp := commentToResponse(comment, nil, attachments)
+	resp.IssueRevision = created.IssueRevision
+	h.TaskService.PublishCommentCreated(ctx, issue, created, resp)
+	if comment.Type == "system" || comment.ViaPluginID.Valid {
+		return nil
+	}
+	var parent *db.Comment
+	if comment.ParentID.Valid {
+		if row, err := h.Queries.GetComment(ctx, comment.ParentID); err == nil {
+			parent = &row
+		}
+	}
+	return h.triggerTasksForComment(ctx, issue, comment, parent, comment.AuthorType, uuidToString(comment.AuthorID), opts.OriginatorUserID, comment.SuppressedAgentIds, commentSteerRequest{TaskIDs: opts.SteerTaskIDs, All: opts.Steer})
 }
 
 // clientAuthorableCommentTypes is what POST /comments accepts. `status_change`
@@ -1993,6 +1936,9 @@ func isNoteComment(content string) bool {
 // steer names the running turns the author chose: a recipient whose chosen
 // turn is still running receives this comment there instead of a follow-up run.
 func (h *Handler) triggerTasksForComment(ctx context.Context, issue db.Issue, comment db.Comment, parentComment *db.Comment, actorType, actorID, originatorUserID string, suppressAgentIDs []pgtype.UUID, steer commentSteerRequest) []CommentTriggerOutcome {
+	if isRemoteSOPComment(comment.Content) {
+		return h.triggerRemoteSOP(ctx, issue, comment, actorType, actorID, originatorUserID)
+	}
 	if isNoteComment(comment.Content) {
 		return nil
 	}
@@ -2671,7 +2617,7 @@ func (h *Handler) computeCommentAgentTriggers(ctx context.Context, issue db.Issu
 		opts.ThreadCommentID = parentComment.ID
 	}
 
-	if isNoteComment(content) {
+	if isNoteComment(content) || isRemoteSOPComment(content) {
 		return nil, nil
 	}
 
@@ -3736,32 +3682,6 @@ type commentDeletion struct {
 	// after commit.
 	AttachmentURLs []string
 	IssueRevision  int64
-}
-
-// lockCommentAttachments locks the unbound issue attachments a comment is
-// being created with and reports the first requested id that is not among
-// them: never eligible, or deleted while the lock waited. The caller must
-// already hold the issue's row lock — these are its children, and taking them
-// first is the inversion CreateComment documents.
-func lockCommentAttachments(ctx context.Context, qtx *db.Queries, workspaceID, issueID pgtype.UUID, ids []pgtype.UUID) (missing pgtype.UUID, err error) {
-	locked, err := qtx.LockAttachmentsForCommentLink(ctx, db.LockAttachmentsForCommentLinkParams{
-		WorkspaceID:   workspaceID,
-		IssueID:       issueID,
-		AttachmentIds: ids,
-	})
-	if err != nil {
-		return pgtype.UUID{}, err
-	}
-	have := make(map[pgtype.UUID]struct{}, len(locked))
-	for _, id := range locked {
-		have[id] = struct{}{}
-	}
-	for _, id := range ids {
-		if _, ok := have[id]; !ok {
-			return id, nil
-		}
-	}
-	return pgtype.UUID{}, nil
 }
 
 // withLiveCommentLock runs write in a transaction that first locks the

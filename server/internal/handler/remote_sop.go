@@ -2,97 +2,47 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"log/slog"
-	"net/http"
-	"time"
+	"strings"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/multica-ai/multica/server/internal/auth"
+	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/dbid"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
-func (h *Handler) TakeRemoteSOPs(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := h.requireDaemonRuntimeAccess(w, r, chi.URLParam(r, "runtimeId"))
-	if !ok {
-		return
-	}
-	requests, err := h.takeRemoteSOPs(r.Context(), runtime)
-	if err != nil {
-		writeError(w, 500, "failed to take remote SOP requests")
-		return
-	}
-	writeJSON(w, http.StatusOK, requests)
+// The marker selects command delivery. Its name, payload and arguments belong
+// to the daemon/CLI, and the original comment remains the execution input.
+func isRemoteSOPComment(content string) bool {
+	first, _, _ := strings.Cut(strings.TrimSpace(content), " ")
+	return first == "!sop-remote"
 }
 
-func (h *Handler) takeRemoteSOPs(ctx context.Context, runtime db.AgentRuntime) ([]protocol.RemoteSOPRequest, error) {
-	// TODO: need better assignment for remote calling comment in that issue
-	comments, err := h.Queries.ListRemoteSOPComments(ctx, runtime.ID)
-	if err != nil {
-		return nil, err
+func (h *Handler) triggerRemoteSOP(ctx context.Context, issue db.Issue, comment db.Comment, actorType, actorID, originator string) []CommentTriggerOutcome {
+	outcome := CommentTriggerOutcome{TargetType: "agent", TargetID: uuidToString(issue.AssigneeID), Status: DispatchBlocked, ReasonCode: ReasonTargetUnavailable}
+	if !issue.AssigneeType.Valid || issue.AssigneeType.String != "agent" {
+		return []CommentTriggerOutcome{outcome}
 	}
-	requests := []protocol.RemoteSOPRequest{}
-	for _, comment := range comments {
-		issue, err := h.Queries.GetIssue(ctx, comment.IssueID)
-		if err != nil {
-			return nil, err
+	agent, err := h.Queries.GetAgentInWorkspace(ctx, db.GetAgentInWorkspaceParams{ID: issue.AssigneeID, WorkspaceID: issue.WorkspaceID})
+	if err == nil && h.canInvokeAgent(ctx, agent, actorType, actorID, originator, uuidToString(issue.WorkspaceID)) {
+		if _, err := h.TaskService.EnqueueRemoteSOPTask(ctx, issue, comment.ID); err == nil {
+			outcome.Status, outcome.ReasonCode = DispatchQueued, ReasonQueued
+		} else {
+			slog.Warn("remote SoP enqueue failed", "error", err, "comment_id", uuidToString(comment.ID))
+			outcome.ReasonCode = ReasonInternalError
 		}
-		workDir, err := h.Queries.GetRemoteSOPWorkDir(ctx, db.GetRemoteSOPWorkDirParams{RuntimeID: runtime.ID, AgentID: issue.AssigneeID, IssueID: issue.ID})
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return nil, err
-		}
-		token, err := auth.GenerateAgentTaskToken()
-		if err != nil {
-			return nil, err
-		}
-		tx, err := h.TxStarter.Begin(ctx)
-		if err != nil {
-			return nil, err
-		}
-		request, err := func() (protocol.RemoteSOPRequest, error) {
-			defer tx.Rollback(ctx)
-			q := h.Queries.WithTx(tx)
-			if _, err := q.TakeRemoteSOPComment(ctx, db.TakeRemoteSOPCommentParams{ID: comment.ID, WorkspaceID: comment.WorkspaceID}); err != nil {
-				return protocol.RemoteSOPRequest{}, err
-			}
-			// This completed row stores execution output; it never enters the agent queue.
-			if _, err := q.CreateRemoteSOPLog(ctx, db.CreateRemoteSOPLogParams{ID: comment.ID, AgentID: issue.AssigneeID, RuntimeID: runtime.ID, IssueID: issue.ID}); err != nil {
-				return protocol.RemoteSOPRequest{}, err
-			}
-			if _, err := q.CreateTaskMessage(ctx, db.CreateTaskMessageParams{ID: dbid.NewV7(), TaskID: comment.ID, Seq: 1, Type: "tool_use", Tool: pgtype.Text{String: "remote-sop", Valid: true}, Content: pgtype.Text{String: comment.Content, Valid: true}, CallID: pgtype.Text{String: uuidToString(comment.ID), Valid: true}}); err != nil {
-				return protocol.RemoteSOPRequest{}, err
-			}
-			if _, err := q.CreateTaskToken(ctx, db.CreateTaskTokenParams{ID: dbid.NewV7(), TokenHash: auth.HashToken(token), TaskID: comment.ID, AgentID: issue.AssigneeID, WorkspaceID: issue.WorkspaceID, UserID: runtime.OwnerID, ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true}}); err != nil {
-				return protocol.RemoteSOPRequest{}, err
-			}
-			if err := tx.Commit(ctx); err != nil {
-				return protocol.RemoteSOPRequest{}, err
-			}
-			return protocol.RemoteSOPRequest{ID: uuidToString(comment.ID), AgentID: uuidToString(issue.AssigneeID), IssueID: uuidToString(issue.ID), WorkspaceID: uuidToString(issue.WorkspaceID), Content: comment.Content, WorkDir: workDir.String, AuthToken: token, CallerType: comment.AuthorType, CallerID: uuidToString(comment.AuthorID)}, nil
-		}()
-		if errors.Is(err, pgx.ErrNoRows) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		requests = append(requests, request)
+	} else {
+		outcome.ReasonCode = ReasonInvocationNotAllowed
 	}
-	return requests, nil
+	return []CommentTriggerOutcome{outcome}
 }
 
 func (h *Handler) noteRemoteSOPCleanupFailure(ctx context.Context, task db.AgentTaskQueue) {
-	var execution struct {
-		Type string `json:"type"`
-	}
-	if json.Unmarshal(task.Context, &execution) != nil || execution.Type != "remote_sop" {
+	if !service.IsRemoteSOPTask(task) {
 		return
 	}
+
 	issue, err := h.Queries.GetIssue(ctx, task.IssueID)
 	if err != nil {
 		return

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/multica-ai/multica/server/internal/dispatch"
+	"github.com/multica-ai/multica/server/internal/service"
 )
 
 // Unified execution-admission contract (MUL-4525).
@@ -26,7 +27,7 @@ import (
 //     cause goes to restricted server logs, not the wire.
 
 // DispatchStatus is the domain-level outcome of one admission/enqueue attempt.
-type DispatchStatus string
+type DispatchStatus = service.CommentDispatchStatus
 
 const (
 	// DispatchQueued: a new run was enqueued.
