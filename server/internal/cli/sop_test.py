@@ -304,14 +304,10 @@ workflow = Workflow(
         self.assertEqual(replay['status'], initial['status'])
         self.assertTrue(replay['next_step'][0]['command'].startswith('multica sop run fixture-sop '))
         self.assertNotIn(str(self.root / 'skill'), replay['next_step'][0]['command'])
-        # Help must not import the receiving controller or write metadata.
-        controller = self.package / 'controller.py'
-        source = controller.read_text()
-        controller.write_text('raise RuntimeError("must not load")\n')
+        # Questionnaire replay must not change saved procedure state.
         saved = self.metadata.read_bytes()
         self.assertEqual(self.run_sop('--help'), replay)
         self.assertEqual(self.metadata.read_bytes(), saved)
-        controller.write_text(source)
         self.assertEqual(self.run_sop()['status'], initial['status'])
         skill = self.package / 'SKILL.md'
         original = skill.read_text()
@@ -415,9 +411,10 @@ workflow = Workflow(
 
                 with patch.object(wrapper, 'state_owner', return_value=owner), \
                      patch.object(wrapper, 'multica', side_effect=post), \
+                     patch.object(wrapper, 'load_controller', return_value=controller), \
+                     patch.object(wrapper, 'read_state', return_value={**context['state'], 'status': 'review', 'output': rendered}), \
                      patch.dict(os.environ, MULTICA_APP_URL='https://multica.example'):
-                    wrapper.render_addressed_state(context, controller,
-                                                   {'ok': True, 'state_changed': True, 'status': 'review'}, rendered)
+                    self.assertEqual(json.loads(wrapper.help_output({**context, 'argv': ['--help']})), rendered)
                 self.assertEqual(writes[0][0][:3], ('comment', 'add', 'source'))
                 self.assertEqual(writes[0][0][-2:], ('--parent', 'source-thread'))
                 self.assertEqual(writes[-1][0][:5], ('comment', 'update', 'question', '--expected-revision', '1'))
