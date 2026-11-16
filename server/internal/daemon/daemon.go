@@ -5922,7 +5922,15 @@ func (d *Daemon) handleTask(ctx context.Context, task Task, slot int) {
 		result.Comment = "daemon shut down while task was in flight"
 	}
 
-	d.reportTaskResult(ctx, task.ID, result, taskLog)
+	if err := d.reportTaskResult(ctx, task.ID, result, taskLog); err == nil && result.Status == "completed" {
+		// TODO: Stage 4: SoP as first-class member: use a special ACP command executor inside the daemon.
+		// Finish the task before consuming its trigger, so deletion cannot cancel it.
+		if first, _, _ := strings.Cut(strings.TrimSpace(task.TriggerCommentContent), " "); first == "!sop-remote" {
+			if err := d.cleanRemoteSOPAnswer(ctx, task); err != nil {
+				d.reportRemoteSOPError(ctx, task, "", err)
+			}
+		}
+	}
 
 	// Write GC metadata after the task finishes so the periodic GC loop
 	// can look up the parent record (issue / chat session / autopilot run /
@@ -6314,7 +6322,7 @@ func (d *Daemon) acquireLocalDirectoryLockIfNeeded(ctx context.Context, task Tas
 // the agent may have built a real session before getting stuck, and we want
 // the next chat turn to resume there rather than start over and "forget"
 // the conversation.
-func (d *Daemon) reportTaskResult(ctx context.Context, taskID string, result TaskResult, taskLog *slog.Logger) {
+func (d *Daemon) reportTaskResult(ctx context.Context, taskID string, result TaskResult, taskLog *slog.Logger) error {
 	switch result.Status {
 	case "completed":
 		taskLog.Info("task completed", "status", result.Status)
@@ -6331,13 +6339,14 @@ func (d *Daemon) reportTaskResult(ctx context.Context, taskID string, result Tas
 			contextTokens:         result.ContextTokens,
 		})
 		if err == nil {
-			return
+			return nil
 		}
 		// The original completion is already durable. Never overwrite it with a
 		// synthetic failure: a temporary auth/config skew can make a 4xx recover
 		// after restart just as a transport outage can make a 5xx recover, and the
 		// user's successful output must remain authoritative in both cases.
 		taskLog.Error("complete task callback not acknowledged; durable report remains queued", "error", err)
+		return err
 	default:
 		failureReason := result.FailureReason
 		if failureReason == "" {
@@ -6375,8 +6384,10 @@ func (d *Daemon) reportTaskResult(ctx context.Context, taskID string, result Tas
 			retiredSessionID:      result.RetiredSessionID,
 		}); err != nil {
 			taskLog.Error("report failed task failed", "error", err)
+			return err
 		}
 	}
+	return nil
 }
 
 // reportTerminalTask is the only path that sends complete/fail callbacks. It

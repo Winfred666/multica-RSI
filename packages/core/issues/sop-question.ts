@@ -42,7 +42,7 @@ export function parseSOPComment(entry: TimelineEntry): SOPQuestion | SOPRemote |
       return null;
     }
   }
-  const render = /^(?:\/note|\[@[^\]]+\]\(mention:\/\/agent\/[^)]+\)) !sop-render (\S+) [^\r\n]+\r?\n([\s\S]+)$/.exec(content);
+  const render = /^(?:(?:\/note|\[@[^\]]+\]\(mention:\/\/agent\/[^)]+\)) )?!sop-render (\S+) [^\r\n]+\r?\n([\s\S]+)$/.exec(content);
   if (!render) return null;
   try {
     const output = parseWithFallback<z.infer<typeof SOPOutputSchema> | null>(JSON.parse(render[2]!), SOPOutputSchema, null, {

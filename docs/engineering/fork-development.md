@@ -158,7 +158,7 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   daemon/CLI owns parsing, saved SoP working directories and execution.
   Payloads use `{"args":[],"que_comment_id":"optional-question-comment-id"}`.
   Successful calls with a matching questionnaire add its `args` to that
-  questionnaire; command comments remain in the thread.
+  questionnaire and consume the answer after task completion.
   After questionnaire publication, cross-issue owners
   receive a Markdown source link in their declared thread; the source question
   records `que_comment_id` and `forwarded_comment_id`. Same-issue questions do
@@ -236,7 +236,7 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   `id` and native comment `content` is rendered after the option/action chain.
   The ordinary agent comment contains `!sop-render <skill-name> <owner JSON>`
   and the existing redacted, ordinary state JSON, not the masked invocation reply.
-  `content` supplies native `/note` or agent-mention syntax; only the three destination
+  Rendered markers omit `/note`; `content` retains agent mentions. Only the three destination
   IDs are encoded, and the execution assignee is unchanged.
   Rendered JSON adds frontend-ignored `how_to_step` text with the ordinary comment-post
   command for `!sop-remote <skill-name>` and a questionnaire-comment-ID placeholder;

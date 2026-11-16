@@ -259,17 +259,12 @@ func resolveProfile(cmd *cobra.Command) string {
 func newAPIClient(cmd *cobra.Command) (*cli.APIClient, error) {
 	taskContext := inDaemonManagedExecutionContext()
 	token := resolveToken(cmd)
-	if taskContext && !strings.HasPrefix(token, "mat_") {
-		// When the ONLY daemon signal is a workdir marker (no MULTICA_AGENT_ID /
-		// MULTICA_TASK_ID / MULTICA_DAEMON_PORT), the likeliest cause outside a
-		// real task is a leftover marker from a crashed daemon task in a
-		// local_directory. Name the exact file so a normal user can recover
-		// instead of hitting an opaque "requires mat_ token" error. Shares its
-		// wording with requireHumanLocalCommand: same cause, same remedy.
+	// TODO: Stage 4: SoP as first-class member: use a special ACP command executor inside the daemon.
+	if taskContext && token == "" {
 		if markerPath := leftoverDaemonTaskMarkerPath(); markerPath != "" {
-			return nil, fmt.Errorf("agent execution context requires MULTICA_TOKEN to be a task-scoped mat_ token%s", leftoverMarkerSuffix(markerPath))
+			return nil, fmt.Errorf("execution context requires MULTICA_TOKEN%s", leftoverMarkerSuffix(markerPath))
 		}
-		return nil, fmt.Errorf("agent execution context requires MULTICA_TOKEN to be a task-scoped mat_ token%s", daemonPortOnlyContextHint())
+		return nil, fmt.Errorf("execution context requires MULTICA_TOKEN%s", daemonPortOnlyContextHint())
 	}
 
 	serverURL := resolveServerURL(cmd)

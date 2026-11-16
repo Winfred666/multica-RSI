@@ -640,8 +640,8 @@ def render_addressed_state(context, controller, result, rendered):
         ' and filling its placeholders; args must be a JSON array of strings.')}
     with tempfile.TemporaryDirectory(prefix='.sop-', dir=Path.cwd()) as directory:
         body = Path(directory) / 'handoff.md'
-        prefix = '/note' if owner['issue_id'] != context['issue_id'] else owner['content']
-        header = prefix + ' !sop-render ' + controller.SOP_NAME + ' ' + json.dumps(destination)
+        prefix = '' if owner['issue_id'] != context['issue_id'] else owner['content'].removeprefix('/note').strip()
+        header = (prefix + ' !sop-render ' + controller.SOP_NAME + ' ' + json.dumps(destination)).lstrip()
         body.write_text(header + '\n' + json.dumps(rendered, allow_nan=False))
         words = ['comment', 'add', context['issue_id'], '--content-file', str(body)]
         parent = getattr(context.get('args'), 'thread', None) or context['state'].get('reply_parent')

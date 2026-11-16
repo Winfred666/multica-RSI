@@ -19,7 +19,7 @@ const prose = `For the owner.\n\n[Question](${href})`;
 const output = { status: "review", instruction: "Approve this change?", next_step: [
   { instruction: "Approve", command: "multica sop run review approve" },
 ] };
-const render = (answered = false) => `/note !sop-render review {}\n${JSON.stringify({ ...output, ...(answered ? { args: ["approve"] } : {}) })}`;
+const render = (answered = false) => `!sop-render review {}\n${JSON.stringify({ ...output, ...(answered ? { args: ["approve"] } : {}) })}`;
 const entry = (content: string): TimelineEntry => ({
   id: "forward", type: "comment", actor_type: "agent", actor_id: "agent", created_at: "2026-11-14T10:00:00Z", content,
 });

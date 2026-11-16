@@ -11,7 +11,7 @@ const entry = (content: string, fields: Partial<TimelineEntry> = {}): TimelineEn
   id: "comment", type: "comment", actor_type: "agent", actor_id: "agent", comment_type: "comment",
   created_at: "2026-11-13T18:00:00Z", content, ...fields,
 });
-const render = (state: unknown, prefix = "/note") => `${prefix} !sop-render review {"issue_id":"target","thread":"thread","id":"agent"}\n${JSON.stringify(state)}`;
+const render = (state: unknown, prefix = "") => `${prefix ? `${prefix} ` : ""}!sop-render review {"issue_id":"target","thread":"thread","id":"agent"}\n${JSON.stringify(state)}`;
 const question = (state = output) => {
   const parsed = parseSOPComment(entry(render(state)));
   if (parsed?.kind !== "render") throw new Error("Expected a render card");

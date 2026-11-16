@@ -29,7 +29,7 @@ assert sys.argv[1:] == ['sop', 'run', 'inspect', '--help', 'two words', '', '$(l
 assert os.environ['MULTICA_AGENT_ID'] == 'assignee'
 assert os.environ['MULTICA_ISSUE_ID'] == 'issue'
 assert os.environ['MULTICA_WORKSPACE_ID'] == 'workspace'
-assert os.environ['MULTICA_TOKEN'] == 'mat_scoped'
+assert os.environ['MULTICA_TOKEN'] == 'pat_owner'
 print(os.getcwd())
 print('stderr text', file=sys.stderr)
 sys.exit(7 if os.environ['FIXTURE_TERMINAL'] == 'fail' else 0)
@@ -47,6 +47,12 @@ sys.exit(7 if os.environ['FIXTURE_TERMINAL'] == 'fail' else 0)
 					state, _ := json.Marshal(map[string]string{"workdir": cwd})
 					_ = json.NewEncoder(w).Encode(map[string]any{"metadata": map[string]string{"sop.inspect": string(state)}})
 					return
+				case "/api/issues/issue/comments":
+					var body map[string]string
+					_ = json.NewDecoder(r.Body).Decode(&body)
+					if terminal != "fail" || !strings.HasPrefix(body["content"], "/note SoP command failed:") || r.Header.Get("Authorization") != "Bearer pat_owner" {
+						t.Errorf("exception comment=%v", body)
+					}
 				case "/api/daemon/tasks/task/messages":
 					var batch struct {
 						Messages []TaskMessageData `json:"messages"`
@@ -63,6 +69,7 @@ sys.exit(7 if os.environ['FIXTURE_TERMINAL'] == 'fail' else 0)
 			}))
 			defer server.Close()
 			d := &Daemon{client: NewClient(server.URL), logger: slog.New(slog.NewTextHandler(io.Discard, nil)), activeEnvRoots: map[string]int{}, runtimeIndex: map[string]Runtime{"runtime": {Provider: "no-model"}}, cfg: Config{ServerBaseURL: server.URL, WorkspacesRoot: t.TempDir()}}
+			d.client.SetToken("pat_owner")
 			d.runner = taskRunnerFunc(d.runTask)
 			d.handleHeartbeatActions(t.Context(), "runtime", &HeartbeatResponse{})
 			claimed, err := d.client.ClaimTask(t.Context(), "runtime")
@@ -77,7 +84,7 @@ sys.exit(7 if os.environ['FIXTURE_TERMINAL'] == 'fail' else 0)
 	}
 }
 
-func TestRemoteSOPQuestionnaireUpdate(t *testing.T) {
+func TestRemoteSOPQuestionnaireCleanup(t *testing.T) {
 	for _, scenario := range []struct {
 		name, question  string
 		forward, denied bool
@@ -85,20 +92,20 @@ func TestRemoteSOPQuestionnaireUpdate(t *testing.T) {
 	}{
 		{"no-reference", "", false, false, nil},
 		{"missing-question", "missing", false, false, []string{"GET"}},
-		{"answered", "question", false, false, []string{"GET", "PUT"}},
+		{"answered", "question", false, false, []string{"GET", "PUT", "DELETE"}},
 		{"edit-denied", "question", false, true, []string{"GET", "PUT"}},
-		{"forward-source", "question", true, false, []string{"GET", "PUT", "GET", "PUT"}},
-		{"forward-recipient", "question", true, false, []string{"GET", "PUT", "GET", "PUT"}},
+		{"forward-source", "question", true, false, []string{"GET", "PUT", "GET", "PUT", "DELETE"}},
+		{"forward-recipient", "question", true, false, []string{"GET", "PUT", "GET", "PUT", "DELETE"}},
 		{"forward-denied", "question", true, true, []string{"GET", "PUT", "GET", "PUT"}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			var calls []string
 			args := []string{"approve", "two words"}
-			header := "/note !sop-render inspect {}"
+			header := "!sop-render inspect {}"
 			rendered := map[string]any{"instruction": "Choose", "args": args}
 			if scenario.forward {
 				args = append(args, "--issue", "issue")
-				header = `/note !sop-render inspect {"issue_id":"recipient"}`
+				header = `!sop-render inspect {"issue_id":"recipient"}`
 				rendered["forwarded_comment_id"], rendered["args"] = "forward", args
 			}
 			accepted, _ := json.Marshal(rendered)
@@ -107,7 +114,7 @@ func TestRemoteSOPQuestionnaireUpdate(t *testing.T) {
 			link := "https://multica.example/workspace/issues/issue#comment-question"
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls = append(calls, r.Method)
-				if r.Header.Get("Authorization") != "Bearer mat_scoped" || r.Header.Get("X-Workspace-ID") != "workspace" {
+				if r.Header.Get("Authorization") != "Bearer pat_owner" || r.Header.Get("X-Workspace-ID") != "workspace" {
 					t.Error("wrong target context")
 				}
 				switch r.Method {
@@ -122,6 +129,11 @@ func TestRemoteSOPQuestionnaireUpdate(t *testing.T) {
 						t.Error(r.URL.String())
 					}
 					_ = json.NewEncoder(w).Encode([]map[string]any{{"id": id, "revision": 3, "content": content}})
+				case "DELETE":
+					if r.URL.Path != "/api/comments/answer/keep-replies" {
+						t.Error(r.URL.Path)
+					}
+					w.WriteHeader(http.StatusNoContent)
 				case "PUT":
 					var update map[string]json.RawMessage
 					_ = json.NewDecoder(r.Body).Decode(&update)
@@ -153,13 +165,14 @@ func TestRemoteSOPQuestionnaireUpdate(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			d := &Daemon{cfg: Config{ServerBaseURL: server.URL}}
+			d := &Daemon{client: NewClient(server.URL), cfg: Config{ServerBaseURL: server.URL}}
+			d.client.SetToken("pat_owner")
 			issue := "issue"
 			if scenario.name == "forward-recipient" {
 				issue = "recipient"
 			}
 			body, _ := json.Marshal(remoteSOPCommand{Args: args, QuestionCommentID: scenario.question})
-			err := d.updateRemoteSOPQuestion(t.Context(), Task{TriggerCommentID: "answer", IssueID: issue, WorkspaceID: "workspace", AuthToken: "mat_scoped", TriggerCommentContent: "!sop-remote inspect " + string(body)})
+			err := d.cleanRemoteSOPAnswer(t.Context(), Task{TriggerCommentID: "answer", IssueID: issue, WorkspaceID: "workspace", AuthToken: "mat_scoped", TriggerCommentContent: "!sop-remote inspect " + string(body)})
 			if (err != nil) != scenario.denied || !reflect.DeepEqual(calls, scenario.calls) {
 				t.Fatalf("calls=%v err=%v", calls, err)
 			}

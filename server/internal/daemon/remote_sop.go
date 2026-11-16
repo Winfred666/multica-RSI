@@ -3,9 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -26,19 +24,23 @@ func (d *Daemon) executeRemoteSOP(ctx context.Context, task Task) (TaskResult, e
 		diagnostic = err.Error()
 	}
 	result := TaskMessageData{Seq: 2, CallID: task.TriggerCommentID, Type: "tool_result", Tool: "remote-sop", Output: output, Content: diagnostic, Input: map[string]any{"exit_code": code}, CreatedAt: time.Now().UTC()}
-	if code == 0 {
-		if err := d.updateRemoteSOPQuestion(ctx, task); err != nil {
-			result.Content = "questionnaire update: " + err.Error()
-			var denied *cli.HTTPError
-			if errors.As(err, &denied) && denied.Method == http.MethodPut && denied.StatusCode == http.StatusForbidden {
-				result.Input["questionnaire_edit_denied"] = true
-			}
-		}
+	if err != nil {
+		d.reportRemoteSOPError(ctx, task, output, err)
 	}
+
 	if err := d.client.ReportTaskMessages(ctx, task.ID, []TaskMessageData{{Seq: 1, CallID: task.TriggerCommentID, Type: "tool_use", Tool: "remote-sop", Content: task.TriggerCommentContent, CreatedAt: time.Now().UTC()}, result}); err != nil {
 		d.logger.Error("remote SOP result failed", "task_id", task.ID, "error", err)
 	}
 	return TaskResult{Status: "completed"}, err
+}
+
+// TODO: Stage 4: SoP as first-class member: use a special ACP command executor inside the daemon.
+func (d *Daemon) reportRemoteSOPError(ctx context.Context, task Task, output string, err error) {
+	client := cli.NewAPIClient(d.cfg.ServerBaseURL, task.WorkspaceID, d.client.token)
+	client.AgentID = task.AgentID
+	if postErr := client.PostJSON(ctx, "/api/issues/"+url.PathEscape(task.IssueID)+"/comments", map[string]any{"content": "/note SoP command failed:\n" + output + "\n" + err.Error()}, nil); postErr != nil {
+		d.logger.Error("remote SOP exception comment failed", "task_id", task.ID, "error", postErr)
+	}
 }
 
 type remoteSOPCommand struct {
@@ -46,6 +48,7 @@ type remoteSOPCommand struct {
 	QuestionCommentID string   `json:"que_comment_id,omitempty"`
 }
 
+// TODO: Stage 4: SoP as first-class member: use a special ACP command executor inside the daemon.
 func (d *Daemon) runRemoteSOP(ctx context.Context, task Task) (string, int, error) {
 	name, payload, _ := strings.Cut(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(task.TriggerCommentContent), "!sop-remote")), " ")
 	var command remoteSOPCommand
@@ -55,7 +58,7 @@ func (d *Daemon) runRemoteSOP(ctx context.Context, task Task) (string, int, erro
 	var issue struct {
 		Metadata map[string]string `json:"metadata"`
 	}
-	client := cli.NewAPIClient(d.cfg.ServerBaseURL, task.WorkspaceID, task.AuthToken)
+	client := cli.NewAPIClient(d.cfg.ServerBaseURL, task.WorkspaceID, d.client.token)
 	if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(remoteSOPIssue(task, command)), &issue); err != nil {
 		return "", 1, err
 	}
@@ -72,7 +75,7 @@ func (d *Daemon) runRemoteSOP(ctx context.Context, task Task) (string, int, erro
 	process.Dir = state.WorkDir
 	process.Env = append(os.Environ(), "MULTICA_AGENT_ID="+task.AgentID,
 		"MULTICA_ISSUE_ID="+task.IssueID, "MULTICA_WORKSPACE_ID="+task.WorkspaceID,
-		"MULTICA_TOKEN="+task.AuthToken, "MULTICA_SERVER_URL="+d.cfg.ServerBaseURL)
+		"MULTICA_TOKEN="+d.client.token, "MULTICA_SERVER_URL="+d.cfg.ServerBaseURL)
 	output, err := process.CombinedOutput()
 	code := 0
 	if err != nil {
@@ -97,7 +100,8 @@ func remoteSOPIssue(task Task, command remoteSOPCommand) string {
 	return issue
 }
 
-func (d *Daemon) updateRemoteSOPQuestion(ctx context.Context, task Task) error {
+// TODO: Stage 4: SoP as first-class member: use a special ACP command executor inside the daemon.
+func (d *Daemon) cleanRemoteSOPAnswer(ctx context.Context, task Task) error {
 	name, payload, _ := strings.Cut(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(task.TriggerCommentContent), "!sop-remote")), " ")
 	var command remoteSOPCommand
 	if err := json.Unmarshal([]byte(payload), &command); err != nil {
@@ -106,7 +110,7 @@ func (d *Daemon) updateRemoteSOPQuestion(ctx context.Context, task Task) error {
 	if command.QuestionCommentID == "" {
 		return nil
 	}
-	client := cli.NewAPIClient(d.cfg.ServerBaseURL, task.WorkspaceID, task.AuthToken)
+	client := cli.NewAPIClient(d.cfg.ServerBaseURL, task.WorkspaceID, d.client.token)
 	type comment struct {
 		ID       string `json:"id"`
 		Content  string `json:"content"`
@@ -149,7 +153,7 @@ func (d *Daemon) updateRemoteSOPQuestion(ctx context.Context, task Task) error {
 			}
 		}
 		if forwardID == "" {
-			return nil
+			return client.DeleteJSON(ctx, "/api/comments/"+url.PathEscape(task.TriggerCommentID)+"/keep-replies")
 		}
 		_, destination, _ := strings.Cut(header, "!sop-render "+name+" ")
 		var target struct {
@@ -172,9 +176,12 @@ func (d *Daemon) updateRemoteSOPQuestion(ctx context.Context, task Task) error {
 					lines[i] = strings.TrimSuffix(link, ")")
 				}
 			}
-			return client.PutJSON(ctx, "/api/comments/"+url.PathEscape(forward.ID), map[string]any{
+			if err := client.PutJSON(ctx, "/api/comments/"+url.PathEscape(forward.ID), map[string]any{
 				"content": strings.Join(lines, "\n") + "\n\n" + content, "expected_revision": forward.Revision,
-			}, nil)
+			}, nil); err != nil {
+				return err
+			}
+			return client.DeleteJSON(ctx, "/api/comments/"+url.PathEscape(task.TriggerCommentID)+"/keep-replies")
 		}
 		return fmt.Errorf("forwarding comment %s is missing", forwardID)
 	}

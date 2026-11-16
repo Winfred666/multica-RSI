@@ -421,10 +421,12 @@ workflow = Workflow(
                 self.assertEqual(writes[0][0][:3], ('comment', 'add', 'source'))
                 self.assertEqual(writes[0][0][-2:], ('--parent', 'source-thread'))
                 self.assertEqual(writes[-1][0][:5], ('comment', 'update', 'question', '--expected-revision', '1'))
+                self.assertTrue(writes[-1][1].startswith('!sop-render '))
                 question = json.loads(writes[-1][1].split('\n', 1)[1])
                 self.assertEqual(question['que_comment_id'], 'question')
                 self.assertTrue(question['next_step'][0]['command'].endswith('--issue source'))
                 self.assertIn("multica issue comment add source --parent '<this-comment-id>'", question['how_to_step'])
+                self.assertIn('Save !sop-remote ', question['how_to_step'])
                 self.assertNotIn('how_to_step', rendered)
                 self.assertEqual(len(writes), 2 if destination == 'source' else 3)
                 if destination != 'source':
