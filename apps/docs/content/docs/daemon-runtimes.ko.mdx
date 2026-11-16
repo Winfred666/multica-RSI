@@ -109,26 +109,11 @@ multica daemon autostart disable
 
 ## 로컬 MCP 설정 [#local-mcp]
 
-에이전트에 MCP 설정이 저장되어 있지 않으면 Multica는 MCP 설정을 전혀 전달하지 않고, 도구는 평소처럼 그 컴퓨터에 있는 자체 설정을 읽습니다.
+태스크 MCP 서버는 런타임에서 상속한 설정에 추가되며, 기존 서버 목록 전체를 대체하지 않습니다. Claude Code, Codex, Pi, CodeBuddy, Qoder, Qoder CN 및 다른 MCP 지원 런타임에 공통으로 적용됩니다. 태스크 설정이 없거나 `null` 또는 빈 객체여도 기존 서버는 삭제되지 않습니다. 이름이 같으면 태스크 항목이 우선하며, 나머지 상속 항목은 유지됩니다.
 
-에이전트에 MCP 설정이 있으면(빈 설정이라도) Multica는 실행마다 전용 설정을 만들어 도구에 넘깁니다. 예를 들어 Claude Code는 strict 모드로 이 설정만 읽습니다. 컴퓨터에 이미 있던 서버가 이 때문에 쓸 수 없게 되지 않도록, 데몬은 런타임 컴퓨터에서 도구의 사용자 수준 MCP 설정을 읽어 에이전트 설정과 병합합니다. 이름이 같은 서버는 다음 순서에서 먼저 나오는 것을 씁니다.
+데몬은 런타임의 기본 병합 기능을 사용하거나 태스크 전용 설정에 합집합을 만듭니다. 사용자의 원본 설정 파일은 수정하지 않습니다. 워크스페이스 라이브러리의 서버는 해당 에이전트에 할당되고 활성화되어야 전달됩니다. 지원하는 전송 방식은 런타임에 따라 다릅니다.
 
-1. 에이전트 **MCP** 탭에서 Multica가 관리하거나 워크스페이스 MCP 라이브러리에서 할당한 서버
-2. 도구의 사용자 수준 설정 파일
-3. Claude Code만 해당: 활성화된 Claude Code 플러그인에 포함된 MCP 서버. 플러그인은 `~/.claude/settings.json`의 `enabledPlugins`에서 정해지며, 각 플러그인의 `.mcp.json`과 매니페스트에 선언된 MCP 파일을 읽습니다.
-
-| 도구 | 읽는 사용자 수준 설정 |
-|---|---|
-| Claude Code | `~/.claude.json`의 `mcpServers`와 활성화된 플러그인의 MCP 서버 |
-| Codex | `$CODEX_HOME/config.toml`(기본값 `~/.codex/config.toml`)의 `mcp_servers` |
-| Cursor Agent | `~/.cursor/mcp.json`의 `mcpServers` |
-| OpenCode | `$XDG_CONFIG_HOME/opencode/opencode.json`(기본값 `~/.config/opencode/opencode.json`)의 `mcp` |
-| OpenClaw | `$CLAWDBOT_CONFIG_PATH` 또는 `$OPENCLAW_STATE_DIR/openclaw.json`(기본값 `~/.openclaw/openclaw.json`)의 `mcp.servers` |
-| CodeArts | `~/.codeartsdoer/codearts_cli.json` 또는 `codearts_cli.jsonc`의 `mcp` |
-
-CodeBuddy, Kimi CLI, Pi는 시작할 때 사용자 수준 설정을 직접 읽고 Multica가 보낸 설정과 합칩니다. 데몬이 미리 병합하면 같은 서버가 두 번 시작되므로 이 도구들에는 병합하지 않습니다. CodeBuddy는 이름이 겹치면 Multica가 보낸 쪽을 씁니다. 표에 없는 다른 도구는 에이전트 설정만 받습니다.
-
-병합은 런타임 컴퓨터에서 이루어지며 로컬 서버의 명령, URL, 헤더, 환경 변수는 업로드되지 않습니다. 에이전트 **MCP** 탭의 "런타임에서 상속" 목록에는 서버 이름, 전송 방식, 출처, 활성화 여부만 표시되고, 에이전트의 같은 이름 서버에 가려진 항목에는 "Multica에서 재정의"가 표시됩니다. 로컬 설정 파일을 해석할 수 없으면 데몬은 경고를 로그에 남기고 해당 실행은 에이전트 설정만 사용합니다.
+병합은 런타임 컴퓨터에서만 이루어집니다. 로컬 명령, URL, 헤더, 환경 변수 값은 업로드되지 않습니다. 에이전트 **MCP** 탭에는 상속한 서버의 이름, 전송 방식, 출처, 활성화 상태만 표시됩니다.
 
 ## 정리와 보존 [#cleanup]
 

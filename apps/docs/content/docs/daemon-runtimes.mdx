@@ -109,26 +109,11 @@ Token usage, cost, and failures across runs are summarized per workspace on the 
 
 ## Local MCP configuration [#local-mcp]
 
-When an agent has no MCP configuration saved, Multica passes no MCP settings and the tool reads its own configuration on that computer as usual.
+Task MCP servers are added to the runtime's inherited configuration, never used to replace its server set. This applies to Claude Code, Codex, Pi, CodeBuddy, Qoder, Qoder CN, and the other MCP-capable runtimes. An absent, `null`, or empty task configuration removes nothing. A task entry with the same name takes precedence; unrelated inherited entries stay enabled.
 
-Once an agent has an MCP configuration (even an empty one), Multica generates a dedicated configuration for each run and hands it to the tool; Claude Code, for example, loads only that file in strict mode. So that servers already set up on the machine keep working, the daemon reads the tool's user-level MCP configuration on the runtime's computer and merges it with the agent's. For servers with the same name, the first source in this order wins:
+The daemon uses the runtime's native merge where available, or builds a task-local union. It never rewrites the user's original config. Workspace library servers reach an agent only when assigned and enabled; transport support still depends on the runtime.
 
-1. Servers managed by Multica or assigned from the workspace MCP library on the agent's **MCP** tab;
-2. The tool's user-level configuration file;
-3. Claude Code only: MCP servers bundled with enabled Claude Code plugins. Plugins come from `enabledPlugins` in `~/.claude/settings.json`; the daemon reads each plugin's `.mcp.json` and any MCP files its manifest declares.
-
-| Tool | User-level configuration read |
-|---|---|
-| Claude Code | `mcpServers` in `~/.claude.json`, plus MCP servers from enabled plugins |
-| Codex | `mcp_servers` in `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`) |
-| Cursor Agent | `mcpServers` in `~/.cursor/mcp.json` |
-| OpenCode | `mcp` in `$XDG_CONFIG_HOME/opencode/opencode.json` (default `~/.config/opencode/opencode.json`) |
-| OpenClaw | `mcp.servers` in `$CLAWDBOT_CONFIG_PATH`, or in `$OPENCLAW_STATE_DIR/openclaw.json` (default `~/.openclaw/openclaw.json`) |
-| CodeArts | `mcp` in `~/.codeartsdoer/codearts_cli.json` or `codearts_cli.jsonc` |
-
-CodeBuddy, Kimi CLI, and Pi load their user-level configuration themselves at startup and combine it with what Multica sends, so the daemon does not pre-merge for them; doing so would start the same server twice. CodeBuddy keeps the Multica entry when names collide. Other tools not in the table receive only the agent's configuration.
-
-The merge happens on the runtime's computer; the commands, URLs, headers, and environment values of local servers are never uploaded. The "Inherited from runtime" list on the agent's **MCP** tab shows only each server's name, transport, source, and whether it is enabled; one shadowed by a same-named agent server is marked "Overridden by Multica". If a local configuration file cannot be parsed, the daemon logs a warning and that run uses only the agent's configuration.
+The merge stays on the runtime's computer. Local commands, URLs, headers, and environment values are not uploaded. The agent's **MCP** tab shows only inherited server names, transports, sources, and enabled state.
 
 ## Cleanup and retention [#cleanup]
 

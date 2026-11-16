@@ -289,13 +289,13 @@ Two ways `mcp_config` differs from `custom_env`:
 - **It IS settable through `agent update`.** Unlike `custom_env`, `mcp_config`
   has no dedicated audited endpoint — the generic `PUT /api/agents/{id}` accepts
   it. Tri-state per the raw request body: field omitted → no change; `null` →
-  clear; object → replace.
+  clear the saved agent additions; object → replace those saved additions. Neither clears runtime MCP servers.
 - **It is serialized on read, but redacted.** `agent get`/`list` return
   `mcp_config` only to callers allowed to view agent secrets; otherwise the
   field is `null` and `mcp_config_redacted` is `true`. Agent actors never see
   it, and a workspace may force redaction for everyone.
 
-Provider support is not uniform: Qwen Code accepts a managed `mcp_config` through a daemon-owned 0600 temporary JSON file passed with `--mcp-config`; it is removed when the run exits. Leave the field unset (`null`) to inherit Qwen Code native settings.
+Task MCP entries union with inherited runtime entries for all MCP-capable agents, including Claude Code, Codex, Pi, CodeBuddy, Qoder and Qoder CN. Null or empty task config removes nothing. The runtime's original config is never rewritten; transport support remains provider-specific.
 
 #### Workspace MCP servers
 
@@ -315,15 +315,12 @@ At claim time the effective set is:
 
 | Layer | Reaches the agent when |
 | --- | --- |
-| runtime-local servers | always (the daemon merges the runtime's own file) |
+| runtime-local servers | inherited through native loading or a task-local merge |
 | workspace servers | assigned to THIS agent and left enabled |
 | the agent's own `mcp_config` | always; it WINS on a name collision |
 
-Two consequences worth knowing before writing an agent's config: assigning a
-shared server does not require re-listing it in `mcp_config` (they merge), and
-`mcp_config` is now only about servers private to that agent — a
-managed-but-empty `{}` no longer means anything about the workspace layer,
-because nothing is inherited in the first place.
+Assigning a shared server does not require re-listing it in `mcp_config`.
+An empty `{}` adds no private servers and removes no inherited or assigned servers.
 
 The stored entry is **write-only** — reads return the server's name and
 transport, never urls, commands, headers, or env, for any role.

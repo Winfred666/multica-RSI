@@ -25,11 +25,12 @@ type codebuddyBackend struct {
 // overridden by user-configured custom_args. Overriding these would break
 // the daemon↔codebuddy communication protocol.
 var codebuddyBlockedArgs = map[string]blockedArgMode{
-	"-p":                blockedStandalone, // non-interactive mode
-	"--output-format":   blockedWithValue,  // stream-json protocol
-	"--input-format":    blockedWithValue,  // stream-json protocol
-	"--permission-mode": blockedWithValue,  // bypassPermissions for autonomous operation
-	"--mcp-config":      blockedWithValue,  // set by daemon from agent.mcp_config
+	"--strict-mcp-config": blockedStandalone, // task MCP always unions with native config
+	"-p":                  blockedStandalone, // non-interactive mode
+	"--output-format":     blockedWithValue,  // stream-json protocol
+	"--input-format":      blockedWithValue,  // stream-json protocol
+	"--permission-mode":   blockedWithValue,  // bypassPermissions for autonomous operation
+	"--mcp-config":        blockedWithValue,  // set by daemon from agent.mcp_config
 	// `--effort` is owned by the per-agent thinking_level picker so a
 	// user-supplied custom_arg cannot silently outvote it.
 	"--effort": blockedWithValue,
@@ -59,20 +60,6 @@ func buildCodebuddyArgs(opts ExecOptions, logger *slog.Logger) []string {
 		// would match nothing despite what the CLI's own help text claims.
 		"--disallowedTools", "AskUserQuestion", "EnterPlanMode", "ExitPlanMode",
 	}
-	// NOTE: --strict-mcp-config is deliberately never passed. It means "only
-	// use servers from --mcp-config", which drops CodeBuddy's user, project
-	// AND local scopes. Measured against CodeBuddy 2.x with one real MCP
-	// server registered per scope, using process spawns as the oracle:
-	//
-	//	--mcp-config only ....... managed + user + local  <- what we want
-	//	--mcp-config + strict ... managed only
-	//	strict only ............. nothing at all
-	//
-	// The union is also what mergeRuntimeAndAgentMcpConfig promises: adding
-	// one managed server must not disable the user's own. CodeBuddy applies
-	// it natively, and a managed entry already wins a same-name collision
-	// (verified), so the daemon does not pre-merge — see the codebuddy note
-	// in loadRuntimeMcpServerConfigs.
 	if opts.Model != "" {
 		args = append(args, "--model", opts.Model)
 	}
@@ -107,15 +94,7 @@ func (b *codebuddyBackend) Execute(ctx context.Context, prompt string, opts Exec
 
 	args := buildCodebuddyArgs(opts, b.cfg.Logger)
 
-	// A managed agent config is written to a temp file and added with
-	// --mcp-config, which ADDS to whatever CodeBuddy loads from its own user,
-	// project and local scopes — buildCodebuddyArgs never passes
-	// --strict-mcp-config, so those stay on. A managed entry wins a same-name
-	// collision natively.
-	//
-	// Three-state, as everywhere else: a JSON `null` means "inherit the runtime
-	// configuration" and skips the flag entirely, while an explicitly empty
-	// object is a managed set that happens to contain no servers.
+	// --mcp-config adds task servers to CodeBuddy's native user/project scopes.
 	var mcpConfigPath string
 	var mcpFileCleanup func()
 	if hasManagedMcpConfig(opts.McpConfig) {

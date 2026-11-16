@@ -348,7 +348,7 @@ func TestQoderBackendInvokesACPFlagAndFiltersBlockedArgs(t *testing.T) {
 	session, err := backend.Execute(ctx, "prompt-ignored", ExecOptions{
 		Model:      "bogus-model",
 		Timeout:    30 * time.Second,
-		CustomArgs: []string{"--acp", "acp", "--yolo", "--model", "extra"},
+		CustomArgs: []string{"--strict-mcp-config", "--acp", "acp", "--yolo", "--model", "extra"},
 	})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -370,7 +370,7 @@ func TestQoderBackendInvokesACPFlagAndFiltersBlockedArgs(t *testing.T) {
 	if lines[0] != "--yolo" || lines[1] != "--acp" {
 		t.Fatalf("arg[0], arg[1] = %q, %q, want --yolo and --acp (full: %q)", lines[0], lines[1], lines)
 	}
-	for _, blocked := range []string{"acp"} {
+	for _, blocked := range []string{"acp", "--strict-mcp-config"} {
 		for _, got := range lines[2:] {
 			if got == blocked {
 				t.Errorf("custom_args must not inject standalone %q after daemon argv: %q", blocked, lines)

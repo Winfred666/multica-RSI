@@ -109,26 +109,11 @@ multica daemon autostart disable
 
 ## ローカルの MCP 設定 [#local-mcp]
 
-エージェントに MCP 設定が保存されていない場合、Multica は MCP の設定を何も渡さず、ツールはそのコンピューター上の自身の設定をいつもどおり読み込みます。
+タスクの MCP サーバーはランタイムから継承した設定に追加され、サーバー一覧全体を置き換えません。Claude Code、Codex、Pi、CodeBuddy、Qoder、Qoder CN などの MCP 対応ランタイムに共通です。タスク設定が未指定、`null`、空の場合も継承済みサーバーは削除されません。同じ名前ではタスク側の設定が優先され、他の継承済みサーバーは維持されます。
 
-エージェントに MCP 設定があると（空の設定でも）、Multica は実行ごとに専用の設定を作ってツールに渡します。たとえば Claude Code は strict モードでこの設定だけを読み込みます。マシンにすでにあるサーバーが使えなくならないよう、デーモンはランタイムのコンピューター上でツールのユーザーレベルの MCP 設定を読み、エージェントの設定と統合します。同じ名前のサーバーは、次の順で先にあるものが使われます。
+デーモンはランタイムのネイティブな統合機能を使うか、タスク専用の設定を統合します。ユーザーの元の設定ファイルは書き換えません。ワークスペースのライブラリにあるサーバーは、エージェントに割り当てられ有効になっている場合だけ渡されます。利用できるトランスポートはランタイムに依存します。
 
-1. エージェントの **MCP** タブで Multica が管理しているサーバー、またはワークスペースの MCP ライブラリから割り当てたサーバー
-2. ツールのユーザーレベルの設定ファイル
-3. Claude Code のみ：有効な Claude Code プラグインに含まれる MCP サーバー。プラグインは `~/.claude/settings.json` の `enabledPlugins` から決まり、各プラグインの `.mcp.json` とマニフェストで宣言された MCP ファイルを読みます。
-
-| ツール | 読み込むユーザーレベルの設定 |
-|---|---|
-| Claude Code | `~/.claude.json` の `mcpServers` と、有効なプラグインの MCP サーバー |
-| Codex | `$CODEX_HOME/config.toml`（既定は `~/.codex/config.toml`）の `mcp_servers` |
-| Cursor Agent | `~/.cursor/mcp.json` の `mcpServers` |
-| OpenCode | `$XDG_CONFIG_HOME/opencode/opencode.json`（既定は `~/.config/opencode/opencode.json`）の `mcp` |
-| OpenClaw | `$CLAWDBOT_CONFIG_PATH`、または `$OPENCLAW_STATE_DIR/openclaw.json`（既定は `~/.openclaw/openclaw.json`）の `mcp.servers` |
-| CodeArts | `~/.codeartsdoer/codearts_cli.json` または `codearts_cli.jsonc` の `mcp` |
-
-CodeBuddy、Kimi CLI、Pi は起動時に自分でユーザーレベルの設定を読み込み、Multica が渡す設定と組み合わせます。デーモンが先に統合すると同じサーバーが 2 回起動するため、これらのツールでは統合しません。CodeBuddy は名前が重なった場合 Multica が渡した方を使います。表にないほかのツールは、エージェントの設定だけを受け取ります。
-
-統合はランタイムのコンピューター上で行われ、ローカルのサーバーのコマンド、URL、ヘッダー、環境変数はアップロードされません。エージェントの **MCP** タブの「ランタイムから継承」には、サーバー名、トランスポート、取得元、有効かどうかだけが表示されます。エージェント側の同名サーバーに上書きされたものには「Multica で上書き」と表示されます。ローカルの設定ファイルを解析できない場合、デーモンは警告をログに残し、その実行はエージェントの設定だけを使います。
+統合はランタイムのコンピューター内で行います。ローカルのコマンド、URL、ヘッダー、環境変数の値はアップロードしません。エージェントの **MCP** タブには、継承したサーバーの名前、トランスポート、出所、有効状態だけを表示します。
 
 ## クリーンアップと保持 [#cleanup]
 

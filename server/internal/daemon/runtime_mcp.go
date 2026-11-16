@@ -23,22 +23,11 @@ type runtimeLocalMcpServerSummary struct {
 	Enabled   bool   `json:"enabled"`
 }
 
-// mergeRuntimeAndAgentMcpConfig builds the task-local MCP configuration used
-// when an agent has MCP servers managed by Multica. Runtime servers are the
-// base layer and the agent's entries win on a same-name collision. The merge
-// happens inside the local daemon so runtime URLs, headers, commands, and env
-// values never need to leave the machine.
-//
-// A nil/null agent config keeps the provider's native inheritance path intact.
-// A present config (including an empty mcpServers map) opts into the merged,
-// task-local config so adding one managed server no longer disables unrelated
-// runtime servers.
+// mergeRuntimeAndAgentMcpConfig unions runtime and task servers locally for
+// adapters that need a materialized config. Task entries win by name; other
+// providers merge task additions through their native loaders.
 func mergeRuntimeAndAgentMcpConfig(provider string, agentConfig json.RawMessage) (json.RawMessage, error) {
 	trimmed := bytes.TrimSpace(agentConfig)
-	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
-		return agentConfig, nil
-	}
-
 	runtimeServers, supported, err := loadRuntimeMcpServerConfigs(provider)
 	if err != nil {
 		return nil, err
@@ -48,8 +37,10 @@ func mergeRuntimeAndAgentMcpConfig(provider string, agentConfig json.RawMessage)
 	}
 
 	var agentDocument map[string]any
-	if err := json.Unmarshal(trimmed, &agentDocument); err != nil {
-		return nil, fmt.Errorf("parse agent MCP config: %w", err)
+	if len(trimmed) > 0 {
+		if err := json.Unmarshal(trimmed, &agentDocument); err != nil {
+			return nil, fmt.Errorf("parse agent MCP config: %w", err)
+		}
 	}
 	agentServers := map[string]any{}
 	if servers, ok := nestedRuntimeMcpMap(agentDocument, "mcpServers"); ok {
@@ -267,22 +258,8 @@ func loadRuntimeMcpServerConfigs(provider string) (map[string]any, bool, error) 
 
 	var path, key, format string
 	switch provider {
-	case "claude":
-		path, key, format = filepath.Join(home, ".claude.json"), "mcpServers", "json"
 	case "codearts":
 		path, key, format = codeArtsUserConfigPath(home), "mcp", "jsonc"
-	// codebuddy is deliberately absent. CodeBuddy loads its own user, project
-	// and local scopes on every launch (codebuddy.go never passes
-	// --strict-mcp-config), and a managed entry already wins a same-name
-	// collision, so the daemon pre-merging them would only duplicate what the
-	// CLI does natively — while losing the scope precedence and the approval
-	// gate that protects project-scope servers.
-	case "codex":
-		codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
-		if codexHome == "" {
-			codexHome = filepath.Join(home, ".codex")
-		}
-		path, key, format = filepath.Join(codexHome, "config.toml"), "mcp_servers", "toml"
 	case "cursor":
 		path, key, format = filepath.Join(home, ".cursor", "mcp.json"), "mcpServers", "json"
 	case "opencode":
@@ -291,20 +268,8 @@ func loadRuntimeMcpServerConfigs(provider string) (map[string]any, bool, error) 
 			configHome = filepath.Join(home, ".config")
 		}
 		path, key, format = filepath.Join(configHome, "opencode", "opencode.json"), "mcp", "json"
-	case "openclaw":
-		path = strings.TrimSpace(os.Getenv("CLAWDBOT_CONFIG_PATH"))
-		if path == "" {
-			stateDir := strings.TrimSpace(os.Getenv("OPENCLAW_STATE_DIR"))
-			if stateDir == "" {
-				stateDir = filepath.Join(home, ".openclaw")
-			}
-			path = filepath.Join(stateDir, "openclaw.json")
-		}
-		key, format = "mcp.servers", "json"
 	default:
-		// pi is intentionally absent. The CLI reads ~/.pi/agent/mcp.json on its
-		// own, and a project .pi/mcp.json replaces entries with the same name.
-		// Copying the user file into the task file would start those servers twice.
+		// Native loaders retain runtime scopes, plugin configuration and approvals.
 		return map[string]any{}, false, nil
 	}
 
@@ -322,76 +287,14 @@ func loadRuntimeMcpServerConfigs(provider string) (map[string]any, bool, error) 
 				if server, ok := entry.(map[string]any); provider == "opencode" && ok && server["disabled"] == true {
 					continue
 				}
-				servers[name] = normalizeRuntimeMcpEntry(provider, entry)
+				servers[name] = entry
 			}
 		}
 	} else if !os.IsNotExist(err) {
 		return nil, true, fmt.Errorf("read runtime MCP config: %w", err)
 	}
 
-	if provider == "claude" {
-		// User configuration has the same precedence Claude uses: plugin
-		// servers only fill names not already defined by the user.
-		for name, entry := range loadClaudePluginMcpServerConfigs(home) {
-			if _, exists := servers[name]; !exists {
-				servers[name] = entry
-			}
-		}
-	}
 	return servers, true, nil
-}
-
-func normalizeRuntimeMcpEntry(provider string, value any) any {
-	entry, ok := value.(map[string]any)
-	if !ok || provider != "codex" {
-		return value
-	}
-	// Multica's canonical remote shape calls these `headers`; Codex stores
-	// them as `http_headers`. Keep the original key as well so less common
-	// Codex-specific settings round-trip through renderCodexMcpServersBlock.
-	if headers, ok := entry["http_headers"]; ok {
-		if _, exists := entry["headers"]; !exists {
-			entry["headers"] = headers
-		}
-	}
-	if _, hasURL := entry["url"]; hasURL {
-		if _, hasType := entry["type"]; !hasType {
-			entry["type"] = "http"
-		}
-	}
-	return entry
-}
-
-func loadClaudePluginMcpServerConfigs(home string) map[string]any {
-	out := map[string]any{}
-	for _, plugin := range listEnabledClaudePlugins(home) {
-		manifest, _ := readClaudePluginManifest(plugin.InstallPath)
-		paths := claudePluginComponentPaths(
-			plugin.InstallPath,
-			manifest.MCPServers,
-			filepath.Join(plugin.InstallPath, ".mcp.json"),
-		)
-		for _, path := range paths {
-			raw, err := os.ReadFile(path)
-			if err != nil {
-				continue
-			}
-			var cfg map[string]any
-			if json.Unmarshal(raw, &cfg) != nil {
-				continue
-			}
-			servers, ok := nestedRuntimeMcpMap(cfg, "mcpServers")
-			if !ok {
-				continue
-			}
-			for name, entry := range servers {
-				if _, exists := out[name]; !exists {
-					out[name] = entry
-				}
-			}
-		}
-	}
-	return out
 }
 
 func listRuntimeLocalMcpServers(provider string) ([]runtimeLocalMcpServerSummary, bool, error) {

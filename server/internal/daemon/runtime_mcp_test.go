@@ -183,100 +183,6 @@ func TestMergeRuntimeAndAgentMcpConfigOmpUsesAgentConfig(t *testing.T) {
 	}
 }
 
-func TestMergeRuntimeAndAgentMcpConfigClaudeCombinesAndAgentWins(t *testing.T) {
-	home := t.TempDir()
-	redirectTestHome(t, home)
-	runtimeConfig := `{"mcpServers":{"runtime-only":{"command":"runtime-cmd","env":{"TOKEN":"local-secret"}},"shared":{"command":"runtime-shared"}}}`
-	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(runtimeConfig), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	installPath := writeTestClaudePlugin(t, home, "paper-desktop@paper", "paper-desktop", true)
-	if err := os.WriteFile(filepath.Join(installPath, "mcp.json"), []byte(`{"mcpServers":{"paper":{"type":"http","url":"http://127.0.0.1:29979/mcp"}}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	merged, err := mergeRuntimeAndAgentMcpConfig("claude", json.RawMessage(`{"mcpServers":{"shared":{"command":"agent-shared"},"agent-only":{"url":"https://agent.example/mcp"}}}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var document struct {
-		McpServers map[string]map[string]any `json:"mcpServers"`
-	}
-	if err := json.Unmarshal(merged, &document); err != nil {
-		t.Fatal(err)
-	}
-	if len(document.McpServers) != 4 {
-		t.Fatalf("merged servers = %#v", document.McpServers)
-	}
-	if got := document.McpServers["shared"]["command"]; got != "agent-shared" {
-		t.Fatalf("shared command = %#v, want agent-shared", got)
-	}
-	if got := document.McpServers["runtime-only"]["command"]; got != "runtime-cmd" {
-		t.Fatalf("runtime-only command = %#v", got)
-	}
-	if got := document.McpServers["runtime-only"]["env"].(map[string]any)["TOKEN"]; got != "local-secret" {
-		t.Fatalf("runtime secret was not preserved locally: %#v", got)
-	}
-	if got := document.McpServers["paper"]["url"]; got != "http://127.0.0.1:29979/mcp" {
-		t.Fatalf("plugin server url = %#v", got)
-	}
-}
-
-func TestMergeRuntimeAndAgentMcpConfigCodexNormalizesHeaders(t *testing.T) {
-	home := t.TempDir()
-	redirectTestHome(t, home)
-	t.Setenv("CODEX_HOME", "")
-	configDir := filepath.Join(home, ".codex")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	config := `[mcp_servers.docs]
-url = "https://runtime.example/mcp"
-http_headers = { Authorization = "Bearer local-secret" }
-
-[mcp_servers.fetch]
-command = "uvx"
-args = ["mcp-server-fetch"]
-`
-	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	merged, err := mergeRuntimeAndAgentMcpConfig("codex", json.RawMessage(`{"mcpServers":{"agent":{"command":"node","args":["agent.js"]}}}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var document struct {
-		McpServers map[string]map[string]any `json:"mcpServers"`
-	}
-	if err := json.Unmarshal(merged, &document); err != nil {
-		t.Fatal(err)
-	}
-	if len(document.McpServers) != 3 {
-		t.Fatalf("merged servers = %#v", document.McpServers)
-	}
-	if got := document.McpServers["docs"]["type"]; got != "http" {
-		t.Fatalf("docs type = %#v", got)
-	}
-	headers := document.McpServers["docs"]["headers"].(map[string]any)
-	if got := headers["Authorization"]; got != "Bearer local-secret" {
-		t.Fatalf("docs Authorization = %#v", got)
-	}
-}
-
-func TestMergeRuntimeAndAgentMcpConfigNullKeepsNativeInheritance(t *testing.T) {
-	redirectTestHome(t, t.TempDir())
-	for _, raw := range []json.RawMessage{nil, json.RawMessage("null"), json.RawMessage(" null ")} {
-		merged, err := mergeRuntimeAndAgentMcpConfig("claude", raw)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(merged) != string(raw) {
-			t.Fatalf("merged %q = %q", string(raw), string(merged))
-		}
-	}
-}
-
 func TestCodeArtsMcpConfigLoadsJSONCAndAgentWins(t *testing.T) {
 	home := t.TempDir()
 	redirectTestHome(t, home)
@@ -431,28 +337,15 @@ func TestListRuntimeLocalMcpServersCodebuddyReadsItsOwnConfig(t *testing.T) {
 	}
 }
 
-// CodeBuddy loads its own user/project/local scopes on every launch, so the
-// daemon must NOT pre-merge them: doing so would duplicate the CLI's own work
-// while losing scope precedence and the project-scope approval gate.
-func TestMergeRuntimeAndAgentMcpConfigCodebuddyIsPassthrough(t *testing.T) {
-	home := t.TempDir()
-	redirectTestHome(t, home)
-	t.Setenv("CODEBUDDY_CONFIG_DIR", "")
-	configDir := filepath.Join(home, ".codebuddy")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(configDir, ".mcp.json"), []byte(`{"mcpServers":{"local-only":{"command":"local-cmd"}}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	agentConfig := json.RawMessage(`{"mcpServers":{"agent-only":{"command":"agent-cmd"}}}`)
-	merged, err := mergeRuntimeAndAgentMcpConfig("codebuddy", agentConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(merged) != string(agentConfig) {
-		t.Fatalf("codebuddy merge must be a passthrough, got %s", merged)
+func TestMergeRuntimeAndAgentMcpConfigNativeLoaders(t *testing.T) {
+	redirectTestHome(t, t.TempDir())
+	for _, provider := range []string{"claude", "codex", "pi", "codebuddy", "kimi", "qoder", "qoderclicn", "openclaw"} {
+		for _, raw := range []json.RawMessage{nil, json.RawMessage(`null`), json.RawMessage(`{}`), json.RawMessage(`{"mcpServers":{"task":{"command":"task"}}}`)} {
+			merged, err := mergeRuntimeAndAgentMcpConfig(provider, raw)
+			if err != nil || string(merged) != string(raw) {
+				t.Fatalf("%s native additions changed: %s, err=%v", provider, merged, err)
+			}
+		}
 	}
 }
 

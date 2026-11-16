@@ -57,7 +57,7 @@ func TestBuildCodebuddyArgsNeverPassesStrictMCP(t *testing.T) {
 		json.RawMessage(`{}`),
 		json.RawMessage(`{"mcpServers":{"paper":{"command":"paper"}}}`),
 	} {
-		args := buildCodebuddyArgs(ExecOptions{McpConfig: mcpConfig}, slog.Default())
+		args := buildCodebuddyArgs(ExecOptions{CustomArgs: []string{"--strict-mcp-config"}, McpConfig: mcpConfig}, slog.Default())
 		for _, arg := range args {
 			if arg == "--strict-mcp-config" {
 				t.Fatalf("mcp_config %q must not disable CodeBuddy's own MCP scopes, got %v", string(mcpConfig), args)

@@ -18,9 +18,10 @@ import (
 // always runs in bypass-permissions mode (see Qoder ACP docs). The legacy `acp`
 // subcommand style is blocked so custom_args cannot switch the binary mode.
 var qoderBlockedArgs = map[string]blockedArgMode{
-	"--acp":  blockedStandalone,
-	"acp":    blockedStandalone,
-	"--yolo": blockedStandalone,
+	"--strict-mcp-config": blockedStandalone, // task MCP always unions with native config
+	"--acp":               blockedStandalone,
+	"acp":                 blockedStandalone,
+	"--yolo":              blockedStandalone,
 }
 
 // qoderBackend implements Backend for both Qoder CLI binaries by spawning

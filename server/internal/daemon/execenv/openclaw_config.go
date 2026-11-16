@@ -22,31 +22,6 @@ import (
 // the rest of the task env.
 const openclawConfigFile = "openclaw-config.json"
 
-// openclawMcpResetFile holds exactly `{"mcp":{"servers":null}}` and is included
-// after the user's live config whenever the agent has a managed mcp_config.
-//
-// One key, and nothing else, is the whole design. OpenClaw's include merge is
-// recursive for objects and replacing for a primitive or null source, so nulling
-// `mcp.servers` clears the user's server map while every sibling under `mcp`
-// continues to arrive from the live config untouched — this code never reads,
-// rewrites or re-emits them. That is what keeps a sibling this daemon has never
-// heard of correct, and what makes it impossible to write a redacted display
-// value back over a working one.
-//
-// The wrapper's own `mcp.servers` then merges over the include result and becomes
-// the only server definition. Because the reset is written only when the wrapper
-// carries that key, the null cannot survive to the resolved root, where
-// OpenClaw's schema would reject it (zod `.strict().optional()` rejects null).
-// TestPrepareOpenclawConfigResetStagePairsWithWrapperMcp pins that pairing.
-//
-// Lives in envRoot at 0o600 next to the wrapper. It carries no user data at all.
-const openclawMcpResetFile = "openclaw-mcp-reset.json"
-
-// openclawMcpResetBody is that file's entire content. A literal rather than a
-// marshalled map: the point of this stage is that it names exactly one key, and a
-// literal is the form a reader can check against the design in one glance.
-const openclawMcpResetBody = "{\n  \"mcp\": {\n    \"servers\": null\n  }\n}\n"
-
 // openclawCLITimeout bounds each setup CLI call with headroom for slower hosts;
 // MULTICA_OPENCLAW_CLI_TIMEOUT overrides it. The serial call budget must fit the
 // outer preparation deadline.
@@ -101,12 +76,8 @@ const (
 //  3. `agents list --json`              — 2026.6+ registry fallback, only
 //     reached when (2) reports that neither config path exists
 //
-// It was four until managed MCP stopped reading the user's config: the reset
-// stage is a file this package writes, so a managed-MCP agent now costs the same
-// CLI time as any other. Adding a fourth deadline-bearing step means re-deriving
-// the ceiling. The worst-case test counts distinct deadlines rather than calls,
-// so a new invocation that shares an existing budget is free and one that brings
-// its own fails loudly.
+// Task MCP additions require no config-read CLI call. A new independent CLI
+// deadline must stay within the preparation ceiling.
 const openclawMaxCLIDeadlinesPerPreparation = 3
 
 // ErrOpenclawCLITimeout marks a task preparation that failed because the local
@@ -301,33 +272,13 @@ func prepareOpenclawConfig(envRoot, workDir string, opts OpenclawConfigPrep) (Op
 			"reported_path", activePath)
 	}
 
-	// Parse the agent's managed mcp_config (if any) before writing the wrapper
-	// so a malformed value fails the prepare step rather than crashing the
-	// openclaw subprocess later. Same fail-closed posture as Codex's
-	// ensureCodexMcpConfig — silent fallback to the user's global mcp.servers
-	// would be indistinguishable from "the managed set applied" and is exactly
-	// the surprise the MCP Tab is supposed to remove.
+	// Reject malformed task additions before launching OpenClaw.
 	managedMcp, hasManagedMcp, err := openclawManagedMcpServers(opts.McpConfig)
 	if err != nil {
 		return OpenclawConfigResult{}, fmt.Errorf("render openclaw mcp_config: %w", err)
 	}
 
-	// Replace managed MCP servers through ordered includes:
-	// live config -> mcp.servers: null -> managed servers.
-	//
-	// Deep merge alone would retain user-only servers, including for an empty managed
-	// set. Include the live config rather than snapshotting config-get output, which
-	// redacts secrets and cannot be round-tripped losslessly. OpenClaw's loader keeps
-	// MCP siblings, nested includes, environment substitution, and user config intact.
-	resetPath := ""
-	if hasManagedMcp && exists {
-		resetPath = filepath.Join(envRoot, openclawMcpResetFile)
-		if werr := os.WriteFile(resetPath, []byte(openclawMcpResetBody), 0o600); werr != nil {
-			return OpenclawConfigResult{}, fmt.Errorf("write openclaw mcp reset: %w", werr)
-		}
-	}
-
-	cfg := buildPerTaskOpenclawConfig(activePath, exists, resetPath, resolvedList, agentsSource, workDir, managedMcp, hasManagedMcp, opts.Gateway)
+	cfg := buildPerTaskOpenclawConfig(activePath, exists, resolvedList, agentsSource, workDir, managedMcp, opts.Gateway)
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
@@ -343,15 +294,9 @@ func prepareOpenclawConfig(envRoot, workDir string, opts OpenclawConfigPrep) (Op
 	result := OpenclawConfigResult{ConfigPath: outPath}
 	includeTarget := "none"
 	if exists {
-		// Live user config is in its own directory; tell the daemon to grant
-		// it so OpenClaw's include-confinement check passes. The reset stage
-		// needs no grant of its own: it sits in envRoot beside the wrapper that
-		// includes it.
+		// Grant the live config directory for OpenClaw's include-confinement check.
 		result.IncludeRoot = filepath.Dir(activePath)
 		includeTarget = "user-config"
-		if resetPath != "" {
-			includeTarget = "user-config+mcp-reset"
-		}
 	}
 	if opts.Logger != nil {
 		opts.Logger.Info("execenv: prepared openclaw config",
@@ -438,10 +383,8 @@ const (
 // workspace. agents.entries overrides only workspace: config-get redacts sensitive
 // fields, so copying whole entries would overwrite secrets with placeholders.
 //
-// For a confirmed missing config, emit only the task defaults. resetPath inserts
-// an MCP-null stage after the active config; managed servers then merge over it.
-// hasManagedMcp distinguishes an explicitly empty managed set from inheritance.
-func buildPerTaskOpenclawConfig(activePath string, exists bool, resetPath string, resolvedList []any, agentsSource openclawAgentsSource, workDir string, managedMcp map[string]any, hasManagedMcp bool, gateway OpenclawGatewayPin) map[string]any {
+// MCP additions deep-merge over the live user config without modifying it.
+func buildPerTaskOpenclawConfig(activePath string, exists bool, resolvedList []any, agentsSource openclawAgentsSource, workDir string, managedMcp map[string]any, gateway OpenclawGatewayPin) map[string]any {
 	agents := map[string]any{
 		"defaults": map[string]any{"workspace": workDir},
 	}
@@ -475,18 +418,8 @@ func buildPerTaskOpenclawConfig(activePath string, exists bool, resetPath string
 	cfg := map[string]any{
 		"agents": agents,
 	}
-	if hasManagedMcp {
-		// Always emit `mcp.servers` (even when empty) so the wrapper's intent
-		// — "admin manages this set" — is grep-able on disk and visible to
-		// OpenClaw's loader. The reset stage in the include list has already
-		// nulled the user's server map, so this becomes the only definition —
-		// and emitting it unconditionally here is what keeps that null from
-		// reaching the resolved root, where the schema would reject it.
-		servers := managedMcp
-		if servers == nil {
-			servers = map[string]any{}
-		}
-		cfg["mcp"] = map[string]any{"servers": servers}
+	if len(managedMcp) > 0 {
+		cfg["mcp"] = map[string]any{"servers": managedMcp}
 	}
 	// Gateway endpoint pin (issue #3260). Mirrors the user's openclaw.json
 	// `gateway.*` shape so OpenClaw's deep-merge $include semantics produce
@@ -498,16 +431,8 @@ func buildPerTaskOpenclawConfig(activePath string, exists bool, resetPath string
 		cfg["gateway"] = gw
 	}
 	if exists {
-		// Array form so OpenClaw deep-merges the included content with our
-		// sibling keys (agents overrides, mcp.servers) rather than letting the
-		// include replace the whole wrapper. With a managed set the reset stage
-		// follows the user's config in the same list, so the strict-replace flow
-		// costs one more entry rather than a second file and a nested include.
-		includes := []any{activePath}
-		if resetPath != "" {
-			includes = append(includes, resetPath)
-		}
-		cfg["$include"] = includes
+		// Array includes deep-merge with the task's sibling keys.
+		cfg["$include"] = []any{activePath}
 	}
 	return cfg
 }

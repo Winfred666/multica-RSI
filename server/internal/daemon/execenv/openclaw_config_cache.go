@@ -27,12 +27,6 @@ import (
 // Prepare/Reuse run inside a one-shot preparation helper process
 // (PrepareIsolated / ReuseIsolated), so an in-process cache would never
 // survive to the next task.
-//
-// What is NOT cached, and no longer exists to cache: the resolved config read
-// this flow used to make for a managed mcp_config. Managed MCP is now prepared
-// from a reset stage this package writes, so there is no per-agent CLI payload on
-// this path at all — one fewer thing whose staleness would have to be reasoned
-// about, and one fewer copy of the user's configuration anywhere.
 const (
 	// openclawDiscoveryCacheFile is the per-profile cache file name. It sits
 	// in the profile directory (~/.multica[/profiles/<name>]) so every task on

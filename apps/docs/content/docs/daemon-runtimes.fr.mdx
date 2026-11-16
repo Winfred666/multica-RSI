@@ -109,26 +109,11 @@ La consommation de tokens, les coûts et les échecs des exécutions sont regrou
 
 ## Configuration MCP locale [#local-mcp]
 
-Quand aucune configuration MCP n'est enregistrée sur un agent, Multica ne transmet aucun réglage MCP et l'outil lit comme d'habitude sa propre configuration sur cette machine.
+Les serveurs MCP d'une tâche s'ajoutent à la configuration héritée du runtime, sans remplacer sa liste de serveurs. Cela vaut pour Claude Code, Codex, Pi, CodeBuddy, Qoder, Qoder CN et les autres runtimes compatibles MCP. Une configuration absente, `null` ou vide ne supprime rien. À nom identique, l'entrée de la tâche est prioritaire ; les autres entrées héritées restent actives.
 
-Dès qu'un agent a une configuration MCP (même vide), Multica génère une configuration dédiée pour chaque exécution et la remet à l'outil ; Claude Code, par exemple, ne charge alors que ce fichier, en mode strict. Pour que les serveurs déjà configurés sur la machine continuent de fonctionner, le daemon lit la configuration MCP de niveau utilisateur de l'outil sur la machine du runtime et la fusionne avec celle de l'agent. Pour deux serveurs du même nom, la première source dans cet ordre l'emporte :
+Le daemon utilise la fusion native du runtime ou construit une union locale à la tâche. Il ne réécrit jamais la configuration originale de l'utilisateur. Un serveur de la bibliothèque de l'espace de travail doit être attribué et activé pour parvenir à un agent ; les transports disponibles dépendent du runtime.
 
-1. les serveurs gérés par Multica ou attribués depuis la bibliothèque MCP de l'espace de travail dans l'onglet **MCP** de l'agent ;
-2. le fichier de configuration de niveau utilisateur de l'outil ;
-3. Claude Code uniquement : les serveurs MCP fournis par les plugins Claude Code activés. Les plugins viennent de `enabledPlugins` dans `~/.claude/settings.json` ; le daemon lit le `.mcp.json` de chaque plugin et les fichiers MCP déclarés dans son manifeste.
-
-| Outil | Configuration de niveau utilisateur lue |
-|---|---|
-| Claude Code | `mcpServers` dans `~/.claude.json`, plus les serveurs MCP des plugins activés |
-| Codex | `mcp_servers` dans `$CODEX_HOME/config.toml` (par défaut `~/.codex/config.toml`) |
-| Cursor Agent | `mcpServers` dans `~/.cursor/mcp.json` |
-| OpenCode | `mcp` dans `$XDG_CONFIG_HOME/opencode/opencode.json` (par défaut `~/.config/opencode/opencode.json`) |
-| OpenClaw | `mcp.servers` dans `$CLAWDBOT_CONFIG_PATH`, ou dans `$OPENCLAW_STATE_DIR/openclaw.json` (par défaut `~/.openclaw/openclaw.json`) |
-| CodeArts | `mcp` dans `~/.codeartsdoer/codearts_cli.json` ou `codearts_cli.jsonc` |
-
-CodeBuddy, Kimi CLI et Pi chargent eux-mêmes leur configuration de niveau utilisateur au démarrage et la combinent avec ce que Multica envoie ; le daemon ne fusionne donc pas à l'avance pour eux, sinon le même serveur démarrerait deux fois. En cas de nom en double, CodeBuddy garde l'entrée de Multica. Les autres outils absents du tableau ne reçoivent que la configuration de l'agent.
-
-La fusion a lieu sur la machine du runtime : les commandes, URL, en-têtes et variables d'environnement des serveurs locaux ne sont jamais envoyés. La liste « Hérité du runtime » de l'onglet **MCP** de l'agent n'affiche que le nom, le transport, la source et l'état activé de chaque serveur ; un serveur masqué par un serveur de l'agent du même nom porte la mention « Remplacé par Multica ». Si un fichier de configuration local ne peut pas être analysé, le daemon consigne un avertissement et l'exécution n'utilise que la configuration de l'agent.
+La fusion reste sur la machine du runtime. Les commandes, URL, en-têtes et variables d'environnement locaux ne sont pas envoyés. L'onglet **MCP** de l'agent affiche seulement les noms, transports, sources et états des serveurs hérités.
 
 ## Nettoyage et conservation [#cleanup]
 

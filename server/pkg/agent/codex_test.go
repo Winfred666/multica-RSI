@@ -5483,42 +5483,40 @@ func TestEnsureCodexMcpConfigForces0600OnPreexistingFile(t *testing.T) {
 	}
 }
 
-func TestEnsureCodexMcpConfigStripsUserMcpServersWhenManaged(t *testing.T) {
+func TestEnsureCodexMcpConfigMergesInheritedServers(t *testing.T) {
 	t.Parallel()
-
-	// When agent.mcp_config is non-empty, ALL user-defined `[mcp_servers.*]`
-	// tables (inherited from ~/.codex/config.toml) are stripped to avoid
-	// (a) TOML "table already exists" errors when names collide and (b) the
-	// user's global servers silently being mixed in with the strict
-	// agent-managed list. Sub-tables like `[mcp_servers.x.env]` are also
-	// dropped as part of their parent.
 	tmp := filepath.Join(t.TempDir(), "config.toml")
-	initial := "sandbox_mode = \"workspace-write\"\n\n" +
-		"[mcp_servers.global_fetch]\ncommand = \"uvx-old\"\n\n" +
-		"[mcp_servers.global_fetch.env]\nOLD_KEY = \"old\"\n\n" +
-		"[other_section]\nkeep_me = true\n"
-	if err := os.WriteFile(tmp, []byte(initial), 0o600); err != nil {
-		t.Fatalf("seed: %v", err)
+	initial := `sandbox_mode = "workspace-write"
+[mcp_servers.codegraph]
+command = "codegraph"
+[mcp_servers.codegraph.env]
+GRAPH_KEY = "keep"
+[mcp_servers."shared"]
+command = "old"
+[mcp_servers.'shared'.env]
+OLD_KEY = "old"
+[other_section]
+keep_me = true
+`
+	if err := os.WriteFile(tmp, []byte(initial), 0600); err != nil {
+		t.Fatal(err)
 	}
-
-	raw := json.RawMessage(`{"mcpServers":{"new_server":{"command":"new"}}}`)
+	raw := json.RawMessage(`{"mcpServers":{"multica-plugins":{"url":"http://127.0.0.1/mcp"},"shared":{"command":"task"}}}`)
 	if err := ensureCodexMcpConfig(tmp, raw, slog.Default()); err != nil {
-		t.Fatalf("ensure: %v", err)
+		t.Fatal(err)
 	}
-	data, _ := os.ReadFile(tmp)
+	data, err := os.ReadFile(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
 	got := string(data)
-
-	if strings.Contains(got, "global_fetch") {
-		t.Fatalf("user mcp_servers tables must be stripped when agent has its own mcp_config, got:\n%s", got)
+	for _, want := range []string{`[mcp_servers.codegraph]`, `[mcp_servers.codegraph.env]`, `GRAPH_KEY = "keep"`, `[mcp_servers.multica-plugins]`, `[mcp_servers.shared]`, `command = "task"`, `[other_section]`, `keep_me = true`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in merged config:\n%s", want, got)
+		}
 	}
-	if strings.Contains(got, "OLD_KEY") {
-		t.Fatalf("user mcp_servers sub-tables must be stripped too, got:\n%s", got)
-	}
-	if !strings.Contains(got, "[other_section]") || !strings.Contains(got, "keep_me = true") {
-		t.Fatalf("unrelated tables must survive, got:\n%s", got)
-	}
-	if !strings.Contains(got, "[mcp_servers.new_server]") {
-		t.Fatalf("managed server should be written, got:\n%s", got)
+	if strings.Contains(got, `command = "old"`) || strings.Contains(got, "OLD_KEY") || strings.Count(got, "[mcp_servers.shared]") != 1 {
+		t.Fatalf("same-name task entry must replace only the inherited shared server:\n%s", got)
 	}
 }
 
@@ -5571,14 +5569,11 @@ func TestEnsureCodexMcpConfigRejectsBadShapes(t *testing.T) {
 	}
 }
 
-func TestEnsureCodexMcpConfigAbsentLeavesUserTablesAlone(t *testing.T) {
+func TestEnsureCodexMcpConfigWithoutTaskServersLeavesUserTablesAlone(t *testing.T) {
 	t.Parallel()
 
-	// nil / `null` map to the API's "absent" state: the agent has no
-	// managed mcp_config, so the daemon must not touch the user's
-	// inherited `[mcp_servers.*]` tables — the run falls back to the
-	// user's global CLI config.
-	for _, raw := range []json.RawMessage{nil, json.RawMessage(`null`)} {
+	// An absent or empty task set must leave inherited servers untouched.
+	for _, raw := range []json.RawMessage{nil, json.RawMessage(`null`), json.RawMessage(`{}`), json.RawMessage(`{"mcpServers":{}}`)} {
 		tmp := filepath.Join(t.TempDir(), "config.toml")
 		initial := "sandbox_mode = \"workspace-write\"\n\n" +
 			"[mcp_servers.user_global]\ncommand = \"keep\"\n"
@@ -5591,71 +5586,11 @@ func TestEnsureCodexMcpConfigAbsentLeavesUserTablesAlone(t *testing.T) {
 		data, _ := os.ReadFile(tmp)
 		got := string(data)
 		if !strings.Contains(got, "[mcp_servers.user_global]") {
-			t.Fatalf("absent mcp_config (%q) must leave user MCP tables alone, got:\n%s", string(raw), got)
+			t.Fatalf("empty task mcp_config (%q) must leave user MCP tables alone, got:\n%s", string(raw), got)
 		}
 		if strings.Contains(got, multicaCodexMcpBeginMarker) {
-			t.Fatalf("absent mcp_config (%q) must not write managed markers, got:\n%s", string(raw), got)
+			t.Fatalf("empty task mcp_config (%q) must not write managed markers, got:\n%s", string(raw), got)
 		}
-	}
-}
-
-func TestEnsureCodexMcpConfigEmptyManagedSetStripsUserMcp(t *testing.T) {
-	t.Parallel()
-
-	// `{}` / `{"mcpServers":{}}` map to the API's "present, empty" state.
-	// The admin saved an explicit (empty) MCP list, so the daemon must
-	// strip inherited user `[mcp_servers.*]` tables and pin the managed
-	// markers — equivalent to Claude's --strict-mcp-config with an empty
-	// servers map. Falling back to the user's global MCP would defeat
-	// the affordance.
-	for _, raw := range []json.RawMessage{
-		json.RawMessage(`{}`),
-		json.RawMessage(`{"mcpServers":{}}`),
-	} {
-		tmp := filepath.Join(t.TempDir(), "config.toml")
-		initial := "sandbox_mode = \"workspace-write\"\n\n" +
-			"[mcp_servers.user_global]\ncommand = \"keep\"\n"
-		if err := os.WriteFile(tmp, []byte(initial), 0o600); err != nil {
-			t.Fatalf("seed: %v", err)
-		}
-		if err := ensureCodexMcpConfig(tmp, raw, slog.Default()); err != nil {
-			t.Fatalf("ensure (%q): %v", string(raw), err)
-		}
-		data, _ := os.ReadFile(tmp)
-		got := string(data)
-		if strings.Contains(got, "user_global") {
-			t.Fatalf("managed empty set (%q) must strip user MCP tables, got:\n%s", string(raw), got)
-		}
-		if !strings.Contains(got, multicaCodexMcpBeginMarker) || !strings.Contains(got, multicaCodexMcpEndMarker) {
-			t.Fatalf("managed empty set (%q) must still write markers so future runs find them, got:\n%s", string(raw), got)
-		}
-		if !strings.Contains(got, `sandbox_mode = "workspace-write"`) {
-			t.Fatalf("unrelated content must survive (%q), got:\n%s", string(raw), got)
-		}
-	}
-}
-
-func TestEnsureCodexMcpConfigEmptyManagedSetIdempotent(t *testing.T) {
-	t.Parallel()
-
-	// Running ensure twice with the same `{}` input must produce
-	// byte-identical output — guards against the empty-marker block
-	// accreting blank lines or duplicate markers across reruns.
-	tmp := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(tmp, []byte("sandbox_mode = \"workspace-write\"\n"), 0o600); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	raw := json.RawMessage(`{}`)
-	if err := ensureCodexMcpConfig(tmp, raw, slog.Default()); err != nil {
-		t.Fatalf("first ensure: %v", err)
-	}
-	first, _ := os.ReadFile(tmp)
-	if err := ensureCodexMcpConfig(tmp, raw, slog.Default()); err != nil {
-		t.Fatalf("second ensure: %v", err)
-	}
-	second, _ := os.ReadFile(tmp)
-	if string(first) != string(second) {
-		t.Fatalf("non-idempotent write:\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
 }
 

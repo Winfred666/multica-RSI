@@ -95,12 +95,10 @@ func TestWorkspaceResolveWithoutBoundServersLeavesLegacyOpencodeAgentAlone(t *te
 func TestWorkspaceResolveWithNoBindingsKeepsOnlyRuntimeServers(t *testing.T) {
 	writeOpencodeRuntimeConfig(t, `{"runtime-local":{"command":"runtime-server"}}`)
 
-	servers := effectiveServerNames(t, "opencode", nil, "")
-
-	if len(servers) != 0 {
-		// A nil managed config means the provider keeps its native
-		// inheritance; the daemon returns it unchanged rather than building a
-		// merged document.
-		t.Fatalf("effective set = %v, want the native path (no managed document)", servers)
+	for _, raw := range []string{"", "null", "{}", `{"mcpServers":{}}`} {
+		servers := effectiveServerNames(t, "opencode", nil, raw)
+		if len(servers) != 1 || servers["runtime-local"] == nil {
+			t.Fatalf("config %s: effective set = %v, want runtime-local only", raw, servers)
+		}
 	}
 }

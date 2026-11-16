@@ -820,23 +820,7 @@ func TestPrepareOpenclawConfigWrapperLoadableUnderIncludeConfinement(t *testing.
 	}
 }
 
-// TestPrepareOpenclawConfigStrictReplacesUserMcpServers — the headline
-// assertion for strict replace. The user has a global `mcp.servers.global_one`
-// and a same-named `shared`; the agent has a managed `shared + managed_only`
-// set; the view OpenClaw resolves must be exactly the managed set.
-//
-// What changed is how that is achieved. It used to be a sanitized copy of the
-// user's resolved config written into the task directory; it is now include
-// order:
-//
-//	user's live config  ->  mcp.servers: null  ->  wrapper's managed servers
-//
-// So the assertions are the three things that composition rests on — the include
-// list and its order, the reset stage's content, and the wrapper's own block —
-// plus the property the copy could never have: nothing from the user's config is
-// written into the task directory at all, which is what removes the redaction
-// hazard rather than working around it.
-func TestPrepareOpenclawConfigStrictReplacesUserMcpServers(t *testing.T) {
+func TestPrepareOpenclawConfigMergesUserMcpServers(t *testing.T) {
 	envRoot := t.TempDir()
 	workDir := filepath.Join(envRoot, "workdir")
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
@@ -900,18 +884,9 @@ func TestPrepareOpenclawConfigStrictReplacesUserMcpServers(t *testing.T) {
 		t.Errorf("mcp.servers.managed_only missing or wrong shape: %v", managed)
 	}
 
-	// Include order is the mechanism, so it is what gets pinned: the user's live
-	// config first, then the reset stage. Reversed, the user's servers would
-	// arrive after the null and survive.
-	resetPath := filepath.Join(envRoot, openclawMcpResetFile)
 	include, _ := got["$include"].([]any)
-	if len(include) != 2 || include[0] != userCfgPath || include[1] != resetPath {
-		t.Fatalf("wrapper $include = %#v, want [%q, %q]", got["$include"], userCfgPath, resetPath)
-	}
-	if body, rerr := os.ReadFile(resetPath); rerr != nil {
-		t.Fatalf("read mcp reset stage: %v", rerr)
-	} else if string(body) != openclawMcpResetBody {
-		t.Errorf("mcp reset stage = %q, want exactly %q", body, openclawMcpResetBody)
+	if len(include) != 1 || include[0] != userCfgPath {
+		t.Fatalf("wrapper $include = %#v, want [%q]", got["$include"], userCfgPath)
 	}
 
 	// The include reaches the user's own directory, so that hop has to be
@@ -960,11 +935,6 @@ func assertEnvRootCarriesNoUserConfig(t *testing.T, envRoot string, markers ...s
 // wrapper-shape assertion would catch: OpenClaw's include-confinement check
 // rejects the chain at load time, and the task fails with a config error rather
 // than anything pointing back here.
-//
-// The managed-MCP row is the one that changed. The flat resolved-config copy it
-// replaces was self-contained, so it needed no grant; the chain reaches the
-// user's real config, so it does. The reset stage needs none of its own — it sits
-// in envRoot beside the wrapper that includes it.
 func TestPrepareOpenclawConfigIncludeRootGrants(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -1016,22 +986,6 @@ func TestPrepareOpenclawConfigIncludeRootGrants(t *testing.T) {
 	}
 }
 
-// TestPrepareOpenclawConfigPreservesNonServerMcpKeys — the scope assertion:
-// strict replace applies to `mcp.servers` and to nothing else. Siblings under
-// `mcp` (`sessionIdleTtlMs`, `apps`, anything a future release adds) must reach
-// the agent exactly as the user wrote them.
-//
-// This used to be enforced by reading the user's resolved `mcp` block and writing
-// the non-server keys back, which is where the review found the hazard: `config
-// get` returns display data, so a sensitive sibling comes back as
-// `__OPENCLAW_REDACTED__` and writing it back would overwrite a working value
-// with a placeholder. It also had to enumerate the keys it knew about.
-//
-// Nothing is read now, so the guarantee is structural and that is what this
-// asserts: the reset stage names exactly one key, and no file this package writes
-// mentions any sibling at all. The end-to-end half — an actual sibling surviving
-// an actual loader — is in openclaw_mcp_real_integration_test.go, which has to
-// run against a real CLI to mean anything.
 func TestPrepareOpenclawConfigPreservesNonServerMcpKeys(t *testing.T) {
 	envRoot := t.TempDir()
 	workDir := filepath.Join(envRoot, "workdir")
@@ -1064,20 +1018,6 @@ func TestPrepareOpenclawConfigPreservesNonServerMcpKeys(t *testing.T) {
 		t.Fatalf("prepareOpenclawConfig: %v", err)
 	}
 
-	// The reset must name `mcp.servers` and nothing else — a reset of the whole
-	// `mcp` object would take the siblings down with the servers.
-	reset := mustReadJSON(t, filepath.Join(envRoot, openclawMcpResetFile))
-	resetMcp, ok := reset["mcp"].(map[string]any)
-	if !ok {
-		t.Fatalf("mcp reset = %#v, want an object naming servers", reset)
-	}
-	if len(resetMcp) != 1 {
-		t.Errorf("mcp reset names %d keys (%v), want only servers — anything else resets a user setting", len(resetMcp), resetMcp)
-	}
-	if value, present := resetMcp["servers"]; !present || value != nil {
-		t.Errorf("mcp reset servers = %#v, want explicit null", resetMcp["servers"])
-	}
-
 	// The wrapper contributes servers only, so nothing it writes can shadow a
 	// sibling either.
 	wrapperMcp, _ := mustReadJSON(t, result.ConfigPath)["mcp"].(map[string]any)
@@ -1096,67 +1036,7 @@ func TestPrepareOpenclawConfigPreservesNonServerMcpKeys(t *testing.T) {
 	assertEnvRootCarriesNoUserConfig(t, envRoot, "sessionIdleTtlMs", "apps", "sk-sibling-secret")
 }
 
-// TestPrepareOpenclawConfigStrictEmptyManagedSetDropsUserMcp — an empty managed
-// set `{}` must drop the user's global mcp.servers too. Without the reset,
-// OpenClaw would still resolve user-only servers through the include and the
-// admin's "saved no servers" intent would be silently overridden.
-func TestPrepareOpenclawConfigStrictEmptyManagedSetDropsUserMcp(t *testing.T) {
-	userCfgPath := filepath.Join(t.TempDir(), "openclaw.json")
-	if err := os.WriteFile(userCfgPath, []byte(`{"mcp":{"servers":{"global_one":{"command":"/bin/echo"}}}}`), 0o600); err != nil {
-		t.Fatalf("write user cfg: %v", err)
-	}
-
-	cases := map[string]json.RawMessage{
-		"object_empty":          json.RawMessage(`{}`),
-		"mcp_servers_empty_map": json.RawMessage(`{"mcpServers": {}}`),
-	}
-	for name, raw := range cases {
-		t.Run(name, func(t *testing.T) {
-			envRoot := t.TempDir()
-			workDir := filepath.Join(envRoot, "workdir")
-			if err := os.MkdirAll(workDir, 0o755); err != nil {
-				t.Fatalf("mkdir workdir: %v", err)
-			}
-			stub := installOpenclawStub(t, map[string]openclawResponse{
-				"config file":                   {stdout: userCfgPath},
-				"config get agents.list --json": {stdout: "null"},
-			})
-			result, err := prepareOpenclawConfig(envRoot, workDir, OpenclawConfigPrep{
-				OpenclawBin: stub.bin,
-				McpConfig:   raw,
-			})
-			if err != nil {
-				t.Fatalf("prepareOpenclawConfig: %v", err)
-			}
-			got := mustReadJSON(t, result.ConfigPath)
-			mcp, ok := got["mcp"].(map[string]any)
-			if !ok {
-				t.Fatalf("wrapper missing mcp block (managed empty must still be present): %v", got)
-			}
-			servers, ok := mcp["servers"].(map[string]any)
-			if !ok {
-				t.Fatalf("mcp.servers is not an object: %v", mcp)
-			}
-			if len(servers) != 0 {
-				t.Errorf("mcp.servers has %d entries on managed-empty, want 0 (global_one must not leak): %v", len(servers), servers)
-			}
-			// An empty managed set is exactly the case that needs the reset: with
-			// no server named on the wrapper, the include result is what resolves
-			// unless the user's map has been nulled first.
-			resetPath := filepath.Join(envRoot, openclawMcpResetFile)
-			include, _ := got["$include"].([]any)
-			if len(include) != 2 || include[1] != resetPath {
-				t.Fatalf("wrapper $include = %#v, want the reset stage at %q", got["$include"], resetPath)
-			}
-		})
-	}
-}
-
-// TestPrepareOpenclawConfigNullMcpConfigKeepsUserInclude — when the agent has no
-// managed mcp_config (`null` / absent), the wrapper must include the live user
-// config with no reset stage, so the user's global mcp.servers and everything
-// else still flow through. This is the "inherit defaults" branch.
-func TestPrepareOpenclawConfigNullMcpConfigKeepsUserInclude(t *testing.T) {
+func TestPrepareOpenclawConfigEmptyMcpKeepsUserInclude(t *testing.T) {
 	userCfgDir := t.TempDir()
 	userCfgPath := filepath.Join(userCfgDir, "openclaw.json")
 	if err := os.WriteFile(userCfgPath, []byte(`{}`), 0o600); err != nil {
@@ -1164,9 +1044,11 @@ func TestPrepareOpenclawConfigNullMcpConfigKeepsUserInclude(t *testing.T) {
 	}
 
 	cases := map[string]json.RawMessage{
-		"nil":   nil,
-		"empty": json.RawMessage(""),
-		"null":  json.RawMessage("null"),
+		"nil":     nil,
+		"empty":   json.RawMessage(""),
+		"null":    json.RawMessage("null"),
+		"object":  json.RawMessage(`{}`),
+		"servers": json.RawMessage(`{"mcpServers":{}}`),
 	}
 	for name, raw := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -1194,11 +1076,6 @@ func TestPrepareOpenclawConfigNullMcpConfigKeepsUserInclude(t *testing.T) {
 			if len(include) != 1 || include[0] != userCfgPath {
 				t.Errorf("$include = %v, want the live user config %q alone on the inherit path", got["$include"], userCfgPath)
 			}
-			// No managed set means nothing to enforce, so the reset stage must not
-			// exist: it would null the servers the agent is supposed to inherit.
-			if _, err := os.Stat(filepath.Join(envRoot, openclawMcpResetFile)); !os.IsNotExist(err) {
-				t.Errorf("inherit path wrote a reset stage (should not): err=%v", err)
-			}
 			if result.IncludeRoot != userCfgDir {
 				t.Errorf("IncludeRoot = %q, want %q (cross-dir hop for the live $include)", result.IncludeRoot, userCfgDir)
 			}
@@ -1206,10 +1083,6 @@ func TestPrepareOpenclawConfigNullMcpConfigKeepsUserInclude(t *testing.T) {
 	}
 }
 
-// TestPrepareOpenclawConfigManagedSetFreshInstall — a managed mcp_config on a
-// fresh install (no on-disk user config) has nothing to include and nothing to
-// reset: the wrapper carries the managed servers as the sole MCP definition, with
-// no $include and no reset stage.
 func TestPrepareOpenclawConfigManagedSetFreshInstall(t *testing.T) {
 	envRoot := t.TempDir()
 	workDir := filepath.Join(envRoot, "workdir")
@@ -1249,26 +1122,9 @@ func TestPrepareOpenclawConfigManagedSetFreshInstall(t *testing.T) {
 	if _, present := got["$include"]; present {
 		t.Errorf("fresh install should not emit $include: %v", got["$include"])
 	}
-	// A reset with no include to reset would leave `mcp.servers: null` as the
-	// only contribution from the chain, which is a shape the wrapper's own block
-	// then has to undo for no reason.
-	if _, err := os.Stat(filepath.Join(envRoot, openclawMcpResetFile)); !os.IsNotExist(err) {
-		t.Errorf("fresh install wrote a reset stage (should not): err=%v", err)
-	}
+
 }
 
-// TestPrepareOpenclawConfigManagedMcpCostsNoExtraCLICall pins the removal that
-// makes the deadline arithmetic simpler, and it is the test that fails if the
-// config read ever comes back.
-//
-// A managed-MCP agent used to pay one more CLI round-trip than any other — the
-// invalid pathless `config get --json`, which is what #7551 reported as a task
-// that never starts. The reset stage is a file this package writes, so managed
-// MCP now costs no CLI time at all, which is why
-// openclawMaxCLIDeadlinesPerPreparation dropped from 4 to 3.
-//
-// The stub errors on any invocation it was not given, so a reintroduced read
-// fails preparation here rather than silently widening the budget.
 func TestPrepareOpenclawConfigManagedMcpCostsNoExtraCLICall(t *testing.T) {
 	envRoot := t.TempDir()
 	workDir := filepath.Join(envRoot, "workdir")
@@ -1314,105 +1170,8 @@ func TestPrepareOpenclawConfigManagedMcpCostsNoExtraCLICall(t *testing.T) {
 	}
 	for _, args := range managedArgs {
 		if strings.Contains(args, "mcp") {
-			t.Errorf("managed MCP read configuration from the CLI (%q); the reset stage exists so it does not have to", args)
+			t.Errorf("managed MCP read configuration from the CLI (%q); task additions need no config read", args)
 		}
-	}
-}
-
-// TestPrepareOpenclawConfigResetStagePairsWithWrapperMcp pins the invariant the
-// reset stage's safety hangs on: a generated chain that contains
-// openclawMcpResetFile must come with an `mcp.servers` object on the wrapper
-// itself.
-//
-// The reset works because OpenClaw's include merge treats a null source as
-// replacement (`src/config/includes.ts` at v2026.7.1-2) — but the same loader
-// rejects a *surviving* null at validation: `McpConfigSchema` is
-// `.strict().optional()` (`src/config/zod-schema.ts`), and zod's `.optional()`
-// accepts undefined, never null. The only thing standing between the reset and
-// that rejection is the wrapper's own block, which the loader merges over the
-// include result.
-//
-// Today the pairing holds by construction — the reset is written under
-// `hasManagedMcp && exists`, and buildPerTaskOpenclawConfig emits `mcp.servers`
-// under `hasManagedMcp` — but nothing named that coupling. A refactor that emits
-// the reset without the wrapper block (an empty managed set optimized away, say)
-// would fail every managed-MCP task at agent start with an `invalid_type` on
-// `mcp.servers` pointing nowhere near this package. Fail-closed, but with a
-// diagnostic bad enough that this test exists to keep it from ever firing.
-func TestPrepareOpenclawConfigResetStagePairsWithWrapperMcp(t *testing.T) {
-	cases := []struct {
-		name      string
-		userCfg   string
-		mcpConfig json.RawMessage
-	}{
-		{
-			name:      "user servers only",
-			userCfg:   `{"mcp":{"servers":{"user-only":{"command":"user"}}}}`,
-			mcpConfig: json.RawMessage(`{"mcpServers":{"managed":{"command":"managed"}}}`),
-		},
-		{
-			name:      "user siblings alongside servers",
-			userCfg:   `{"mcp":{"servers":{"user-only":{"command":"user"}},"sessionIdleTtlMs":300000}}`,
-			mcpConfig: json.RawMessage(`{"mcpServers":{"managed":{"command":"managed"}}}`),
-		},
-		{
-			// The sharpest case: nothing on the wrapper but an empty map stands
-			// between the reset's null and the schema.
-			name:      "empty managed set",
-			userCfg:   `{"mcp":{"servers":{"user-only":{"command":"user"}}}}`,
-			mcpConfig: json.RawMessage(`{"mcpServers":{}}`),
-		},
-		{
-			name:      "user has no mcp key at all",
-			userCfg:   `{"gateway":{"mode":"local"}}`,
-			mcpConfig: json.RawMessage(`{"mcpServers":{"managed":{"command":"managed"}}}`),
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			envRoot := t.TempDir()
-			workDir := filepath.Join(envRoot, "workdir")
-			if err := os.MkdirAll(workDir, 0o755); err != nil {
-				t.Fatalf("mkdir workdir: %v", err)
-			}
-			userCfgPath := filepath.Join(t.TempDir(), "openclaw.json")
-			if err := os.WriteFile(userCfgPath, []byte(tc.userCfg), 0o600); err != nil {
-				t.Fatalf("write user cfg: %v", err)
-			}
-			stub := installOpenclawStub(t, map[string]openclawResponse{
-				"config file":                   {stdout: userCfgPath},
-				"config get agents.list --json": {stdout: "null"},
-			})
-
-			result, err := prepareOpenclawConfig(envRoot, workDir, OpenclawConfigPrep{
-				OpenclawBin: stub.bin,
-				McpConfig:   tc.mcpConfig,
-			})
-			if err != nil {
-				t.Fatalf("prepareOpenclawConfig: %v", err)
-			}
-
-			// The chain must actually carry the reset stage...
-			resetPath := filepath.Join(envRoot, openclawMcpResetFile)
-			wrapper := mustReadJSON(t, result.ConfigPath)
-			include, ok := wrapper["$include"].([]any)
-			if !ok || len(include) != 2 || include[1] != resetPath {
-				t.Fatalf("wrapper $include = %#v, want [user config, %q]", wrapper["$include"], resetPath)
-			}
-
-			// ...and then the wrapper must carry its own `mcp.servers`. This is
-			// what overwrites the chain's transient null before validation;
-			// without it the loader rejects the resolved config.
-			mcp, ok := wrapper["mcp"].(map[string]any)
-			if !ok {
-				t.Fatalf("reset stage present but wrapper has no mcp object — the "+
-					"resolved chain would keep `mcp.servers: null`, which OpenClaw's "+
-					"schema rejects, failing every managed-MCP task at load: %v", wrapper)
-			}
-			if _, ok := mcp["servers"].(map[string]any); !ok {
-				t.Fatalf("wrapper mcp.servers is not an object: %#v", mcp)
-			}
-		})
 	}
 }
 
@@ -1717,7 +1476,7 @@ func TestBuildPerTaskOpenclawConfigOmitsGatewayWhenZero(t *testing.T) {
 	t.Parallel()
 
 	cfg := buildPerTaskOpenclawConfig(
-		"", false, "", nil, "", "/workdir", nil, false,
+		"", false, nil, "", "/workdir", nil,
 		OpenclawGatewayPin{},
 	)
 	if _, present := cfg["gateway"]; present {
@@ -1735,7 +1494,7 @@ func TestBuildPerTaskOpenclawConfigWritesGatewayBlock(t *testing.T) {
 		TLS:   true,
 	}
 	cfg := buildPerTaskOpenclawConfig(
-		"", false, "", nil, "", "/workdir", nil, false,
+		"", false, nil, "", "/workdir", nil,
 		pin,
 	)
 
@@ -1774,7 +1533,7 @@ func TestBuildPerTaskOpenclawConfigPartialGatewayOmitsZeroFields(t *testing.T) {
 	// fields must not land in the wrapper as empty strings/zeros — that
 	// would override the user's value with junk.
 	cfg := buildPerTaskOpenclawConfig(
-		"", false, "", nil, "", "/workdir", nil, false,
+		"", false, nil, "", "/workdir", nil,
 		OpenclawGatewayPin{Host: "gw.internal", Port: 18789},
 	)
 	gw := cfg["gateway"].(map[string]any)

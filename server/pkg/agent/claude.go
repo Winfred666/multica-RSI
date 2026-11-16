@@ -1151,11 +1151,12 @@ func trySend(ch chan<- Message, msg Message) bool {
 // overridden by user-configured custom_args. Overriding these would break
 // the daemon↔Claude communication protocol.
 var claudeBlockedArgs = map[string]blockedArgMode{
-	"-p":                blockedStandalone, // non-interactive mode
-	"--output-format":   blockedWithValue,  // stream-json protocol
-	"--input-format":    blockedWithValue,  // stream-json protocol
-	"--permission-mode": blockedWithValue,  // bypassPermissions for autonomous operation
-	"--mcp-config":      blockedWithValue,  // set by daemon from agent.mcp_config
+	"--strict-mcp-config": blockedStandalone, // task MCP always unions with native config
+	"-p":                  blockedStandalone, // non-interactive mode
+	"--output-format":     blockedWithValue,  // stream-json protocol
+	"--input-format":      blockedWithValue,  // stream-json protocol
+	"--permission-mode":   blockedWithValue,  // bypassPermissions for autonomous operation
+	"--mcp-config":        blockedWithValue,  // set by daemon from agent.mcp_config
 	// `--effort` is owned by the per-agent thinking_level picker so a
 	// user-supplied custom_arg cannot silently outvote it. The daemon
 	// injects --effort only when opts.ThinkingLevel is set; if a user
@@ -1179,12 +1180,6 @@ func buildClaudeArgs(opts ExecOptions, logger *slog.Logger) []string {
 		// never sees the question (see GitHub #2588). User-facing
 		// clarification belongs in an issue comment instead.
 		"--disallowedTools", "AskUserQuestion",
-	}
-	if hasManagedMcpConfig(opts.McpConfig) {
-		// A saved agent-level config is authoritative, including an explicitly
-		// empty object. With no managed config, omit strict mode so Claude can
-		// inherit the user's local runtime MCP servers.
-		args = append(args, "--strict-mcp-config")
 	}
 	if opts.Model != "" {
 		args = append(args, "--model", opts.Model)

@@ -456,13 +456,13 @@ Agent-specific overrides:
 If a previously generated `~/.multica/hooks` wrapper is first on `PATH` and calls the same command name again, the daemon skips that hooks directory during built-in agent discovery and records the real binary path behind it. If your interactive shell still recurses when you run `claude`, `codex`, or `hermes` manually, remove the hooks entry from your shell startup file or replace the wrapper body with an absolute `exec /path/to/real-binary "$@"`.
 
 The daemon launches Qoder and Qoder CN as `qodercli --yolo --acp` and `qoderclicn --yolo --acp`, respectively, matching their ACP “bypass permissions” mode so tool runs do not block on interactive approval in headless runs.
-The daemon launches Qwen Code as `qwen -p <prompt> --output-format stream-json`. It writes the task brief to `QWEN.md`; when an agent has managed `mcp_config`, the daemon writes a 0600 per-run JSON file and passes it through `--mcp-config <path>`, then removes it after the process exits. A null config preserves Qwen Code native MCP settings.
+The daemon launches Qwen Code as `qwen -p <prompt> --output-format stream-json`. It writes the task brief to `QWEN.md`; when an agent has managed `mcp_config`, the daemon writes a 0600 per-run JSON file and passes it through `--mcp-config <path>`, then removes it after the process exits. Task entries add to Qwen Code native MCP settings; null or empty task config removes nothing.
 
 #### `mcp_config` on ACP runtimes
 
 ACP-family runtimes — Hermes, Kimi, Kiro, Grok, Qoder, Reasonix, Trae, QwenPaw, MiniMax Code, Dim, and any custom runtime profile whose `protocol_family` is one of them — receive MCP servers **over the ACP session protocol**, not through a config file. The daemon translates the agent's `mcp_config` into ACP's `McpServer` array and sends it with `session/new`, and again with that runtime's resume request (`session/resume` on Hermes, Kimi, Qoder and Reasonix; `session/load` on Kiro, Grok, Trae, QwenPaw and Dim) so a resumed task keeps the same tools. MiniMax Code 0.1.2 advertises no session-loading capability, so a later run falls back to a fresh session.
 
-Nothing is written to the runtime's own config file, and the runtime's own file is not read or merged. `~/.hermes/…`, `~/.jcode/mcp.json` and the like stay untouched; an agent's servers travel with its tasks instead of being installed per machine.
+Task servers are additions to the runtime's native MCP configuration, not a replacement set. The runtime keeps its inherited servers; null or empty task entries remove nothing. The daemon does not rewrite the runtime's own config files.
 
 Two consequences are worth knowing before debugging a missing MCP tool:
 

@@ -590,20 +590,13 @@ var codexMcpBlockRe = regexp.MustCompile(
 	`(?ms)^` + regexp.QuoteMeta(multicaCodexMcpBeginMarker) +
 		`.*?^` + regexp.QuoteMeta(multicaCodexMcpEndMarker) + `\n*`)
 
-// userCodexMcpServersTableHeaderRe matches `[mcp_servers.<name>]` (and its
-// quoted-key form `[mcp_servers."<name>"]`) at the start of a line. Used
-// to strip user-provided mcp_servers tables from the per-task config when
-// the agent has its own mcp_config — mirrors Claude's `--strict-mcp-config`
-// model where the daemon's set is authoritative.
-var userCodexMcpServersTableHeaderRe = regexp.MustCompile(
-	`^\s*\[\s*mcp_servers\s*\.\s*(?:"[^"]*"|[^\]\s]+)\s*\]\s*(?:#.*)?$`)
+// Capture the server name, including on nested tables such as server.env.
+var codexMcpServerTableHeaderRe = regexp.MustCompile(
+	`^\s*\[\s*mcp_servers\s*\.\s*("[^"]*"|'[^']*'|[^.\]\s]+)(?:\s*\.[^\]]+)?\s*\]\s*(?:#.*)?$`)
 
 // ensureCodexMcpConfig writes (or clears) the daemon-managed
-// `[mcp_servers.*]` block in `$CODEX_HOME/config.toml`. The block is the
-// authoritative source of MCP servers for this run: with mcp_config set
-// in the agent UI the daemon also strips any inherited
-// `[mcp_servers.*]` tables from the per-task config so the user's global
-// `~/.codex/config.toml` doesn't shadow or collide with the managed set.
+// `[mcp_servers.*]` block in `$CODEX_HOME/config.toml`. Task servers merge
+// with inherited servers, overriding only matching server names.
 //
 // The file mode is 0o600 because `mcp_servers.<id>.env` values may carry
 // secrets (API keys, bearer tokens); the per-task home is owned by the
@@ -624,45 +617,20 @@ func ensureCodexMcpConfig(configPath string, mcpConfig json.RawMessage, logger *
 	// converge on a clean state.
 	stripped := codexMcpBlockRe.ReplaceAllString(existing, "")
 
-	managed := hasManagedCodexMcpConfig(mcpConfig)
-	block, _, renderErr := renderCodexMcpServersBlock(mcpConfig)
+	block, hasServers, renderErr := renderCodexMcpServersBlock(mcpConfig)
 	if renderErr != nil {
 		return renderErr
 	}
 
-	var updated string
-	if managed {
-		// Agent has a managed MCP set (possibly empty — `{}` /
-		// `{"mcpServers":{}}` count as "saved an empty set" in the API's
-		// three-state semantics, distinct from nil/null which means
-		// "fall back to CLI default"). Strip any user-defined
-		// `[mcp_servers.*]` tables inherited from `~/.codex/config.toml`
-		// so the managed set is strict — mirrors Claude's
-		// `--strict-mcp-config`. Two reasons we cannot mix:
-		//   1. TOML rejects redefining the same table; a user table
-		//      named `[mcp_servers.fetch]` would crash codex if the
-		//      agent also defined `fetch`.
-		//   2. An admin saving an explicit list in the MCP Tab would
-		//      otherwise see user-global servers silently joined in,
-		//      which contradicts the UI affordance.
-		stripped = stripCodexUserMcpServerTables(stripped)
+	updated := stripped
+	if hasServers {
+		stripped = stripCodexShadowedMcpServerTables(stripped, block)
 		stripped = strings.TrimRight(stripped, "\n")
-		// When the managed set is empty we still write the marker
-		// block (with no tables between). This pins "managed but
-		// empty" on disk so the next run can find and strip the
-		// markers, and so the file's intent is grep-able by ops.
-		if block == "" {
-			block = multicaCodexMcpBeginMarker + "\n" + multicaCodexMcpEndMarker + "\n"
-		}
 		if stripped == "" {
 			updated = block
 		} else {
 			updated = stripped + "\n\n" + block
 		}
-	} else {
-		// No managed config: just remove any prior managed block and
-		// leave inherited user tables alone (CLI default fallback).
-		updated = stripped
 	}
 
 	if updated == existing {
@@ -682,7 +650,7 @@ func ensureCodexMcpConfig(configPath string, mcpConfig json.RawMessage, logger *
 	}
 	if logger != nil {
 		logger.Debug("codex: wrote managed mcp_servers block to config.toml",
-			"config_path", configPath, "managed", managed)
+			"config_path", configPath, "managed", hasServers)
 	}
 	return nil
 }
@@ -809,37 +777,22 @@ func isCodexRemoteMcpServer(server map[string]any) bool {
 	return hasURL && !hasCommand
 }
 
-// stripCodexUserMcpServerTables removes every `[mcp_servers.*]` table
-// (header + body lines until the next top-level table header or EOF) from
-// a TOML config string. Sub-tables like `[mcp_servers.fetch.env]` count
-// as part of the parent table and are dropped along with it.
-func stripCodexUserMcpServerTables(content string) string {
+// Remove only inherited tables shadowed by task entries to avoid duplicate
+// TOML tables. Unrelated inherited server definitions stay untouched.
+func stripCodexShadowedMcpServerTables(content, block string) string {
 	lines := strings.Split(content, "\n")
 	out := make([]string, 0, len(lines))
 	skipping := false
 	for _, line := range lines {
-		if userCodexMcpServersTableHeaderRe.MatchString(line) {
-			skipping = true
-			continue
+		if match := codexMcpServerTableHeaderRe.FindStringSubmatch(line); match != nil {
+			name := strings.Trim(match[1], `"'`)
+			skipping = strings.Contains(block, "[mcp_servers."+name+"]\n")
+		} else if strings.HasPrefix(strings.TrimSpace(line), "[") {
+			skipping = false
 		}
-		if skipping {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "[") {
-				// Next table header. If it's still an `mcp_servers.*`
-				// table (including a sub-table), keep skipping; otherwise
-				// stop and emit this line.
-				if userCodexMcpServersTableHeaderRe.MatchString(line) ||
-					strings.HasPrefix(trimmed, "[mcp_servers.") ||
-					strings.HasPrefix(trimmed, "[ mcp_servers.") {
-					continue
-				}
-				skipping = false
-				out = append(out, line)
-				continue
-			}
-			continue
+		if !skipping {
+			out = append(out, line)
 		}
-		out = append(out, line)
 	}
 	return strings.Join(out, "\n")
 }

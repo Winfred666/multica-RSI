@@ -340,12 +340,13 @@ func TestBuildClaudeArgsInheritsMCPByDefault(t *testing.T) {
 	}
 }
 
-func TestBuildClaudeArgsUsesStrictMCPForManagedConfig(t *testing.T) {
+func TestBuildClaudeArgsPreservesNativeMcp(t *testing.T) {
 	t.Parallel()
-
-	args := buildClaudeArgs(ExecOptions{McpConfig: json.RawMessage(`{}`)}, slog.Default())
-	if !slices.Contains(args, "--strict-mcp-config") {
-		t.Fatalf("managed MCP config must enable strict mode, got %v", args)
+	for _, raw := range []json.RawMessage{nil, json.RawMessage(`null`), json.RawMessage(`{}`), json.RawMessage(`{"mcpServers":{"task":{"command":"task"}}}`)} {
+		args := buildClaudeArgs(ExecOptions{McpConfig: raw, CustomArgs: []string{"--strict-mcp-config"}}, slog.Default())
+		if slices.Contains(args, "--strict-mcp-config") {
+			t.Fatalf("task MCP config %s must not disable native servers: %v", raw, args)
+		}
 	}
 }
 
