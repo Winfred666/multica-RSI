@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -171,6 +172,7 @@ func newAttachmentUploadTestCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "upload"}
 	cmd.Flags().String("task", "", "")
 	cmd.Flags().String("attachment-id", "", "")
+	cmd.Flags().Bool("independent", false, "")
 	return cmd
 }
 
@@ -249,6 +251,8 @@ func TestRunAttachmentUploadSendsTaskIDAndPrintsContract(t *testing.T) {
 // not image `![...]` markdown.
 func TestRunAttachmentUploadNonImageUsesFileCardMarkdown(t *testing.T) {
 	t.Setenv("MULTICA_TASK_ID", "")
+	t.Setenv("MULTICA_ISSUE_ID", "issue")
+	t.Setenv("MULTICA_COMMENT_ID", "comment")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			t.Fatalf("parse multipart: %v", err)
@@ -298,6 +302,8 @@ func TestRunAttachmentUploadNonImageUsesFileCardMarkdown(t *testing.T) {
 // attachment is hidden by the referenced URL, showing nothing.
 func TestRunAttachmentUploadEscapesFilename(t *testing.T) {
 	t.Setenv("MULTICA_TASK_ID", "ambient-task")
+	t.Setenv("MULTICA_ISSUE_ID", "issue")
+	t.Setenv("MULTICA_COMMENT_ID", "comment")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			t.Fatalf("parse multipart: %v", err)
@@ -337,7 +343,19 @@ func TestRunAttachmentUploadEscapesFilename(t *testing.T) {
 func TestRunAttachmentUploadOwnerlessAndRenewal(t *testing.T) {
 	for _, renewalID := range []string{"", "att-current"} {
 		t.Run("attachment-id="+renewalID, func(t *testing.T) {
+			metadata := map[string]any{"independent_artifacts": `[]`}
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/issues/ambient-issue/metadata" {
+					_ = json.NewEncoder(w).Encode(map[string]any{"metadata": metadata})
+					return
+				}
+				if r.Method == http.MethodPut && r.URL.Path == "/api/issues/ambient-issue/metadata/independent_artifacts" {
+					var body map[string]string
+					_ = json.NewDecoder(r.Body).Decode(&body)
+					metadata["independent_artifacts"] = body["value"]
+					_ = json.NewEncoder(w).Encode(map[string]any{"metadata": metadata})
+					return
+				}
 				if r.Method != http.MethodPost || r.URL.Path != "/api/upload-file" {
 					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 				}
@@ -373,15 +391,16 @@ func TestRunAttachmentUploadOwnerlessAndRenewal(t *testing.T) {
 			}
 			cmd := newAttachmentUploadTestCmd()
 			_ = cmd.Flags().Set("attachment-id", renewalID)
+			_ = cmd.Flags().Set("independent", "true")
 			out, err := captureStdout(t, func() error { return runAttachmentUpload(cmd, []string{path}) })
-			if err != nil || !strings.Contains(out, `"id": "att-current"`) {
+			if err != nil || !strings.Contains(out, `"id": "att-current"`) || metadata["independent_artifacts"] != `["att-current"]` {
 				t.Fatalf("upload: %v, stdout=%s", err, out)
 			}
 		})
 	}
 }
 
-func TestRunAttachmentSoftLinksOnlyUpdateMetadata(t *testing.T) {
+func TestRunAttachmentIndependentLinksOnlyUpdateMetadata(t *testing.T) {
 	metadata := map[string]any{"independent_artifacts": `["other","att-1","other","att-1"]`, "keep": "untouched"}
 	var methods []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -418,11 +437,67 @@ func TestRunAttachmentSoftLinksOnlyUpdateMetadata(t *testing.T) {
 	} {
 		cmd := &cobra.Command{Use: step.action}
 		cmd.Flags().String("issue", testIssueUUID, "")
-		cmd.Flags().Bool("soft", true, "")
+		cmd.Flags().Bool("independent", true, "")
 		_, err := captureStdout(t, func() error { return runAttachmentLink(cmd, []string{"att-1"}) })
 		if err != nil || metadata["independent_artifacts"] != step.want || metadata["keep"] != "untouched" {
 			t.Fatalf("%s: %v, metadata=%v, requests=%v", step.action, err, metadata, methods)
 		}
+	}
+}
+
+func TestRunAttachmentLinkModes(t *testing.T) {
+	for _, tc := range []struct {
+		action                                               string
+		independent, dependent, wantErr, wantOwner, wantLink bool
+	}{
+		{"attach", false, false, false, true, false},
+		{"detach", false, false, true, false, true},
+		{"attach", false, true, true, true, false},
+		{"detach", false, true, false, false, true},
+		{"attach", true, false, false, false, true},
+		{"detach", true, false, false, false, false},
+		{"attach", true, true, true, true, false},
+		{"detach", true, true, true, true, false},
+	} {
+		t.Run(fmt.Sprintf("%s/independent=%t/dependent=%t", tc.action, tc.independent, tc.dependent), func(t *testing.T) {
+			owner, links, mutations := "", `["att"]`, 0
+			if tc.dependent {
+				owner, links = testIssueUUID, `[]`
+			}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodGet && r.URL.Path == "/api/attachments/att":
+					_ = json.NewEncoder(w).Encode(map[string]any{"id": "att", "issue_id": owner})
+				case r.Method == http.MethodPost && r.URL.Path == "/api/attachments/att/"+tc.action:
+					mutations++
+					owner = ""
+					if tc.action == "attach" {
+						owner = testIssueUUID
+					}
+					_ = json.NewEncoder(w).Encode(map[string]any{"id": "att", "issue_id": owner})
+				case r.Method == http.MethodGet && r.URL.Path == "/api/issues/"+testIssueUUID+"/metadata":
+					_ = json.NewEncoder(w).Encode(map[string]any{"metadata": map[string]any{"independent_artifacts": links}})
+				case r.Method == http.MethodPut && r.URL.Path == "/api/issues/"+testIssueUUID+"/metadata/independent_artifacts":
+					mutations++
+					var body map[string]string
+					_ = json.NewDecoder(r.Body).Decode(&body)
+					links = body["value"]
+					_ = json.NewEncoder(w).Encode(map[string]any{"metadata": map[string]any{"independent_artifacts": links}})
+				default:
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+			}))
+			defer srv.Close()
+			setCLITestServerEnv(t, srv.URL)
+			t.Setenv("MULTICA_TOKEN", "mat_test-token")
+			cmd := &cobra.Command{Use: tc.action}
+			cmd.Flags().String("issue", testIssueUUID, "")
+			cmd.Flags().Bool("independent", tc.independent, "")
+			_, err := captureStdout(t, func() error { return runAttachmentLink(cmd, []string{"att"}) })
+			if (err != nil) != tc.wantErr || (owner != "") != tc.wantOwner || strings.Contains(links, `"att"`) != tc.wantLink || (tc.wantErr && mutations != 0) {
+				t.Fatalf("err=%v owner=%q links=%s mutations=%d", err, owner, links, mutations)
+			}
+		})
 	}
 }
 

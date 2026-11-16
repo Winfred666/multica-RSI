@@ -113,13 +113,15 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 
 ## CLI and daemon
 
-- **Attachment commands.** `attachment upload PATH` creates an ownerless file,
-  ignoring ambient issue/task ownership; `--attachment-id UUID` renews it using
-  the same server-returned ID. `--task TASK_UUID` explicitly keeps chat-reply
+- **Attachment commands.** `attachment upload PATH` requires `MULTICA_ISSUE_ID`
+  and `MULTICA_COMMENT_ID` and sets both owners. `--independent` requires the current
+  issue, leaves ownership empty and soft-links it; `--independent --attachment-id UUID`
+  renews the same server-returned ID. `--task TASK_UUID` explicitly keeps chat-reply
   upload behavior and cannot be combined with renewal. `attachment get ID` and
   `attachment download ID` read the current file.
   `attachment attach ID --issue KEY_OR_UUID` and `attachment detach ID --issue
-  KEY_OR_UUID` change actual issue ownership. Add `--soft` to validate that the
+  KEY_OR_UUID` change actual issue ownership and remove/add its independent soft link.
+  Attaching an already dependent file is rejected. Add `--independent` to validate that the
   file is ownerless and only update the issue's `independent_artifacts` metadata
   as a JSON-string ID list, deduplicating IDs and preserving other entries and
   metadata. Neither detach mode deletes the file; the server owns history policy.
@@ -154,6 +156,7 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   The daemon executes remote `/note !sop-remote <name> <JSON payload>` requests with
   `{"args":[],"que_comment_id":"optional-question-comment-id"}`.
   SoPs are bound to issue/workspace context and require no task ID.
+  Questionnaire replies execute in the working directory saved by that SoP, not the assignee's latest task directory.
   When `que_comment_id` identifies a matching rendered questionnaire, successful
   execution deletes the answer comment and adds its `args` to the questionnaire
   JSON. Missing questionnaire references skip cleanup.
@@ -367,16 +370,16 @@ Plan: [Backend P1 #50](https://github.com/Winfred666/multica-RSI/issues/50).
 
 ### CLI
 
-`attachment upload FILE [--attachment-id ID]` uses the ordinary upload route
-without a required task or independent mode. Ambient task binding is ignored;
-`--task` explicitly selects a new chat upload and cannot be combined with renewal.
+`attachment upload FILE` requires current issue/comment ownership;
+`--independent [--attachment-id ID]` uploads/renews with an automatic issue soft link.
+`--task` explicitly selects a new chat upload and cannot be combined with independence or renewal.
 The upload retains markdown output; the server's returned ID is authoritative. `attachment get` returns
 metadata; `attachment download` saves bytes. Workspace discovery uses
 `workspace get --include attachments --output json`. Existing issue create
 `--attachment-id` binds uploaded IDs; issue update accepts `--attachment-id`
 and `--remove-attachment-id` for the backend's attach/paired-detach operations.
 Normal issue/comment `--attachment` paths are unchanged. The `attachment attach`
-and `detach` commands provide hard ownership and `--soft` metadata links as
+and `detach` commands provide hard ownership and `--independent` metadata links as
 described above. There is no client history mode or independent-only list.
 
 ### Common preview tiles
@@ -388,15 +391,15 @@ Workspace `?include=attachments` supplies ordinary files. Tree free nodes select
 The CLI-owned engine follows the [R-328 shared wrapper protocol](https://github.com/Winfred666/multica-featssship/tree/c396c654f245e2dd4d0686f70a16a73101ac4188/installation),
 including declarative owners, guarded assignee synchronization and FINISHED re-entry.
 Its `common.py` helpers retain shared configuration references. The runtime
-publishes present config JSON and DEBUG HTML through CLI ownerless upload/renew
-and soft-attach commands. MAIN/developer/reviewer
+publishes present config JSON and DEBUG HTML through CLI `--independent` upload/renew.
+MAIN/developer/reviewer
 readers share small references; configuration payloads are not issue metadata.
 Transient SoP runtime/recovery state remains separate. Shared artifact IDs
 live in `independent_artifacts`; controller-supplied artifacts stay ordinary
 comment attachments. DEBUG settings and triggers are unchanged.
 
 See `multica sop docs` for the engine-owned authoring contract.
-The CLI manages soft-link metadata; no independent upload flag is used.
+The CLI manages soft-link metadata for `--independent` uploads and links.
 Further propagation to other SoPs or installs requires human approval.
 
 ## Natural-answer issue completion

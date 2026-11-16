@@ -188,6 +188,7 @@ func taskMulticaEnvironment(task Task, provider, agentName, token, configRoot, w
 		"MULTICA_AGENT_ID":     task.AgentID,
 		"MULTICA_TASK_ID":      task.ID,
 		"MULTICA_ISSUE_ID":     task.IssueID,
+		"MULTICA_COMMENT_ID":   task.TriggerCommentID,
 		"MULTICA_TASK_SLOT":    strconv.Itoa(slot),
 		"TMPDIR":               tempDir,
 		"TMP":                  tempDir,

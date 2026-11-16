@@ -65,12 +65,18 @@ in this invocation. Reply guidance belongs to the action, not State `next_step`.
 
 ## Hand off with a reply, not status feedback
 
-Return `{'this_round_reply_guidance': '...'}` to tell the caller what to reply to
-a named peer/external recipient, or explicitly to stay silent. The invocation
+Return `{'this_round_reply_guidance': '...'}` to require a peer handoff through
+`multica issue comment add` (not final-response text), or explicit silence. The invocation
 omits `next_step`, but the transition and destination checks still complete.
 Do not use this field for ordinary same-agent progress; keep normal State guidance.
 
 For an addressed outer State, its `owner` declares `issue_id`, `thread`, agent
-`id` and native comment `content`. The engine posts/forwards its questionnaire;
-return explicit silence guidance from the final entering action. Do not publish
+`id` and native comment `content`. Fill `id` and mention the agent in `content`
+only for automatic agent `sop-remote` replies; human gates use blank `id` and
+mention-free `content`. The engine posts/forwards its questionnaire; return
+explicit silence guidance from the final entering action. Do not publish
 a second questionnaire or execute the recipient's choice in the same turn.
+
+Default `attachment upload FILE` requires the current issue and comment and belongs to both.
+For shared or frequently updated deliverables use `--independent`: the current issue is
+required and soft-linked automatically; add `--attachment-id ID` to renew the same file.

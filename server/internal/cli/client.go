@@ -499,7 +499,11 @@ func (c *APIClient) UploadAttachment(ctx context.Context, fileData []byte, filen
 	return c.uploadAttachment(ctx, fileData, filename, "attachment_id", attachmentID)
 }
 
-func (c *APIClient) uploadAttachment(ctx context.Context, fileData []byte, filename, field, value string) (AttachmentResponse, error) {
+func (c *APIClient) UploadCommentAttachment(ctx context.Context, fileData []byte, filename, issueID, commentID string) (AttachmentResponse, error) {
+	return c.uploadAttachment(ctx, fileData, filename, "issue_id", issueID, "comment_id", commentID)
+}
+
+func (c *APIClient) uploadAttachment(ctx context.Context, fileData []byte, filename string, fields ...string) (AttachmentResponse, error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
@@ -511,9 +515,12 @@ func (c *APIClient) uploadAttachment(ctx context.Context, fileData []byte, filen
 		return AttachmentResponse{}, fmt.Errorf("write file data: %w", err)
 	}
 
-	if value != "" {
-		if err := writer.WriteField(field, value); err != nil {
-			return AttachmentResponse{}, fmt.Errorf("write %s field: %w", field, err)
+	for i := 0; i < len(fields); i += 2 {
+		if fields[i+1] == "" {
+			continue
+		}
+		if err := writer.WriteField(fields[i], fields[i+1]); err != nil {
+			return AttachmentResponse{}, fmt.Errorf("write %s field: %w", fields[i], err)
 		}
 	}
 

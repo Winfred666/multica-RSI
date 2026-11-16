@@ -127,6 +127,5 @@ def publish_shared_artifact(reference, content):
     with tempfile.TemporaryDirectory(prefix='.featssship-', dir=Path.cwd()) as directory:
         path = Path(directory) / reference['filename']
         path.write_text(content)
-        attachment = cli('attachment', 'upload', str(path), *renewal)
-        cli('attachment', 'attach', attachment['id'], '--issue', reference['issue_id'], '--soft')
+        attachment = cli('attachment', 'upload', str(path), '--independent', *renewal)
     return attachment

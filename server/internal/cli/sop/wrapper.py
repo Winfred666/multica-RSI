@@ -181,6 +181,7 @@ def read_state(context, phases=None):
 
 def save_state(context, state):
     state['runtime'] = runtime_command()
+    state['workdir'] = str(Path.cwd())
     try:
         multica('metadata', 'set', context['issue_id'], '--key', state_key(context),
                 '--type', 'string', '--value', json.dumps(state, default=str, allow_nan=False, separators=(',', ':')))
@@ -694,6 +695,7 @@ def main(argv=None):
         for flag, key in (('issue', 'issue_id'), ('workspace', 'workspace_id')):
             if getattr(args, flag, None):
                 context[key] = getattr(args, flag)
+        os.environ['MULTICA_ISSUE_ID'] = context['issue_id']
         context['controller_rules'] = 'Follow controller.workflow options and state prechecks.'
         if args.help:
             print(help_output(context))

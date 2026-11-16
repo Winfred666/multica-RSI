@@ -60,6 +60,22 @@ func (d *Daemon) runRemoteSOP(ctx context.Context, request protocol.RemoteSOPReq
 	if err := json.Unmarshal([]byte(payload), &command); err != nil {
 		return "", 1, err
 	}
+	if command.QuestionCommentID != "" {
+		var issue struct {
+			Metadata map[string]string `json:"metadata"`
+		}
+		client := cli.NewAPIClient(d.cfg.ServerBaseURL, request.WorkspaceID, request.AuthToken)
+		if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(remoteSOPIssue(request, command)), &issue); err != nil {
+			return "", 1, err
+		}
+		var state struct {
+			WorkDir string `json:"workdir"`
+		}
+		if err := json.Unmarshal([]byte(issue.Metadata["sop."+name]), &state); err != nil {
+			return "", 1, err
+		}
+		request.WorkDir = state.WorkDir
+	}
 	if request.WorkDir == "" {
 		return "", 1, fmt.Errorf("remote SOP requires the target working directory")
 	}
