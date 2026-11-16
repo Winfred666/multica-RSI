@@ -403,6 +403,10 @@ func (d *Daemon) readTaskWakeupMessagesForConnection(conn *websocket.Conn, taskW
 					continue
 				}
 			}
+			if payload.Command != nil {
+				go d.executeRemoteSOP(d.daemonLifecycleCtx(), *payload.Command)
+				continue
+			}
 			if payload.RuntimeID != "" {
 				d.logger.Debug("task wakeup received", "runtime_id", payload.RuntimeID, "task_id", payload.TaskID)
 			}

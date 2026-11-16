@@ -50,7 +50,7 @@ it("renders pending source-thread context and submits using the source question,
   fireEvent.click(screen.getByRole("radio", { name: "Approve" }));
   fireEvent.click(screen.getByRole("button", { name: "Submit" }));
   await waitFor(() => expect(createComment).toHaveBeenCalledWith("source",
-    `/note !sop-remote review {"args":["approve"],"que_comment_id":"${questionId}"}`,
+    `!sop-remote review {"args":["approve"],"que_comment_id":"${questionId}"}`,
     undefined, questionId, undefined, undefined, undefined));
 });
 

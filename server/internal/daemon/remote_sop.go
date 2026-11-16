@@ -3,50 +3,29 @@ package daemon
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/multica-ai/multica/server/internal/cli"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
-func (d *Daemon) executeRemoteSOPs(ctx context.Context, runtimeID string) {
-	var requests []protocol.RemoteSOPRequest
-	if err := d.client.postJSON(ctx, "/api/daemon/runtimes/"+url.PathEscape(runtimeID)+"/remote-sops/take", nil, &requests); err != nil {
-		d.logger.Debug("remote SOP poll failed", "error", err)
-		return
-	}
-	for _, request := range requests {
-		d.executeRemoteSOP(ctx, request)
-	}
-}
-
-// Remote SOPs run directly from heartbeat actions, outside agent task execution.
 func (d *Daemon) executeRemoteSOP(ctx context.Context, request protocol.RemoteSOPRequest) {
 	output, code, err := d.runRemoteSOP(ctx, request)
-	diagnostic := ""
-	if err != nil {
-		diagnostic = err.Error()
+	if code == 0 && err == nil {
+		err = d.cleanRemoteSOPAnswer(ctx, request)
 	}
-	result := TaskMessageData{Seq: 2, CallID: request.ID, Type: "tool_result", Tool: "remote-sop", Output: output, Content: diagnostic, Input: map[string]any{"exit_code": code}, CreatedAt: time.Now().UTC()}
-	if code == 0 {
-		if err := d.cleanRemoteSOPAnswer(ctx, request); err != nil {
-			result.Content = "questionnaire cleanup: " + err.Error()
-			var denied *cli.HTTPError
-			if errors.As(err, &denied) && denied.Method == http.MethodPut && denied.StatusCode == http.StatusForbidden {
-				result.Input["questionnaire_edit_denied"] = true
-			}
+	if err != nil {
+		client := cli.NewAPIClient(d.cfg.ServerBaseURL, request.WorkspaceID, d.client.token)
+		client.AgentID = request.AgentID
+		if postErr := client.PostJSON(ctx, "/api/issues/"+url.PathEscape(request.IssueID)+"/comments", map[string]any{"content": "/note SoP command failed:\n" + output + "\n" + err.Error()}, nil); postErr != nil {
+			d.logger.Error("remote SOP exception comment failed", "comment_id", request.ID, "error", postErr)
 		}
 	}
-	if err := d.client.ReportTaskMessages(ctx, request.ID, []TaskMessageData{result}); err != nil {
-		d.logger.Error("remote SOP result failed", "request_id", request.ID, "error", err)
-	}
+	d.logger.Info("remote SOP finished", "comment_id", request.ID, "exit_code", code, "output", output, "error", err)
 }
 
 type remoteSOPCommand struct {
@@ -55,7 +34,7 @@ type remoteSOPCommand struct {
 }
 
 func (d *Daemon) runRemoteSOP(ctx context.Context, request protocol.RemoteSOPRequest) (string, int, error) {
-	name, payload, _ := strings.Cut(strings.TrimPrefix(request.Content, "/note !sop-remote "), " ")
+	name, payload, _ := strings.Cut(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(request.Content), "!sop-remote")), " ")
 	var command remoteSOPCommand
 	if err := json.Unmarshal([]byte(payload), &command); err != nil {
 		return "", 1, err
@@ -64,7 +43,7 @@ func (d *Daemon) runRemoteSOP(ctx context.Context, request protocol.RemoteSOPReq
 		var issue struct {
 			Metadata map[string]string `json:"metadata"`
 		}
-		client := cli.NewAPIClient(d.cfg.ServerBaseURL, request.WorkspaceID, request.AuthToken)
+		client := cli.NewAPIClient(d.cfg.ServerBaseURL, request.WorkspaceID, d.client.token)
 		if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(remoteSOPIssue(request, command)), &issue); err != nil {
 			return "", 1, err
 		}
@@ -83,7 +62,7 @@ func (d *Daemon) runRemoteSOP(ctx context.Context, request protocol.RemoteSOPReq
 	process.Dir = request.WorkDir
 	process.Env = append(os.Environ(), "MULTICA_AGENT_ID="+request.AgentID,
 		"MULTICA_ISSUE_ID="+request.IssueID, "MULTICA_WORKSPACE_ID="+request.WorkspaceID,
-		"MULTICA_TOKEN="+request.AuthToken, "MULTICA_SERVER_URL="+d.cfg.ServerBaseURL)
+		"MULTICA_TOKEN="+d.client.token, "MULTICA_SERVER_URL="+d.cfg.ServerBaseURL)
 	output, err := process.CombinedOutput()
 	code := 0
 	if err != nil {
@@ -109,7 +88,7 @@ func remoteSOPIssue(request protocol.RemoteSOPRequest, command remoteSOPCommand)
 }
 
 func (d *Daemon) cleanRemoteSOPAnswer(ctx context.Context, request protocol.RemoteSOPRequest) error {
-	name, payload, _ := strings.Cut(strings.TrimPrefix(request.Content, "/note !sop-remote "), " ")
+	name, payload, _ := strings.Cut(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(request.Content), "!sop-remote")), " ")
 	var command remoteSOPCommand
 	if err := json.Unmarshal([]byte(payload), &command); err != nil {
 		return err
@@ -117,7 +96,7 @@ func (d *Daemon) cleanRemoteSOPAnswer(ctx context.Context, request protocol.Remo
 	if command.QuestionCommentID == "" {
 		return nil
 	}
-	client := cli.NewAPIClient(d.cfg.ServerBaseURL, request.WorkspaceID, request.AuthToken)
+	client := cli.NewAPIClient(d.cfg.ServerBaseURL, request.WorkspaceID, d.client.token)
 	type comment struct {
 		ID       string `json:"id"`
 		Content  string `json:"content"`
