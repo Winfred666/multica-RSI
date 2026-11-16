@@ -1936,6 +1936,7 @@ func isNoteComment(content string) bool {
 // steer names the running turns the author chose: a recipient whose chosen
 // turn is still running receives this comment there instead of a follow-up run.
 func (h *Handler) triggerTasksForComment(ctx context.Context, issue db.Issue, comment db.Comment, parentComment *db.Comment, actorType, actorID, originatorUserID string, suppressAgentIDs []pgtype.UUID, steer commentSteerRequest) []CommentTriggerOutcome {
+	// TODO: Stage 4: SoP as first-class member: Directly using special ACP AS command executor in the future inside daemon
 	if isRemoteSOPComment(comment.Content) {
 		return h.triggerRemoteSOP(ctx, issue, comment, actorType, actorID, originatorUserID)
 	}
@@ -2617,6 +2618,7 @@ func (h *Handler) computeCommentAgentTriggers(ctx context.Context, issue db.Issu
 		opts.ThreadCommentID = parentComment.ID
 	}
 
+	// TODO: Stage 4: SoP as first-class member: Directly using special ACP AS command executor in the future inside daemon
 	if isNoteComment(content) || isRemoteSOPComment(content) {
 		return nil, nil
 	}

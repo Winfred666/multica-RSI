@@ -1416,10 +1416,12 @@ func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue
 	return task, nil
 }
 
+// TODO: Stage 4: SoP as first-class member: Directly using special ACP AS command executor in the future inside daemon
 func (s *TaskService) EnqueueRemoteSOPTask(ctx context.Context, issue db.Issue, commentID pgtype.UUID) (db.AgentTaskQueue, error) {
 	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, issue.AssigneeID, commentID, nil, false, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{}, OriginNamed, false, "remote_sop")
 }
 
+// TODO: Stage 4: SoP as first-class member: Directly using special ACP AS command executor in the future inside daemon
 func IsRemoteSOPTask(task db.AgentTaskQueue) bool {
 	var execution struct {
 		Type string `json:"type"`
@@ -1533,7 +1535,8 @@ func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, iss
 		TriggerEvidenceRefID: attrEvidenceRef,
 		// Stamp the reviewed head so dedup can distinguish this run's target
 		// from a later request against a new HEAD (TEN-356).
-		HeadSha:  headShaText(s.ResolveIssueReviewSHA(ctx, issue.ID)),
+		HeadSha: headShaText(s.ResolveIssueReviewSHA(ctx, issue.ID)),
+		// TODO: Stage 4: SoP as first-class member: Directly using special ACP AS command executor in the future inside daemon
 		TaskType: pgtype.Text{String: taskType, Valid: taskType != ""},
 	})
 	if err != nil {
