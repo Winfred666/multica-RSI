@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/multica-ai/multica/server/internal/events"
+	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/internal/util"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -40,6 +41,7 @@ func TestCommentInvocationDeniedNoticePersistsWithoutDisclosure(t *testing.T) {
 	}
 	h := *testHandler
 	h.Bus = events.New()
+	h.TaskService = service.NewTaskService(h.Queries, testPool, h.Hub, h.Bus)
 	var notices []CommentResponse
 	h.Bus.Subscribe(protocol.EventCommentCreated, func(event events.Event) {
 		if payload, ok := event.Payload.(map[string]any); ok {
@@ -189,6 +191,7 @@ func TestCommentInvocationDeniedNoticeSkipsDeletedParent(t *testing.T) {
 	issueID := dbfx.Issue(t, "Delete before permission notice")
 	h := *testHandler
 	h.Bus = events.New()
+	h.TaskService = service.NewTaskService(h.Queries, testPool, h.Hub, h.Bus)
 	h.Bus.Subscribe(protocol.EventCommentCreated, func(event events.Event) {
 		payload, ok := event.Payload.(map[string]any)
 		if !ok {

@@ -152,7 +152,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   An option action's `this_round_reply_guidance` replaces the invocation's
   instruction and omits all top-level next steps. Stored guidance, ownership and
   transitions remain intact for later resume/help. Use `multica sop docs` for
-  authoring guidance. This adds no provider-stop mechanism.
+  authoring guidance. Automatic final replies use ordinary comment triggering,
+  including peer mentions. This adds no provider-stop mechanism.
   The daemon executes remote `/note !sop-remote <name> <JSON payload>` requests with
   `{"args":[],"que_comment_id":"optional-question-comment-id"}`.
   SoPs are bound to issue/workspace context and require no task ID.

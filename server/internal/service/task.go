@@ -50,6 +50,8 @@ type TaskService struct {
 	Analytics analytics.Client
 	Metrics   *obsmetrics.BusinessMetrics
 	Wakeup    TaskWakeupNotifier
+
+	OnAgentCommentCreated func(context.Context, db.Issue, db.Comment)
 	// PRSnapshotsEnabled reports whether the server can refresh GitHub check snapshots.
 	PRSnapshotsEnabled bool
 	// Entitlements supplies Cloud's workspace-scoped issue-count instruction.
@@ -7806,18 +7808,6 @@ func (s *TaskService) createAgentComment(ctx context.Context, issueID, agentID p
 	if err != nil {
 		return
 	}
-	// Resolve the thread root for thread-level side effects without overwriting
-	// parentID. The stored parent_id must remain the exact comment being replied
-	// to; recursive thread reads recover the root when needed.
-	var rootComment *db.Comment
-	if parentID.Valid {
-		if root, err := s.Queries.GetThreadRoot(ctx, db.GetThreadRootParams{
-			CommentID:   parentID,
-			WorkspaceID: issue.WorkspaceID,
-		}); err == nil {
-			rootComment = &root
-		}
-	}
 	created, err := s.Queries.CreateComment(ctx, db.CreateCommentParams{
 		ID:           dbid.NewV7(),
 		IssueID:      issueID,
@@ -7835,31 +7825,41 @@ func (s *TaskService) createAgentComment(ctx context.Context, issueID, agentID p
 	comment := created.Comment()
 	commentFields := commentEventFields(comment)
 	commentFields["revision"] = comment.Revision
+	s.PublishCommentCreated(ctx, issue, created, commentFields)
+	if commentType == "comment" && s.OnAgentCommentCreated != nil {
+		s.OnAgentCommentCreated(ctx, issue, comment)
+	}
+}
+
+// PublishCommentCreated shares post-commit publication and thread reopening for
+// HTTP comments and task output. The payload preserves each caller's wire shape.
+func (s *TaskService) PublishCommentCreated(ctx context.Context, issue db.Issue, created db.CreateCommentRow, payload any) {
+	comment := created.Comment()
 	s.Bus.Publish(events.Event{
 		Type:        protocol.EventCommentCreated,
 		WorkspaceID: util.UUIDToString(issue.WorkspaceID),
-		ActorType:   "agent",
-		ActorID:     util.UUIDToString(agentID),
+		ActorType:   comment.AuthorType,
+		ActorID:     util.UUIDToString(comment.AuthorID),
 		Payload: map[string]any{
-			"comment":        commentFields,
-			"issue_title":    issue.Title,
-			"issue_status":   issue.Status,
-			"issue_revision": created.IssueRevision,
+			"comment":             payload,
+			"issue_title":         issue.Title,
+			"issue_assignee_type": util.TextToPtr(issue.AssigneeType),
+			"issue_assignee_id":   util.UUIDToPtr(issue.AssigneeID),
+			"issue_status":        issue.Status,
+			"issue_revision":      created.IssueRevision,
 		},
 	})
-	s.AutoUnresolveThreadOnReply(ctx, rootComment, util.UUIDToString(issue.WorkspaceID), "agent", util.UUIDToString(agentID), sourceTaskID)
-}
-
-// AutoUnresolveThreadOnReply clears resolved_at on the thread root when a
-// reply lands in a resolved thread, and broadcasts comment:unresolved. Shared
-// between the user-facing Handler.CreateComment path and the agent-facing
-// TaskService.createAgentComment path so the resolved-then-replied state can
-// never desync (one of the bugs Emacs flagged on PR #2300). Errors are logged
-// — the reply itself already committed, the desync is recoverable on next read.
-func (s *TaskService) AutoUnresolveThreadOnReply(ctx context.Context, parent *db.Comment, workspaceID, actorType, actorID string, sourceTaskID pgtype.UUID) {
-	if parent == nil || !parent.ResolvedAt.Valid {
+	if !comment.ParentID.Valid {
 		return
 	}
+	parent, err := s.Queries.GetThreadRoot(ctx, db.GetThreadRootParams{
+		CommentID: comment.ParentID, WorkspaceID: issue.WorkspaceID,
+	})
+	if err != nil || !parent.ResolvedAt.Valid {
+		return
+	}
+	workspaceID := util.UUIDToString(issue.WorkspaceID)
+	actorType, actorID := comment.AuthorType, util.UUIDToString(comment.AuthorID)
 	// This follow-up write is a consequence of the reply's run, not a new
 	// system action. Preserve that lineage for event subscriptions as well.
 	tx, err := s.TxStarter.Begin(ctx)
@@ -7868,7 +7868,7 @@ func (s *TaskService) AutoUnresolveThreadOnReply(ctx context.Context, parent *db
 		return
 	}
 	defer tx.Rollback(ctx)
-	_, err = tx.Exec(ctx, `SELECT set_config('multica.actor_type',$1,true),set_config('multica.actor_id',$2,true),set_config('multica.source_task_id',$3,true)`, actorType, actorID, util.UUIDToString(sourceTaskID))
+	_, err = tx.Exec(ctx, `SELECT set_config('multica.actor_type',$1,true),set_config('multica.actor_id',$2,true),set_config('multica.source_task_id',$3,true)`, actorType, actorID, util.UUIDToString(comment.SourceTaskID))
 	if err != nil {
 		slog.Warn("auto-unresolve source attribution failed", "error", err)
 		return

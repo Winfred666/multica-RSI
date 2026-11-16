@@ -1828,20 +1828,6 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 	// entity-encode Markdown syntax characters (>, ", &, <) and corrupt the
 	// source. See issue #1303 / discussion in MUL-1119, MUL-1125.
 
-	// parent_id stores the exact comment being replied to. Thread-level behavior
-	// (for example auto-unresolving a resolved thread) resolves the root
-	// separately so storing a reply-to-reply does not destroy the direct-parent
-	// signal used by trigger decisions.
-	var rootComment *db.Comment
-	if parentID.Valid {
-		if root, err := h.Queries.GetThreadRoot(r.Context(), db.GetThreadRootParams{
-			CommentID:   parentID,
-			WorkspaceID: issue.WorkspaceID,
-		}); err == nil {
-			rootComment = &root
-		}
-	}
-
 	createParams := db.CreateCommentParams{
 		ID:           dbid.NewV7(),
 		IssueID:      issue.ID,
@@ -1926,20 +1912,7 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 	resp := commentToResponse(comment, nil, groupedAtt[uuidToString(comment.ID)])
 	resp.IssueRevision = created.IssueRevision
 	slog.Info("comment created", append(logger.RequestAttrs(r), "comment_id", uuidToString(comment.ID), "issue_id", issueID)...)
-	h.publish(protocol.EventCommentCreated, uuidToString(issue.WorkspaceID), authorType, authorID, map[string]any{
-		"comment":             resp,
-		"issue_title":         issue.Title,
-		"issue_assignee_type": textToPtr(issue.AssigneeType),
-		"issue_assignee_id":   uuidToPtr(issue.AssigneeID),
-		"issue_status":        issue.Status,
-		"issue_revision":      created.IssueRevision,
-	})
-
-	// A reply in a resolved thread re-opens it. Done after CreateComment commits
-	// so the reply is visible regardless of the unresolve outcome. Shared with
-	// the agent task path (TaskService.createAgentComment) — both reply paths
-	// must keep the resolved root in sync.
-	h.TaskService.AutoUnresolveThreadOnReply(r.Context(), rootComment, uuidToString(issue.WorkspaceID), authorType, authorID, h.wakeupSourceTaskID(r))
+	h.TaskService.PublishCommentCreated(r.Context(), issue, created, resp)
 
 	originatorUserID := h.invokeOriginatorFromRequest(r, authorType, authorID)
 	// The comment is already saved; a blocked mention must not fail the whole

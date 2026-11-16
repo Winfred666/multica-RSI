@@ -648,7 +648,6 @@ func (h *Handler) CreatePluginComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var parentID pgtype.UUID
-	var rootComment *db.Comment
 	if req.ParentID != nil && *req.ParentID != "" {
 		parsed, err := util.ParseUUID(*req.ParentID)
 		if err != nil {
@@ -661,7 +660,6 @@ func (h *Handler) CreatePluginComment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		parentID = parsed
-		rootComment = &parent
 	}
 
 	// Authorship follows the actor, and the actor was decided by how the caller
@@ -693,21 +691,7 @@ func (h *Handler) CreatePluginComment(w http.ResponseWriter, r *http.Request) {
 	}
 	comment := createdComment.Comment()
 
-	// The same two follow-ups every other comment path performs. Skipping them
-	// made a plugin-posted comment invisible until the next refetch, and left a
-	// reply into a resolved thread without re-opening it — a comment that lands
-	// as the user should behave like the user's, minus only what was refused on
-	// purpose (mention dispatch).
-	h.publish(protocol.EventCommentCreated, uuidToString(caller.WorkspaceID), authorType, uuidToString(authorID), map[string]any{
-		"comment":             commentToResponse(comment, nil, nil),
-		"issue_title":         issue.Title,
-		"issue_assignee_type": textToPtr(issue.AssigneeType),
-		"issue_assignee_id":   uuidToPtr(issue.AssigneeID),
-		"issue_status":        issue.Status,
-	})
-	if rootComment != nil {
-		h.TaskService.AutoUnresolveThreadOnReply(r.Context(), rootComment, uuidToString(caller.WorkspaceID), authorType, uuidToString(authorID), pgtype.UUID{})
-	}
+	h.TaskService.PublishCommentCreated(r.Context(), issue, createdComment, commentToResponse(comment, nil, nil))
 
 	writeJSON(w, http.StatusCreated, publicPluginComment(comment))
 }
