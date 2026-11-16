@@ -14,11 +14,13 @@ import (
 
 // The marker selects command delivery. Its name, payload and arguments belong
 // to the daemon/CLI, and the original comment remains the execution input.
+// TODO: Stage 4: SoP as first-class member: Directly using special ACP AS command executor in the future inside daemon
 func isRemoteSOPComment(content string) bool {
 	first, _, _ := strings.Cut(strings.TrimSpace(content), " ")
 	return first == "!sop-remote"
 }
 
+// TODO: Stage 4: SoP as first-class member: Directly using special ACP AS command executor in the future inside daemon
 func (h *Handler) triggerRemoteSOP(ctx context.Context, issue db.Issue, comment db.Comment, actorType, actorID, originator string) []CommentTriggerOutcome {
 	outcome := CommentTriggerOutcome{TargetType: "agent", TargetID: uuidToString(issue.AssigneeID), Status: DispatchBlocked, ReasonCode: ReasonTargetUnavailable}
 	if !issue.AssigneeType.Valid || issue.AssigneeType.String != "agent" {
@@ -39,6 +41,7 @@ func (h *Handler) triggerRemoteSOP(ctx context.Context, issue db.Issue, comment 
 }
 
 func (h *Handler) noteRemoteSOPCleanupFailure(ctx context.Context, task db.AgentTaskQueue) {
+	// TODO: Stage 4: SoP as first-class member: Directly using special ACP AS command executor in the future inside daemon
 	if !service.IsRemoteSOPTask(task) {
 		return
 	}
