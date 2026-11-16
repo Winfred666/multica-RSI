@@ -152,22 +152,12 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   transitions remain intact for later resume/help. Use `multica sop docs` for
   authoring guidance. This adds no provider-stop mechanism.
   The daemon executes remote `/note !sop-remote <name> <JSON payload>` requests with
-  `{"args":[],"que_comment_id":"optional-question-comment-id"}`. It uses the
-  same CLI in the target's latest saved working directory on that runtime, with
-  target-scoped credentials. The
-  process inherits the daemon environment, not the target agent's provider homes
-  or custom settings. The comment author supplies attribution only; the target agent
-  selects the runtime/cwd and execution identity. Skill discovery and execution remain CLI-owned.
-  Execution tokens reuse target-agent/runtime-owner credential storage and
-  completed audit logs; they do not authenticate as the comment sender.
+  `{"args":[],"que_comment_id":"optional-question-comment-id"}`.
   SoPs are bound to issue/workspace context and require no task ID.
-  State owners route handoffs and questionnaires only. The engine does not
-  reject actions by caller identity; ordinary API authentication is unchanged.
   When `que_comment_id` identifies a matching rendered questionnaire, successful
   execution deletes the answer comment and adds its `args` to the questionnaire
-  JSON through normal target-authorized comment APIs. A denied edit leaves a
-  short system notice, without granting editing rights. Missing questionnaire
-  references skip cleanup. After questionnaire publication, cross-issue owners
+  JSON. Missing questionnaire references skip cleanup.
+  After questionnaire publication, cross-issue owners
   receive a Markdown source link in their declared thread; the source question
   records `que_comment_id` and `forwarded_comment_id`. Same-issue questions do
   not forward. Rendered choices carry `--issue` so recipient answers still use
