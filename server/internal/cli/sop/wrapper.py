@@ -142,8 +142,8 @@ def load_controller():
     return controller
 
 
-def multica(*args):
-    command = ["multica", "issue", *args, "--output", "json"]
+def multica(*args, resource='issue'):
+    command = ["multica", resource, *args, "--output", "json"]
     result = subprocess.run(command, capture_output=True, text=True, timeout=30)
     if result.returncode:
         raise SOPError("cli_error", f"{shlex.join(command)}: {result.stderr.strip() or result.stdout.strip()}")
@@ -654,7 +654,8 @@ def render_addressed_state(context, controller, result, rendered):
             app_url = os.environ.get('MULTICA_APP_URL', '').rstrip('/')
             if not app_url.startswith(('http://', 'https://')):
                 raise SOPError('missing_app_url', 'Set app_url to the frontend HTTP(S) URL before forwarding questionnaires')
-            link = app_url + '/' + context['workspace_id'] + '/issues/' + context['issue_id'] + '#comment-' + question['id']
+            workspace = multica('get', context['workspace_id'], resource='workspace')
+            link = app_url + '/' + workspace['slug'] + '/issues/' + context['issue_id'] + '#comment-' + question['id']
             body.write_text(owner['content'] + '\n\n[Question](' + link + ')')
             forward = multica('comment', 'add', owner['issue_id'], '--parent', owner['thread'], '--content-file', str(body))
             rendered['forwarded_comment_id'] = forward['id']

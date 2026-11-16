@@ -404,12 +404,16 @@ workflow = Workflow(
         for destination in ('source', 'destination'):
             with self.subTest(destination=destination):
                 owner = {'issue_id': destination, 'thread': 'target-thread', 'id': 'reader', 'content': '/note'}
-                context = {'issue_id': 'source', 'workspace_id': 'workspace', 'state': {'reply_parent': 'source-thread'}}
+                context = {'issue_id': 'source', 'workspace_id': 'workspace-uuid', 'state': {'reply_parent': 'source-thread'}}
                 rendered = {'status': 'review', 'instruction': 'Choose.', 'next_step': [
                     {'instruction': 'Accept.', 'command': 'multica sop run fixture-sop accept'}]}
                 writes = []
+                workspace_reads = []
 
-                def post(*words):
+                def post(*words, resource='issue'):
+                    if resource == 'workspace':
+                        workspace_reads.append(words)
+                        return {'id': 'workspace-uuid', 'slug': 'acme'}
                     writes.append((words, Path(words[words.index('--content-file') + 1]).read_text()))
                     return {'id': 'question' if len(writes) == 1 else 'forward', 'revision': 1}
 
@@ -429,10 +433,11 @@ workflow = Workflow(
                 self.assertIn('Save !sop-remote ', question['how_to_step'])
                 self.assertNotIn('how_to_step', rendered)
                 self.assertEqual(len(writes), 2 if destination == 'source' else 3)
+                self.assertEqual(workspace_reads, [] if destination == 'source' else [('get', 'workspace-uuid')])
                 if destination != 'source':
                     self.assertEqual(question['forwarded_comment_id'], 'forward')
                     self.assertEqual(writes[1][0][:5], ('comment', 'add', destination, '--parent', 'target-thread'))
-                    self.assertEqual(writes[1][1], '/note\n\n[Question](https://multica.example/workspace/issues/source#comment-question)')
+                    self.assertEqual(writes[1][1], '/note\n\n[Question](https://multica.example/acme/issues/source#comment-question)')
                 else:
                     self.assertNotIn('forwarded_comment_id', question)
 
