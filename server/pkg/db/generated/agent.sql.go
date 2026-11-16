@@ -910,16 +910,22 @@ SET status = 'cancelled', completed_at = now(), prepare_lease_expires_at = NULL,
     cancelled_by_type = 'system', cancelled_by_id = NULL, cancelled_by_name = NULL,
     context = COALESCE(context, '{}'::jsonb) || jsonb_build_object('comment_change_cancelled_task_id', id::text)
 WHERE (trigger_comment_id = $1 OR $1 = ANY(coalesced_comment_ids))
+  AND id IS DISTINCT FROM $2::uuid
   AND status IN ('queued', 'dispatched', 'running', 'waiting_local_directory', 'deferred')
 RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, autopilot_run_id, attempt, max_attempts, parent_task_id, failure_reason, trigger_summary, force_fresh_session, is_leader_task, wait_reason, initiator_user_id, handoff_note, prepare_lease_expires_at, squad_id, runtime_mcp_overlay, escalation_for_task_id, fire_at, originator_user_id, runtime_connected_apps, coalesced_comment_ids, delivered_comment_ids, chat_input_task_id, chat_finalize_deferred_at, originator_source, delegated_from_task_id, retry_of_task_id, rerun_of_task_id, rule_version_id, trigger_evidence_kind, trigger_evidence_ref_id, accountable_user_id, session_rollout_missing, retired_session_id, quick_actions_disabled, regenerate_quick_actions_for, branch_name, durable_work_dir, channel_context_revision, comment_thread_id, cancelled_by_type, cancelled_by_id, cancelled_by_name, issue_snapshot, workflow_step
 `
+
+type CancelAgentTasksByTriggerCommentParams struct {
+	TriggerCommentID pgtype.UUID `json:"trigger_comment_id"`
+	ConsumedBy       pgtype.UUID `json:"consumed_by"`
+}
 
 // Cancels active tasks whose planned batch contains the edited/deleted comment.
 // The body may already have been embedded as either the primary trigger or a
 // coalesced input; cancellation prevents an agent from acting on a stale or
 // deleted version. Must run before deletion clears trigger_comment_id.
-func (q *Queries) CancelAgentTasksByTriggerComment(ctx context.Context, triggerCommentID pgtype.UUID) ([]AgentTaskQueue, error) {
-	rows, err := q.db.Query(ctx, cancelAgentTasksByTriggerComment, triggerCommentID)
+func (q *Queries) CancelAgentTasksByTriggerComment(ctx context.Context, arg CancelAgentTasksByTriggerCommentParams) ([]AgentTaskQueue, error) {
+	rows, err := q.db.Query(ctx, cancelAgentTasksByTriggerComment, arg.TriggerCommentID, arg.ConsumedBy)
 	if err != nil {
 		return nil, err
 	}
@@ -2287,8 +2293,7 @@ SELECT
         WHEN COALESCE($13::boolean, FALSE)
         THEN '{"fresh_rerun":true}'::jsonb
         ELSE '{}'::jsonb
-    END, '{}'::jsonb),
-    $14,
+    END || CASE WHEN $14::text IS NOT NULL THEN jsonb_build_object('type', $14::text) ELSE '{}'::jsonb END, '{}'::jsonb),
     $15,
     $16,
     $17,
@@ -2298,9 +2303,10 @@ SELECT
     $21,
     $22,
     $23,
+    $24,
     -- The issue's status as this task is queued: the workflow step it works on (MUL-7420).
     (SELECT i.status FROM issue i WHERE i.id = $3),
-    COALESCE($24::uuid, gen_random_uuid())
+    COALESCE($25::uuid, gen_random_uuid())
 WHERE lock_task_owner_rows($1, $3, $2)
 RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, autopilot_run_id, attempt, max_attempts, parent_task_id, failure_reason, trigger_summary, force_fresh_session, is_leader_task, wait_reason, initiator_user_id, handoff_note, prepare_lease_expires_at, squad_id, runtime_mcp_overlay, escalation_for_task_id, fire_at, originator_user_id, runtime_connected_apps, coalesced_comment_ids, delivered_comment_ids, chat_input_task_id, chat_finalize_deferred_at, originator_source, delegated_from_task_id, retry_of_task_id, rerun_of_task_id, rule_version_id, trigger_evidence_kind, trigger_evidence_ref_id, accountable_user_id, session_rollout_missing, retired_session_id, quick_actions_disabled, regenerate_quick_actions_for, branch_name, durable_work_dir, channel_context_revision, comment_thread_id, cancelled_by_type, cancelled_by_id, cancelled_by_name, issue_snapshot, workflow_step
 `
@@ -2319,6 +2325,7 @@ type CreateAgentTaskParams struct {
 	SquadID              pgtype.UUID   `json:"squad_id"`
 	HeadSha              pgtype.Text   `json:"head_sha"`
 	FreshRerun           pgtype.Bool   `json:"fresh_rerun"`
+	TaskType             pgtype.Text   `json:"task_type"`
 	OriginatorUserID     pgtype.UUID   `json:"originator_user_id"`
 	AccountableUserID    pgtype.UUID   `json:"accountable_user_id"`
 	RuntimeMcpOverlay    []byte        `json:"runtime_mcp_overlay"`
@@ -2366,6 +2373,7 @@ func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams
 		arg.SquadID,
 		arg.HeadSha,
 		arg.FreshRerun,
+		arg.TaskType,
 		arg.OriginatorUserID,
 		arg.AccountableUserID,
 		arg.RuntimeMcpOverlay,
@@ -4308,6 +4316,26 @@ func (q *Queries) GetCommentThreadRootID(ctx context.Context, commentID pgtype.U
 	return id, err
 }
 
+const getLastIssueWorkDir = `-- name: GetLastIssueWorkDir :one
+SELECT work_dir FROM agent_task_queue
+WHERE runtime_id = $1 AND agent_id = $2 AND issue_id = $3
+  AND work_dir IS NOT NULL AND work_dir <> ''
+ORDER BY created_at DESC LIMIT 1
+`
+
+type GetLastIssueWorkDirParams struct {
+	RuntimeID pgtype.UUID `json:"runtime_id"`
+	AgentID   pgtype.UUID `json:"agent_id"`
+	IssueID   pgtype.UUID `json:"issue_id"`
+}
+
+func (q *Queries) GetLastIssueWorkDir(ctx context.Context, arg GetLastIssueWorkDirParams) (pgtype.Text, error) {
+	row := q.db.QueryRow(ctx, getLastIssueWorkDir, arg.RuntimeID, arg.AgentID, arg.IssueID)
+	var work_dir pgtype.Text
+	err := row.Scan(&work_dir)
+	return work_dir, err
+}
+
 const getLastTaskSession = `-- name: GetLastTaskSession :one
 WITH retired_sessions AS (
     SELECT DISTINCT r.retired_session_id AS session_id
@@ -4712,7 +4740,7 @@ func (q *Queries) HasActiveTaskForIssueAndAgentInThread(ctx context.Context, arg
 
 const hasPendingTaskForIssue = `-- name: HasPendingTaskForIssue :one
 SELECT count(*) > 0 AS has_pending FROM agent_task_queue
-WHERE context->>'wakeup_id' IS NULL AND issue_id = $1 AND status IN ('queued', 'dispatched')
+WHERE context->>'wakeup_id' IS NULL AND COALESCE(context->>'type','') <> 'remote_sop' AND issue_id = $1 AND status IN ('queued', 'dispatched')
 `
 
 // Returns true if there is a queued or dispatched (but not yet running) task for the issue.
@@ -4728,7 +4756,7 @@ func (q *Queries) HasPendingTaskForIssue(ctx context.Context, issueID pgtype.UUI
 
 const hasPendingTaskForIssueAndAgent = `-- name: HasPendingTaskForIssueAndAgent :one
 SELECT count(*) > 0 AS has_pending FROM agent_task_queue
-WHERE context->>'wakeup_id' IS NULL AND issue_id = $1 AND agent_id = $2
+WHERE context->>'wakeup_id' IS NULL AND COALESCE(context->>'type','') <> 'remote_sop' AND issue_id = $1 AND agent_id = $2
   AND (
     status IN ('queued', 'dispatched')
     OR (status = 'deferred' AND context->>'channel_issue_media_pending' = 'true')
@@ -4765,7 +4793,7 @@ func (q *Queries) HasPendingTaskForIssueAndAgent(ctx context.Context, arg HasPen
 
 const hasPendingTaskForIssueAndAgentExcludingTriggerComment = `-- name: HasPendingTaskForIssueAndAgentExcludingTriggerComment :one
 SELECT count(*) > 0 AS has_pending FROM agent_task_queue
-WHERE context->>'wakeup_id' IS NULL AND issue_id = $1
+WHERE context->>'wakeup_id' IS NULL AND COALESCE(context->>'type','') <> 'remote_sop' AND issue_id = $1
   AND agent_id = $2
   AND (
     status IN ('queued', 'dispatched')
@@ -4803,7 +4831,7 @@ func (q *Queries) HasPendingTaskForIssueAndAgentExcludingTriggerComment(ctx cont
 
 const hasPendingTaskForIssueAndAgentExcludingTriggerCommentInThread = `-- name: HasPendingTaskForIssueAndAgentExcludingTriggerCommentInThread :one
 SELECT count(*) > 0 AS has_pending FROM agent_task_queue
-WHERE context->>'wakeup_id' IS NULL AND issue_id = $1
+WHERE context->>'wakeup_id' IS NULL AND COALESCE(context->>'type','') <> 'remote_sop' AND issue_id = $1
   AND agent_id = $2
   AND (
     status IN ('queued', 'dispatched')
@@ -4841,7 +4869,7 @@ func (q *Queries) HasPendingTaskForIssueAndAgentExcludingTriggerCommentInThread(
 
 const hasPendingTaskForIssueAndAgentInThread = `-- name: HasPendingTaskForIssueAndAgentInThread :one
 SELECT count(*) > 0 AS has_pending FROM agent_task_queue
-WHERE context->>'wakeup_id' IS NULL AND issue_id = $1 AND agent_id = $2
+WHERE context->>'wakeup_id' IS NULL AND COALESCE(context->>'type','') <> 'remote_sop' AND issue_id = $1 AND agent_id = $2
   AND (
     status IN ('queued', 'dispatched')
     OR (status = 'deferred' AND context->>'channel_issue_media_pending' = 'true')
@@ -7093,7 +7121,7 @@ SET coalesced_comment_ids = (
     runtime_connected_apps = $11
 WHERE id = (
     SELECT t.id FROM agent_task_queue t
-    WHERE t.context->>'wakeup_id' IS NULL AND t.issue_id = $12
+    WHERE t.context->>'wakeup_id' IS NULL AND COALESCE(t.context->>'type','') <> 'remote_sop' AND t.issue_id = $12
       AND t.agent_id = $13
       AND t.comment_thread_id IS NOT DISTINCT FROM comment_thread_root_id($1::uuid)
       AND (
@@ -7268,7 +7296,7 @@ SET coalesced_comment_ids = (
     trigger_summary = $2
 WHERE id = (
     SELECT t.id FROM agent_task_queue t
-    WHERE t.context->>'wakeup_id' IS NULL AND t.issue_id = $3
+    WHERE t.context->>'wakeup_id' IS NULL AND COALESCE(t.context->>'type','') <> 'remote_sop' AND t.issue_id = $3
       AND t.agent_id = $4
       AND t.comment_thread_id IS NOT DISTINCT FROM comment_thread_root_id($1::uuid)
       AND (
@@ -8316,7 +8344,7 @@ SET coalesced_comment_ids = (
     )
 WHERE id = (
     SELECT t.id FROM agent_task_queue t
-    WHERE t.context->>'wakeup_id' IS NULL AND t.issue_id = $2
+    WHERE t.context->>'wakeup_id' IS NULL AND COALESCE(t.context->>'type','') <> 'remote_sop' AND t.issue_id = $2
       AND t.agent_id = $3
       AND t.comment_thread_id IS NOT DISTINCT FROM comment_thread_root_id($1::uuid)
       AND t.status IN ('dispatched', 'running', 'waiting_local_directory')

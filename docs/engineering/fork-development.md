@@ -154,7 +154,10 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   transitions remain intact for later resume/help. Use `multica sop docs` for
   authoring guidance. Automatic final replies use ordinary comment triggering,
   including peer mentions. This adds no provider-stop mechanism.
-  The daemon executes remote `/note !sop-remote <name> <JSON payload>` requests with
+  Comment ingress recognizes the standalone `!sop-remote` marker and queues
+  ordinary durable tasks for the assignee. `/note` stays inert. The backend
+  forwards unchanged text; only the daemon/CLI parses names and payloads.
+  The daemon executes `!sop-remote <name> <JSON payload>` requests with
   `{"args":[],"que_comment_id":"optional-question-comment-id"}`.
   SoPs are bound to issue/workspace context and require no task ID.
   Questionnaire replies execute in the working directory saved by that SoP, not the assignee's latest task directory.
@@ -241,7 +244,7 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   `content` supplies native `/note` or agent-mention syntax; only the three destination
   IDs are encoded, and the execution assignee is unchanged.
   Rendered JSON adds frontend-ignored `how_to_step` text with the ordinary comment-post
-  command for `/note !sop-remote <skill-name>` and a questionnaire-comment-ID placeholder;
+  command for `!sop-remote <skill-name>` and a questionnaire-comment-ID placeholder;
   the renderer does not post/read back to discover its ID.
   Controller validation checks that the final action on a declared normal-agent
   to addressed-state path returns `this_round_reply_guidance`. Stage 3 owns forwarding

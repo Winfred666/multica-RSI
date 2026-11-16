@@ -1966,6 +1966,9 @@ func isNoteComment(content string) bool {
 // steer names the running turns the author chose: a recipient whose chosen
 // turn is still running receives this comment there instead of a follow-up run.
 func (h *Handler) triggerTasksForComment(ctx context.Context, issue db.Issue, comment db.Comment, parentComment *db.Comment, actorType, actorID, originatorUserID string, suppressAgentIDs []pgtype.UUID, steer commentSteerRequest) []CommentTriggerOutcome {
+	if isRemoteSOPComment(comment.Content) {
+		return h.triggerRemoteSOP(ctx, issue, comment, actorType, actorID, originatorUserID)
+	}
 	if isNoteComment(comment.Content) {
 		return nil
 	}
@@ -2644,7 +2647,7 @@ func (h *Handler) computeCommentAgentTriggers(ctx context.Context, issue db.Issu
 		opts.ThreadCommentID = parentComment.ID
 	}
 
-	if isNoteComment(content) {
+	if isNoteComment(content) || isRemoteSOPComment(content) {
 		return nil, nil
 	}
 
@@ -3477,7 +3480,7 @@ func (h *Handler) UpdateComment(w http.ResponseWriter, r *http.Request) {
 			issueRevision = updated.IssueRevision
 		}
 		if err == nil && oldContent != req.Content && strictContentEdit {
-			cancelled, err = qtx.CancelAgentTasksByTriggerComment(r.Context(), existing.ID)
+			cancelled, err = qtx.CancelAgentTasksByTriggerComment(r.Context(), db.CancelAgentTasksByTriggerCommentParams{TriggerCommentID: existing.ID})
 			if err == nil {
 				err = service.SettleTerminalTaskState(r.Context(), qtx, cancelled...)
 			}
@@ -3639,7 +3642,13 @@ func (h *Handler) DeleteComment(w http.ResponseWriter, r *http.Request) {
 	// agent does not run with the now-deleted content already embedded. Must
 	// run before the delete: a removed row would nullify trigger_comment_id
 	// through ON DELETE SET NULL and orphan those tasks in queued.
-	cancelled, cancelErr := h.TaskService.CancelTasksByTriggerComment(r.Context(), comment.ID)
+	// An executing command consumes its own source after successful CLI work.
+	// Other edits/deletions retain ordinary stale-input cancellation.
+	var consumedBy pgtype.UUID
+	if task, ok := h.taskFromRequestHeader(r); ok && task.Status == "running" && task.TriggerCommentID == comment.ID && service.IsRemoteSOPTask(task) {
+		consumedBy = task.ID
+	}
+	cancelled, cancelErr := h.TaskService.CancelTasksByTriggerComment(r.Context(), comment.ID, consumedBy)
 	if cancelErr != nil {
 		slog.Warn("cancel tasks for deleted trigger comment failed", append(logger.RequestAttrs(r), "error", cancelErr, "comment_id", commentId)...)
 	}

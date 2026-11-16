@@ -3419,6 +3419,12 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 			resp.TriggerCommentContent = "The newest triggering comment is no longer available. Address every earlier comment included below."
 		}
 
+		if service.IsRemoteSOPTask(*task) {
+			if dir, err := h.Queries.GetLastIssueWorkDir(r.Context(), db.GetLastIssueWorkDirParams{RuntimeID: runtime.ID, AgentID: task.AgentID, IssueID: task.IssueID}); err == nil {
+				resp.PriorWorkDir = dir.String
+			}
+		}
+
 		// Resolve the prior agent session / workdir to resume.
 		if task.RerunOfTaskID.Valid && !service.IsFreshRerun(*task) {
 			// Manual retry: resume precisely from the source task the user
