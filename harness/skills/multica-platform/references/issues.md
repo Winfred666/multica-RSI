@@ -373,10 +373,6 @@ Where content goes decides how it shows:
   anything taller than 480px collapses behind "Show all". Name it with
   `title="..."` on the fence line. HTML runs in a scripts-only sandbox (no
   cookies, storage or parent access; CDN `<script src>` works).
-- **An attached file** — `--attachment <path>`. Every non-image file shows as
-  a file card that opens in the viewer, **HTML included**: an uploaded
-  `report.html` is a deliverable to open, not an inline chart. Use it for
-  something the reader keeps or downloads.
 
 For HTML that follows light / dark mode, style it with `var(--background)`,
 `var(--foreground)`, `var(--muted)`, `var(--muted-foreground)`, `var(--border)`,

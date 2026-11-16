@@ -17,6 +17,11 @@ description: Own issue workflow, delivery, review and acceptance.
    and add `--steer <run-id>` when `can_supplement: true`; see `multica-platform`.
 4. Answer naturally; successful completion publishes the reply.
    Honor explicit quiet instructions.
+   Keep comments self-contained: necessary text/JSON in the body; use fenced
+   Mermaid or HTML for necessary visuals. Do not insert direct Multica
+   attachment-download URLs (`/api/attachments/<id>/download`, absolute or
+   relative) as bare URLs or Markdown links in comment prose. See the
+   [rendering reference](../multica-platform/references/issues.md#charts-and-files-in-a-comment).
 5. Delivered work awaiting acceptance enters `in_review`; unfinished work stays
    `in_progress`; `done` stays human. A `[Project workflow]` overrides built-in
    status commands.
