@@ -27,10 +27,10 @@ class Parameter:
 
 
 class Option:
-    def __init__(self, name, prompt='', action=None, *, params=(), this_round_reply_guidance_preview=None):
+    def __init__(self, name, prompt='', action=None, *, params=(), this_round_handoff_guidance_preview=None):
         self.name, self.prompt = name, prompt
         self.action, self.params = action, tuple(params)
-        self.this_round_reply_guidance_preview = this_round_reply_guidance_preview
+        self.this_round_handoff_guidance_preview = this_round_handoff_guidance_preview
 
     def callback(self):
         return [self.name, *(word for param in self.params for word in param.words())]
@@ -115,7 +115,7 @@ class Workflow:
     def graph(self):
         return self.nodes, self.edges
 
-    def validate_graph(self, *, reply_guidance=False):
+    def validate_graph(self, *, handoff_guidance=False):
         """Every action path must reach a State or FINISHED; States end the walk."""
         nodes, adjacency = self.nodes, self.adjacency
         checked = set()
@@ -123,16 +123,16 @@ class Workflow:
         def visit(name, path, action=None, require_reply=False):
             node = nodes.get(name)
             if name == FINISHED or isinstance(node, State):
-                if (reply_guidance and require_reply and isinstance(node, State) and
+                if (handoff_guidance and require_reply and isinstance(node, State) and
                         isinstance(node.owner, dict) and 'issue_id' in node.owner):
                     tree = ast.parse(textwrap.dedent(inspect.getsource(action))) if action else ast.parse('')
                     returns = (item.value if isinstance(item, ast.Return) else item.body
                                for item in ast.walk(tree) if isinstance(item, (ast.Return, ast.Lambda)))
                     if not any(isinstance(value, ast.Dict) and any(
-                            isinstance(key, ast.Constant) and key.value == 'this_round_reply_guidance'
+                            isinstance(key, ast.Constant) and key.value == 'this_round_handoff_guidance'
                             for key in value.keys) for value in returns):
                         raise ValueError('Final action into addressed state ' + name +
-                                         ' must return this_round_reply_guidance: ' + ' -> '.join(map(str, (*path, name))))
+                                         ' must return this_round_handoff_guidance: ' + ' -> '.join(map(str, (*path, name))))
                 return
             if name in path:
                 raise ValueError('Action-only cycle: ' + ' -> '.join(map(str, (*path, name))))
@@ -266,7 +266,7 @@ class Workflow:
                 self.bind_inputs(node, args, context)
             result = (node.action(args, context) if node.action else {}) or {}
             context.setdefault('action_outputs', {})[node.name] = {
-                key: result[key] for key in ('instruction', 'this_round_reply_guidance') if key in result}
+                key: result[key] for key in ('instruction', 'this_round_handoff_guidance', 'this_round_handoff_content') if key in result}
             if not result.get('accepted', True):
                 return result
         result = result or {}

@@ -365,7 +365,7 @@ def transition(args, context, controller):
     if result['phase'] == workflow.initial:
         result.setdefault('alternatives', []).append({'instruction': 'Stop this SOP.', 'callback': ['quit']})
     next_phase = result.pop('phase')
-    if next_phase == workflow.FINISHED:
+    if workflow.is_finished(next_phase):
         result['instruction'] = finished_instruction(controller)
     result.setdefault('accepted', True)
     status = next_phase if result['accepted'] or receipt else before
@@ -376,8 +376,10 @@ def transition(args, context, controller):
         result['next_step']['alternatives'] = [callback(choice['instruction'], choice['callback'])
                                                 for choice in alternatives]
     owner = state_owner(workflow, next_phase, context)
-    if result['accepted'] and owner and 'issue_id' not in owner:
-        if workflow.handoff and owner['id'] != context['agent_id'] and not context.get('handoff'):
+    if result['accepted'] and not workflow.is_finished(next_phase) and owner and 'issue_id' not in owner:
+        if 'this_round_handoff_content' in result:
+            context['handoff_owner'] = owner
+        if not context.get('handoff_owner') and workflow.handoff and owner['id'] != context['agent_id'] and not context.get('handoff'):
             workflow.handoff(args, context, owner)
         if before is None or owner != state_owner(workflow, phase, context):
             multica('assign', context['issue_id'], '--to-id', owner['id'], '--no-start')
@@ -450,13 +452,13 @@ def finished_instruction(controller):
             'Allow re-enter with initial command in SKILL.md next round.')
 
 
-def response(result, *, reply_guidance=True):
+def response(result, *, handoff_guidance=True):
     """Agent guidance for the current issue state."""
-    if reply_guidance and 'this_round_reply_guidance' in result:
-        return {'status': result['status'], 'instruction': result['this_round_reply_guidance']}
+    if handoff_guidance and not result.get('finished') and 'this_round_handoff_guidance' in result:
+        return {'status': result['status'], 'instruction': result['this_round_handoff_guidance']}
     step = result['next_step']
     instruction = step['instruction']
-    if result['status'] == 'FINISHED':
+    if result.get('finished'):
         return {'status': result['status'], 'instruction': instruction}
     if result['status'] is not None:
         instruction = f'You are in SOP state "{result["status"]}". {instruction}'
@@ -523,8 +525,8 @@ def compile_preview(controller):
             value.update(kind='action' if isinstance(node, sop.Option) else 'branch', destinations=destinations)
             if isinstance(node, sop.Option):
                 value['parameters'] = parameters(node.params)
-                if node.this_round_reply_guidance_preview is not None:
-                    value['this_round_reply_guidance'] = text(node.this_round_reply_guidance_preview, 'Option ' + node.name)
+                if node.this_round_handoff_guidance_preview is not None:
+                    value['this_round_handoff_guidance'] = text(node.this_round_handoff_guidance_preview, 'Option ' + node.name)
     return {'initial': workflow.initial, 'parameters': parameters(workflow.params),
             'nodes': nodes, 'edges': [list(edge) for edge in edges]}
 
@@ -641,7 +643,7 @@ def publish_artifacts(context, controller, result):
 
 def render_addressed_state(context, controller, result, rendered):
     """Publish the ordinary state projection after the option chain and persistence."""
-    if not result['ok'] or not result.get('state_changed'):
+    if not result['ok'] or result.get('finished') or not result.get('state_changed'):
         return
     owner = state_owner(controller.workflow, result['status'], context)
     if not owner or 'issue_id' not in owner:
@@ -684,12 +686,38 @@ def render_addressed_state(context, controller, result, rendered):
                 '--content-file', str(body))
 
 
+def dispatch_agent_handoff(context, result, rendered):
+    # TODO: no comment handoff in the future if sop calling becomes accurate remote call and open extra task handoff without comment
+    owner = context.get('handoff_owner')
+    if not result['ok'] or result.get('finished') or not owner:
+        return
+    with tempfile.TemporaryDirectory(prefix='.sop-', dir=Path.cwd()) as directory:
+        body = Path(directory) / 'handoff.md'
+        body.write_text(f"[@{owner['name']}](mention://agent/{owner['id']}) " +
+                        result['this_round_handoff_content'] + '\n\n' + json.dumps(rendered, allow_nan=False))
+        words = ['comment', 'add', context['issue_id'], '--content-file', str(body)]
+        for run in multica('runs', context['issue_id'], '--active'):
+            if run['agent_id'] == owner['id'] and run.get('can_supplement'):
+                words += ['--steer', run['id']]
+                break
+        parent = getattr(context.get('args'), 'thread', None) or context['state'].get('reply_parent')
+        if parent:
+            words += ['--parent', parent]
+        context['external_write_attempted'] = True
+        dispatch = multica(*words)
+        outcomes = dispatch.get('trigger_outcomes', [])
+        if not any(item.get('target_id') == owner['id'] and item.get('status') in
+                   ('steered', 'queued', 'coalesced', 'deferred') for item in outcomes):
+            raise SOPError('handoff_not_dispatched', 'Inspect handoff comment ' + dispatch['id'] + ': owner dispatch was not confirmed')
+        result['this_round_handoff_guidance'] = 'Handoff sent. Directly and silently end this turn.'
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv == ['--validate']:
         try:
             validate_package()
-            load_controller().workflow.validate_graph(reply_guidance=True)
+            load_controller().workflow.validate_graph(handoff_guidance=True)
             print(json.dumps({'status': 'valid'}))
             return 0
         except Exception as error:
@@ -727,7 +755,7 @@ def main(argv=None):
         if context.get('quitted'):
             result.update(status='quitted', state_changed=True, next_step=callback(str(error)))
     output = redact(response(result))
-    rendered = redact(response(result, reply_guidance=False))
+    rendered = redact(response(result, handoff_guidance=False))
     try:
         if controller and context.get('state'):
             state = context['state']
@@ -738,13 +766,15 @@ def main(argv=None):
             if not context.get('state_deleted') and not context.get('state_write_failed'):
                 save_state(context, state)
         render_addressed_state(context, controller, result, rendered)
+        dispatch_agent_handoff(context, result, rendered)
+        output = redact(response(result))
     except Exception as error:
         result = exception_result(error, context)
         output = redact(response(result))
     context['output'] = rendered
     publish_artifacts(context, controller, result)
-    print(redact(context['handoff']) if result['ok'] and context.get('handoff') and
-          'this_round_reply_guidance' not in result else json.dumps(output, allow_nan=False))
+    print(redact(context['handoff']) if result['ok'] and not result.get('finished') and context.get('handoff') and
+          'this_round_handoff_guidance' not in result else json.dumps(output, allow_nan=False))
     return 0 if result["ok"] and result.get("accepted", True) else result.get("returncode", 1)
 
 

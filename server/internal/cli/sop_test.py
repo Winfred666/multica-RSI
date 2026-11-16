@@ -45,6 +45,16 @@ if os.environ.get('SOP_TEST_CLI_FAIL'):
     sys.exit('Metadata service unavailable')
 if args[:2] == ['issue', 'get']:
     print(json.dumps({'id': args[2], 'metadata': store.get(args[2], {})}))
+elif args[:2] == ['issue', 'runs']:
+    print(os.environ.get('SOP_TEST_RUNS', '[]'))
+elif args[:3] == ['issue', 'comment', 'add']:
+    content = Path(args[args.index('--content-file') + 1]).read_text()
+    record = path.with_name('dispatches')
+    calls = json.loads(record.read_text()) if record.exists() else []
+    calls.append({'args': args, 'content': content})
+    record.write_text(json.dumps(calls))
+    print(json.dumps({'id': 'handoff-comment', 'trigger_outcomes': [
+        {'target_type': 'agent', 'target_id': 'peer', 'status': os.environ.get('SOP_TEST_DISPATCH', 'queued')}]}))
 elif args[:2] == ['issue', 'assign']:
     print('{}')
 else:
@@ -239,6 +249,37 @@ workflow = Workflow(
         self.run_sop('accept')
         self.assertFalse(self.state())
 
+        self.env.pop('MULTICA_AGENT_ID')
+        runs = [{'id': 'other-run', 'agent_id': 'other', 'can_supplement': True},
+                {'id': 'owner-queued', 'agent_id': 'peer', 'can_supplement': False}]
+        self.env['SOP_TEST_RUNS'] = json.dumps(runs)
+        self.run_sop()
+        submitted = self.run_sop(*request)
+        self.assertEqual(set(submitted), {'status', 'instruction'})
+        self.assertIn('silently end this turn', submitted['instruction'])
+        calls = json.loads((self.root / 'dispatches').read_text())
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn('--steer-active', calls[0]['args'])
+        self.assertNotIn('--steer', calls[0]['args'])
+        prose, rendered = calls[0]['content'].split('\n\n', 1)
+        self.assertEqual(prose, '[@Mara](mention://agent/peer) Please review: Check the change.')
+        self.assertEqual(json.loads(rendered), self.run_sop('--help'))
+        self.assertIn('silently end this turn', self.run_sop('accept')['instruction'])
+        self.assertFalse(self.state())
+        self.assertEqual(json.loads((self.root / 'dispatches').read_text()), calls)
+        runs.append({'id': 'owner-run', 'agent_id': 'peer', 'can_supplement': True})
+        self.env['SOP_TEST_RUNS'] = json.dumps(runs)
+        self.run_sop()
+        self.run_sop(*request)
+        calls = json.loads((self.root / 'dispatches').read_text())
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn('--steer-active', calls[-1]['args'])
+        self.assertEqual(calls[-1]['args'][calls[-1]['args'].index('--steer') + 1], 'owner-run')
+        self.run_sop('accept')
+        self.run_sop()
+        self.env['SOP_TEST_DISPATCH'] = 'blocked'
+        self.assertEqual(self.run_sop(*request, valid=False)['error']['code'], 'handoff_not_dispatched')
+
     def test_selected_and_branch_action_inputs_convert_once(self):
         from argparse import Namespace
         from sop import Branch, FINISHED, Option, Parameter, State, Workflow
@@ -257,14 +298,16 @@ workflow = Workflow(
 from sop import Option, State, Workflow
 def write(args, context):
     p = Path('writes'); p.write_text(p.read_text() + 'x' if p.exists() else 'x')
-    return {'data': {'internal': 'private-action-data'}}
+    return {'data': {'internal': 'private-action-data'},
+            'this_round_handoff_guidance': 'Do not publish.', 'this_round_handoff_content': 'Do not dispatch.'}
 def check(context):
     if context['result']['data'] != {'internal': 'private-action-data'}: raise AssertionError('Lost internal result')
     if not Path('ready').exists(): raise AssertionError('Create ready')
 workflow = Workflow(
     Option('write', 'Write once', write),
     State('start', 'Start', initial=True),
-    State('finished', 'Done', final=True, precheck=check),
+    State('finished', 'Done', final=True, precheck=check,
+          owner={'issue_id': 'fixture-issue', 'thread': None, 'id': None, 'content': '/note'}),
     edges=(('start', 'write'), ('write', 'finished')),
 )
 ''')
@@ -282,6 +325,8 @@ workflow = Workflow(
         (self.root / 'ready').touch()
         completed = self.run_sop('repaired')
         self.assertEqual(completed['status'], 'finished')
+        self.assertIn('silently end this turn', completed['instruction'])
+        self.assertFalse((self.root / 'dispatches').exists())
         self.assertNotIn('data', completed)
         self.assertEqual((self.root / 'writes').read_text(), 'x')
         (self.root / 'ready').unlink()
@@ -364,7 +409,7 @@ workflow = Workflow(
 from sop import Branch, FINISHED, Option, State, Workflow
 def earlier(args, context):
     Path('calls').touch()
-    return {'this_round_reply_guidance': 'Earlier is not sufficient.'}
+    return {'this_round_handoff_guidance': 'Earlier is not sufficient.'}
 def final(args, context):
     Path('calls').touch()
     return FINAL_RESULT
@@ -388,10 +433,10 @@ workflow = Workflow(
         controller = self.package / 'controller.py'
         controller.write_text(source.replace('FINAL_RESULT', '{}'))
         self.assertIn('Final action into addressed state addressed', self.run_sop('--validate', valid=False)['error'])
-        controller.write_text(source.replace('FINAL_RESULT', "{'this_round_reply_guidance': 'End this turn.'}"))
+        controller.write_text(source.replace('FINAL_RESULT', "{'this_round_handoff_guidance': 'End this turn.'}"))
         self.assertEqual(self.run_sop('--validate'), {'status': 'valid'})
         controller.write_text(source.replace('FINAL_RESULT', '{}').replace("'Last action.', final", "'Last action.'"))
-        self.assertIn('this_round_reply_guidance', self.run_sop('--validate', valid=False)['error'])
+        self.assertIn('this_round_handoff_guidance', self.run_sop('--validate', valid=False)['error'])
         self.assertFalse(self.metadata.exists())
         self.assertFalse((self.root / 'calls').exists())
 
@@ -534,13 +579,13 @@ workflow = Workflow(
         (self.package / 'controller.py').write_text('''from sop import Branch, FINISHED, Option, Parameter, State, Workflow
 def publish(args, context):
     context['state']['note'] = args.note
-    return {'this_round_reply_guidance': 'Published ' + args.note + '.'}
+    return {'this_round_handoff_guidance': 'Published ' + args.note + '.'}
 def review(context):
     return {'instruction': 'Review ' + context['state'].get('note', 'draft') + '.'}
 workflow = Workflow(
     State('start', 'Choose <literal>.', initial=True),
     Option('publish', 'Publish.', publish, params=(Parameter('--note', 'Note'),),
-           this_round_reply_guidance_preview='Published {note}.'),
+           this_round_handoff_guidance_preview='Published {note}.'),
     Branch('route', 'Select review.', select=lambda args, context: 'review'),
     State('review', 'Review the publication.', view=review, preview='Review {note}.'),
     State('complete', 'Complete the review.', final=True),
@@ -579,7 +624,7 @@ workflow = Workflow(
         self.assertEqual(preview['nodes']['publish']['destinations'], ['route'])
         self.assertEqual(preview['nodes']['route']['destinations'], ['review'])
         self.assertEqual(preview['nodes']['publish']['parameters'][0]['flag'], '--note')
-        self.assertEqual(preview['nodes']['publish']['this_round_reply_guidance'], 'Published {note}.')
+        self.assertEqual(preview['nodes']['publish']['this_round_handoff_guidance'], 'Published {note}.')
         self.assertTrue(all('target' not in node and 'routes' not in node for node in preview['nodes'].values()))
         workflow.states['review'].preview = None
         with self.assertRaisesRegex(ValueError, 'State review.*explicit static preview'):
@@ -589,7 +634,7 @@ workflow = Workflow(
             state.owner = None
         context = {'issue_id': 'fixture-issue', 'argv': ['publish', '--note', 'report'],
                    'output': {**resumed, 'workspace': 'private-workspace', 'data': {'private': True}},
-                   'action_outputs': {'publish': {'this_round_reply_guidance': 'Published report.'}}}
+                   'action_outputs': {'publish': {'this_round_handoff_guidance': 'Published report.'}}}
         with patch.object(wrapper, 'publish_shared_artifact') as upload:
             wrapper.publish_artifacts(context, controller, {'status': 'review', 'state_changed': True})
         self.assertEqual(json.loads(upload.call_args_list[0].args[1]), {'DEBUG': True})
@@ -598,11 +643,11 @@ workflow = Workflow(
         data = json.loads(html.split('<script id="sop-data" type="application/json">', 1)[1].split('</script>', 1)[0])
         self.assertEqual(data['template'], preview)
         self.assertEqual(data['current'], resumed)
-        self.assertEqual(data['actions']['publish'], {'this_round_reply_guidance': 'Published report.'})
+        self.assertEqual(data['actions']['publish'], {'this_round_handoff_guidance': 'Published report.'})
         self.assertTrue(all('data' not in node for node in preview['nodes'].values()))
         self.assertNotIn('private-workspace', html)
         self.assertNotIn('<svg', json.dumps(data))
-        self.assertTrue(all('this_round_reply_guidance' not in choice
+        self.assertTrue(all('this_round_handoff_guidance' not in choice
                             for node in preview['nodes'].values() for choice in node.get('next_step', [])))
         for name in preview['nodes']:
             self.assertEqual(html.count('id="state_' + name + '"'), 1)

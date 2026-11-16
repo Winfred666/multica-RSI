@@ -149,9 +149,12 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   state directories as `context['sop_dir']` and `context['state_dir']`; transient
   workflow state remains in issue metadata. Callbacks use `multica sop run`,
   not copied wrappers. `--help` is passed to the selected SoP unchanged.
-  An option action's `this_round_reply_guidance` replaces the invocation's
+  An option action's `this_round_handoff_guidance` replaces the invocation's
   instruction and omits all top-level next steps. Stored guidance, ownership and
-  transitions remain intact for later resume/help. Use `multica sop docs` for
+  transitions remain intact for later resume/help. Outer-to-agent actions return
+  `this_round_handoff_content`; the engine combines it with the next rendered
+  State in one native start/steer dispatch, without a second outer reply.
+  Completion remains quiet. Use `multica sop docs` for
   authoring guidance. Automatic replies use the normal comment lifecycle.
   Bare `!sop-remote <name> <JSON payload>` delegates unchanged text to the
   assignee's daemon without starting a model; `/note` remains inert. The
@@ -199,7 +202,7 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   CLI runtime derives its graph from `controller.workflow` without `DEBUG.md`.
   One declaration-only JSON supplies static templates and HTML with compact action
   nodes and unlabeled links without arrowheads entering actions. Resolved live state/action output stays separate;
-  reply guidance belongs to its action node, never State choices. Explicit preview
+  handoff guidance belongs to its action node, never State choices. Explicit preview
   strings preserve placeholders without calling runtime hooks or factories. Graphs fit the
   viewport width in landscape and scroll horizontally at natural size in portrait.
   Graphviz `dot -Tsvg` compiles the graph to embedded SVG on the CLI host;
@@ -244,7 +247,7 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   command for `!sop-remote <skill-name>` and a questionnaire-comment-ID placeholder;
   the renderer does not post/read back to discover its ID.
   Controller validation checks that the final action on a declared normal-agent
-  to addressed-state path returns `this_round_reply_guidance`. Stage 3 owns forwarding
+  to addressed-state path returns `this_round_handoff_guidance`. Stage 3 owns forwarding
   and rendering; this adds no state/question schema or remote-call dispatch.
 
 - **Workspace packages.** `workspace package`, `workspace export` and

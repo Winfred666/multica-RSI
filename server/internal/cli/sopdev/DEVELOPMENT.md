@@ -19,7 +19,8 @@ multica sop run my-sop
 - `minimal.py`: `ready → finish → FINISHED`. One State and one action.
 - `feature-rich.py`: `ready → submit → review → accept → FINISHED`.
   Submit saves a review request, hands ownership to a named peer, and tells the
-  caller what to reply. The caller posts that reply and ends the turn.
+  agent caller what to relay. An outer caller supplies handoff content instead;
+  the engine dispatches it and the caller ends silently.
 
 For the feature-rich example, choose a real peer in your workspace:
 
@@ -50,25 +51,33 @@ State guidance instead of handing off.
 ## Declare preview text beside the node
 
 Literal descriptions/prompts need no extra field. Dynamic State text needs a
-literal `preview`; an action's reply preview is optional:
+literal `preview`; an action's handoff guidance preview is optional:
 
 ```python
 State('review', 'Review the request.', view=review, preview='Review: {summary}.')
 Option('submit', 'Request peer review', submit,
-       this_round_reply_guidance_preview='Reply to {reviewer_name}, then end this turn.')
+       this_round_handoff_guidance_preview='Reply to {reviewer_name}, then end this turn.')
 ```
 
 Placeholders stay literal; previews never run functions. Add `config.json` with
 `{"DEBUG": true}` to compile HTML after transitions. Static previews cover all
 declared nodes; actual text covers only the current State and actions executed
-in this invocation. Reply guidance belongs to the action, not State `next_step`.
+in this invocation. Handoff guidance belongs to the action, not State `next_step`.
 
-## Hand off with a reply, not status feedback
+## Hand off to the next owner
 
-Return `{'this_round_reply_guidance': '...'}` to tell the caller what to reply to
-a named peer/external recipient, or explicitly to stay silent. The invocation
+For an agent-owned owner change, return
+`{'this_round_handoff_guidance': '...'}` to tell the caller what to relay to
+the next owner, or explicitly to stay silent. The invocation
 omits `next_step`, but the transition and destination checks still complete.
 Do not use this field for ordinary same-agent progress; keep normal State guidance.
+
+For an outer-to-agent owner change, return
+`{'this_round_handoff_content': 'Please review the change.'}`. The engine
+combines that content with the next rendered State and sends one native
+start/steer handoff to its agent owner. The outer caller does not post a second
+comment or reply and receives only silence guidance, without choices. Ordinary
+State guidance remains available on resume/help. Completion always ends quietly.
 
 For an addressed outer State, its `owner` declares `issue_id`, `thread`, agent
 `id` and native comment `content`. Fill `id` and mention the agent in `content`
