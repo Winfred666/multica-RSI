@@ -527,7 +527,6 @@ func (b *openclawBackend) processOutput(r io.Reader, ch chan<- Message) openclaw
 	var finalError string
 	gotEvents := false // true if we parsed at least one streaming event or result
 
-	var rawLines []string
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -613,27 +612,16 @@ func (b *openclawBackend) processOutput(r io.Reader, ch chan<- Message) openclaw
 
 		// Not JSON — treat as log line.
 		b.cfg.Logger.Debug("[openclaw:stdout] " + line)
-		rawLines = append(rawLines, line)
 	}
 
 	if err := scanner.Err(); err != nil {
 		return openclawEventResult{status: "failed", errMsg: fmt.Sprintf("read stdout: %v", err)}
 	}
 
-	// If we got no events at all, fall back to raw output. The whole-buffer
-	// fast path above already tried the structured-result parse — by the time
-	// we reach here the buffer truly is unstructured (just log lines, plain
-	// text, or empty). Surface the trimmed text as a completed run when we
-	// have any, otherwise the canonical no-parseable-output failure.
+	// --json output must match a supported schema. Never publish logs or an
+	// unrecognized protocol envelope as the agent's final answer.
 	if !gotEvents {
-		trimmed := strings.TrimSpace(strings.Join(rawLines, "\n"))
-		if trimmed != "" {
-			return openclawEventResult{status: "completed", output: trimmed}
-		}
-		return openclawEventResult{
-			status: "failed",
-			errMsg: openclawNoParseableOutput,
-		}
+		return openclawEventResult{status: "failed", errMsg: openclawNoParseableOutput}
 	}
 
 	return openclawEventResult{
@@ -705,6 +693,17 @@ func tryParseOpenclawResult(raw string) (openclawResult, bool) {
 	var result openclawResult
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		return openclawResult{}, false
+	}
+	// Gateway mode wraps the same result in {status:"ok", result:{...}}.
+	if result.Payloads == nil && result.Meta.DurationMs == 0 {
+		var gateway struct {
+			Status string          `json:"status"`
+			Result *openclawResult `json:"result"`
+		}
+		if err := json.Unmarshal([]byte(raw), &gateway); err != nil || gateway.Status != "ok" || gateway.Result == nil {
+			return openclawResult{}, false
+		}
+		result = *gateway.Result
 	}
 	if result.Payloads == nil && result.Meta.DurationMs == 0 {
 		return openclawResult{}, false

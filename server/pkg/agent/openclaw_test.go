@@ -180,22 +180,23 @@ func TestOpenclawProcessOutputIgnoresTrailingLogLinesAfterJSON(t *testing.T) {
 	close(ch)
 }
 
+func TestOpenclawProcessOutputGatewayResult(t *testing.T) {
+	t.Parallel()
+	b := &openclawBackend{cfg: Config{Logger: slog.Default()}}
+	input := `{"status":"ok","result":{"payloads":[{"text":"Gateway answer"}]}}`
+	res := b.processOutput(strings.NewReader(input), make(chan Message, 1))
+	if res.status != "completed" || res.output != "Gateway answer" {
+		t.Fatalf("gateway result = %+v", res)
+	}
+}
+
 func TestOpenclawProcessOutputNoJSON(t *testing.T) {
 	t.Parallel()
-
 	b := &openclawBackend{cfg: Config{Logger: slog.Default()}}
-	ch := make(chan Message, 256)
-
-	res := b.processOutput(strings.NewReader("not json at all"), ch)
-
-	if res.status != "completed" {
-		t.Errorf("status: got %q, want %q", res.status, "completed")
+	res := b.processOutput(strings.NewReader("not json at all"), make(chan Message, 1))
+	if res.status != "failed" || res.output != "" || res.errMsg != openclawNoParseableOutput {
+		t.Fatalf("unrecognized output = %+v", res)
 	}
-	if res.output != "not json at all" {
-		t.Errorf("output: got %q", res.output)
-	}
-
-	close(ch)
 }
 
 func TestOpenclawProcessOutputEmptyInput(t *testing.T) {
@@ -278,12 +279,8 @@ func TestOpenclawResultBlobWithLeadingPrefixRejected(t *testing.T) {
 
 	res := b.processOutput(strings.NewReader(input), ch)
 
-	// Should fall back to raw output since the JSON has a prefix.
-	if res.status != "completed" {
-		t.Errorf("status: got %q, want %q", res.status, "completed")
-	}
-	if res.output != input {
-		t.Errorf("output: got %q, want raw input back", res.output)
+	if res.status != "failed" || res.output != "" || res.errMsg != openclawNoParseableOutput {
+		t.Errorf("prefixed JSON must not become a reply: %+v", res)
 	}
 
 	close(ch)

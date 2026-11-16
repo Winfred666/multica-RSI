@@ -412,6 +412,9 @@ each thread receives a deliberate reply and the final response stays empty.
 The existing backend suppresses completion output if this agent already commented
 on the issue during the run, including progress comments; changing that gate is
 outside the daemon scope.
-Failed/cancelled delivery and adapter extraction are unchanged.
+Failed/cancelled delivery is unchanged.
 
 Contract: [natural-answer completion #40](https://github.com/Winfred666/multica-RSI/issues/40).
+
+OpenClaw extracts local `payloads[].text` or successful gateway
+`result.payloads[].text`; unrecognized stdout fails instead of becoming a comment.
