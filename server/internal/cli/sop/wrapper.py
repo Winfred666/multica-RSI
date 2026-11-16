@@ -627,7 +627,7 @@ def render_addressed_state(context, controller, result, rendered):
     if not owner or 'issue_id' not in owner:
         return
     destination = {key: owner[key] for key in ('issue_id', 'thread', 'id')}
-    answer = '/note !sop-remote ' + controller.SOP_NAME + ' {"que_comment_id":"<this-comment-id>","args":[...]}'
+    answer = '!sop-remote ' + controller.SOP_NAME + ' {"que_comment_id":"<this-comment-id>","args":[...]}'
     command = shlex.join(['multica', 'issue', 'comment', 'add', context['issue_id'],
                           '--parent', '<this-comment-id>', '--content-file', '<answer-file>'])
     rendered = {**rendered, 'next_step': [

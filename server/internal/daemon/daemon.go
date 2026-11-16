@@ -4539,7 +4539,6 @@ func (d *Daemon) handleHeartbeatActions(ctx context.Context, runtimeID string, r
 	if resp == nil {
 		return
 	}
-	go d.executeRemoteSOPs(ctx, runtimeID)
 
 	if resp.PendingUpdate != nil || resp.PendingModelList != nil || resp.PendingLocalSkills != nil || resp.PendingLocalSkillImport != nil {
 		d.logger.Debug("heartbeat: pending actions",
@@ -7854,6 +7853,9 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	// multiple workspaces share a host.
 	if task.WorkspaceID == "" {
 		return TaskResult{}, fmt.Errorf("refusing to spawn agent: task has no workspace_id (task_id=%s)", task.ID)
+	}
+	if first, _, _ := strings.Cut(strings.TrimSpace(task.TriggerCommentContent), " "); first == "!sop-remote" {
+		return d.executeRemoteSOP(ctx, task)
 	}
 
 	prepareTimeout := d.effectiveTaskPrepareTimeout()

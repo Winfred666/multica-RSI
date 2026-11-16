@@ -13,30 +13,20 @@ import (
 	"time"
 
 	"github.com/multica-ai/multica/server/internal/cli"
-	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
-func (d *Daemon) executeRemoteSOPs(ctx context.Context, runtimeID string) {
-	var requests []protocol.RemoteSOPRequest
-	if err := d.client.postJSON(ctx, "/api/daemon/runtimes/"+url.PathEscape(runtimeID)+"/remote-sops/take", nil, &requests); err != nil {
-		d.logger.Debug("remote SOP poll failed", "error", err)
-		return
+func (d *Daemon) executeRemoteSOP(ctx context.Context, task Task) (TaskResult, error) {
+	if _, err := d.client.StartTask(ctx, task); err != nil {
+		return TaskResult{}, err
 	}
-	for _, request := range requests {
-		d.executeRemoteSOP(ctx, request)
-	}
-}
-
-// Remote SOPs run directly from heartbeat actions, outside agent task execution.
-func (d *Daemon) executeRemoteSOP(ctx context.Context, request protocol.RemoteSOPRequest) {
-	output, code, err := d.runRemoteSOP(ctx, request)
+	output, code, err := d.runRemoteSOP(ctx, task)
 	diagnostic := ""
 	if err != nil {
 		diagnostic = err.Error()
 	}
-	result := TaskMessageData{Seq: 2, CallID: request.ID, Type: "tool_result", Tool: "remote-sop", Output: output, Content: diagnostic, Input: map[string]any{"exit_code": code}, CreatedAt: time.Now().UTC()}
+	result := TaskMessageData{Seq: 2, CallID: task.TriggerCommentID, Type: "tool_result", Tool: "remote-sop", Output: output, Content: diagnostic, Input: map[string]any{"exit_code": code}, CreatedAt: time.Now().UTC()}
 	if code == 0 {
-		if err := d.cleanRemoteSOPAnswer(ctx, request); err != nil {
+		if err := d.cleanRemoteSOPAnswer(ctx, task); err != nil {
 			result.Content = "questionnaire cleanup: " + err.Error()
 			var denied *cli.HTTPError
 			if errors.As(err, &denied) && denied.Method == http.MethodPut && denied.StatusCode == http.StatusForbidden {
@@ -44,9 +34,10 @@ func (d *Daemon) executeRemoteSOP(ctx context.Context, request protocol.RemoteSO
 			}
 		}
 	}
-	if err := d.client.ReportTaskMessages(ctx, request.ID, []TaskMessageData{result}); err != nil {
-		d.logger.Error("remote SOP result failed", "request_id", request.ID, "error", err)
+	if err := d.client.ReportTaskMessages(ctx, task.ID, []TaskMessageData{{Seq: 1, CallID: task.TriggerCommentID, Type: "tool_use", Tool: "remote-sop", Content: task.TriggerCommentContent, CreatedAt: time.Now().UTC()}, result}); err != nil {
+		d.logger.Error("remote SOP result failed", "task_id", task.ID, "error", err)
 	}
+	return TaskResult{Status: "completed"}, err
 }
 
 type remoteSOPCommand struct {
@@ -54,8 +45,8 @@ type remoteSOPCommand struct {
 	QuestionCommentID string   `json:"que_comment_id,omitempty"`
 }
 
-func (d *Daemon) runRemoteSOP(ctx context.Context, request protocol.RemoteSOPRequest) (string, int, error) {
-	name, payload, _ := strings.Cut(strings.TrimPrefix(request.Content, "/note !sop-remote "), " ")
+func (d *Daemon) runRemoteSOP(ctx context.Context, task Task) (string, int, error) {
+	name, payload, _ := strings.Cut(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(task.TriggerCommentContent), "!sop-remote")), " ")
 	var command remoteSOPCommand
 	if err := json.Unmarshal([]byte(payload), &command); err != nil {
 		return "", 1, err
@@ -64,8 +55,8 @@ func (d *Daemon) runRemoteSOP(ctx context.Context, request protocol.RemoteSOPReq
 		var issue struct {
 			Metadata map[string]string `json:"metadata"`
 		}
-		client := cli.NewAPIClient(d.cfg.ServerBaseURL, request.WorkspaceID, request.AuthToken)
-		if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(remoteSOPIssue(request, command)), &issue); err != nil {
+		client := cli.NewAPIClient(d.cfg.ServerBaseURL, task.WorkspaceID, task.AuthToken)
+		if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(remoteSOPIssue(task, command)), &issue); err != nil {
 			return "", 1, err
 		}
 		var state struct {
@@ -74,16 +65,16 @@ func (d *Daemon) runRemoteSOP(ctx context.Context, request protocol.RemoteSOPReq
 		if err := json.Unmarshal([]byte(issue.Metadata["sop."+name]), &state); err != nil {
 			return "", 1, err
 		}
-		request.WorkDir = state.WorkDir
+		task.PriorWorkDir = state.WorkDir
 	}
-	if request.WorkDir == "" {
+	if task.PriorWorkDir == "" {
 		return "", 1, fmt.Errorf("remote SOP requires the target working directory")
 	}
 	process := exec.CommandContext(ctx, "multica", append([]string{"sop", "run", name}, command.Args...)...)
-	process.Dir = request.WorkDir
-	process.Env = append(os.Environ(), "MULTICA_AGENT_ID="+request.AgentID,
-		"MULTICA_ISSUE_ID="+request.IssueID, "MULTICA_WORKSPACE_ID="+request.WorkspaceID,
-		"MULTICA_TOKEN="+request.AuthToken, "MULTICA_SERVER_URL="+d.cfg.ServerBaseURL)
+	process.Dir = task.PriorWorkDir
+	process.Env = append(os.Environ(), "MULTICA_AGENT_ID="+task.AgentID,
+		"MULTICA_ISSUE_ID="+task.IssueID, "MULTICA_WORKSPACE_ID="+task.WorkspaceID,
+		"MULTICA_TOKEN="+task.AuthToken, "MULTICA_SERVER_URL="+d.cfg.ServerBaseURL)
 	output, err := process.CombinedOutput()
 	code := 0
 	if err != nil {
@@ -95,8 +86,8 @@ func (d *Daemon) runRemoteSOP(ctx context.Context, request protocol.RemoteSOPReq
 	return string(output), code, err
 }
 
-func remoteSOPIssue(request protocol.RemoteSOPRequest, command remoteSOPCommand) string {
-	issue := request.IssueID
+func remoteSOPIssue(task Task, command remoteSOPCommand) string {
+	issue := task.IssueID
 	for i, arg := range command.Args {
 		if arg == "--issue" && i+1 < len(command.Args) {
 			issue = command.Args[i+1]
@@ -108,8 +99,8 @@ func remoteSOPIssue(request protocol.RemoteSOPRequest, command remoteSOPCommand)
 	return issue
 }
 
-func (d *Daemon) cleanRemoteSOPAnswer(ctx context.Context, request protocol.RemoteSOPRequest) error {
-	name, payload, _ := strings.Cut(strings.TrimPrefix(request.Content, "/note !sop-remote "), " ")
+func (d *Daemon) cleanRemoteSOPAnswer(ctx context.Context, task Task) error {
+	name, payload, _ := strings.Cut(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(task.TriggerCommentContent), "!sop-remote")), " ")
 	var command remoteSOPCommand
 	if err := json.Unmarshal([]byte(payload), &command); err != nil {
 		return err
@@ -117,14 +108,14 @@ func (d *Daemon) cleanRemoteSOPAnswer(ctx context.Context, request protocol.Remo
 	if command.QuestionCommentID == "" {
 		return nil
 	}
-	client := cli.NewAPIClient(d.cfg.ServerBaseURL, request.WorkspaceID, request.AuthToken)
+	client := cli.NewAPIClient(d.cfg.ServerBaseURL, task.WorkspaceID, task.AuthToken)
 	type comment struct {
 		ID       string `json:"id"`
 		Content  string `json:"content"`
 		Revision int64  `json:"revision"`
 	}
 	var comments []comment
-	if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(remoteSOPIssue(request, command))+"/comments?thread="+url.QueryEscape(command.QuestionCommentID), &comments); err != nil {
+	if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(remoteSOPIssue(task, command))+"/comments?thread="+url.QueryEscape(command.QuestionCommentID), &comments); err != nil {
 		return err
 	}
 	for _, question := range comments {
@@ -147,7 +138,7 @@ func (d *Daemon) cleanRemoteSOPAnswer(ctx context.Context, request protocol.Remo
 		if err != nil {
 			return err
 		}
-		if err := client.DeleteJSON(ctx, "/api/comments/"+url.PathEscape(request.ID)+"/keep-replies"); err != nil {
+		if err := client.DeleteJSON(ctx, "/api/comments/"+url.PathEscape(task.TriggerCommentID)+"/keep-replies"); err != nil {
 			return err
 		}
 		content := header + "\n" + string(updated)

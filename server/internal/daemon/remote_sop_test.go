@@ -12,62 +12,63 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
-func TestRemoteSOPHeartbeatRunsTargetCLI(t *testing.T) {
+func TestRemoteSOPTaskDeliveryRunsTargetCLI(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX executable fixture")
 	}
-	t.Setenv("MULTICA_PARENT_CONTEXT", "inherited")
-	binary := filepath.Join(t.TempDir(), "multica")
-	t.Setenv("PATH", filepath.Dir(binary)+string(os.PathListSeparator)+os.Getenv("PATH"))
-	if err := os.WriteFile(binary, []byte(`#!/usr/bin/env python3
+	for _, terminal := range []string{"complete", "fail"} {
+		t.Run(terminal, func(t *testing.T) {
+			binary := filepath.Join(t.TempDir(), "multica")
+			t.Setenv("PATH", filepath.Dir(binary)+string(os.PathListSeparator)+os.Getenv("PATH"))
+			t.Setenv("FIXTURE_TERMINAL", terminal)
+			writeTestExecutable(t, binary, []byte(`#!/usr/bin/env python3
 import os, sys
 assert sys.argv[1:] == ['sop', 'run', 'inspect', '--help', 'two words', '', '$(literal)']
 assert os.environ['MULTICA_AGENT_ID'] == 'assignee'
 assert os.environ['MULTICA_ISSUE_ID'] == 'issue'
 assert os.environ['MULTICA_WORKSPACE_ID'] == 'workspace'
 assert os.environ['MULTICA_TOKEN'] == 'mat_scoped'
-assert os.environ['MULTICA_PARENT_CONTEXT'] == 'inherited'
 print(os.getcwd())
 print('stderr text', file=sys.stderr)
-sys.exit(7)
-`), 0700); err != nil {
-		t.Fatal(err)
-	}
-	d := &Daemon{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	request := protocol.RemoteSOPRequest{ID: "request", IssueID: "issue", AgentID: "assignee", WorkspaceID: "workspace", WorkDir: t.TempDir(),
-		Content: `/note !sop-remote inspect {"args":["--help","two words","","$(literal)"]}`, AuthToken: "mat_scoped", CallerType: "agent", CallerID: "caller"}
-	results := make(chan TaskMessageData, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/daemon/runtimes/runtime/remote-sops/take":
-			_ = json.NewEncoder(w).Encode([]protocol.RemoteSOPRequest{request})
-		case "/api/daemon/tasks/request/messages":
-			var batch struct {
-				Messages []TaskMessageData `json:"messages"`
+sys.exit(7 if os.environ['FIXTURE_TERMINAL'] == 'fail' else 0)
+`))
+			task := Task{ID: "task", AgentID: "assignee", RuntimeID: "runtime", IssueID: "issue", WorkspaceID: "workspace", PriorWorkDir: t.TempDir(), AuthToken: "mat_scoped", Agent: &AgentData{ID: "assignee"},
+				TriggerCommentID: "answer", TriggerCommentContent: `!sop-remote inspect {"args":["--help","two words","","$(literal)"]}`}
+			var calls []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls = append(calls, r.URL.Path)
+				switch r.URL.Path {
+				case "/api/daemon/runtimes/runtime/tasks/claim":
+					_ = json.NewEncoder(w).Encode(map[string]any{"task": task})
+				case "/api/daemon/tasks/task/messages":
+					var batch struct {
+						Messages []TaskMessageData `json:"messages"`
+					}
+					_ = json.NewDecoder(r.Body).Decode(&batch)
+					if len(batch.Messages) != 2 || batch.Messages[0].Seq != 1 || batch.Messages[1].CallID != "answer" || !strings.Contains(batch.Messages[1].Output, task.PriorWorkDir) || !strings.Contains(batch.Messages[1].Output, "stderr text") {
+						t.Errorf("messages=%+v", batch.Messages)
+					}
+				case "/api/daemon/tasks/task/start", "/api/daemon/tasks/task/progress", "/api/daemon/tasks/task/" + terminal, "/api/daemon/tasks/task/status":
+				default:
+					t.Errorf("unexpected API (poll or model): %s", r.URL.Path)
+				}
+				_, _ = w.Write([]byte(`{"status":"running"}`))
+			}))
+			defer server.Close()
+			d := &Daemon{client: NewClient(server.URL), logger: slog.New(slog.NewTextHandler(io.Discard, nil)), activeEnvRoots: map[string]int{}, runtimeIndex: map[string]Runtime{"runtime": {Provider: "no-model"}}, cfg: Config{ServerBaseURL: server.URL, WorkspacesRoot: t.TempDir()}}
+			d.runner = taskRunnerFunc(d.runTask)
+			d.handleHeartbeatActions(t.Context(), "runtime", &HeartbeatResponse{})
+			claimed, err := d.client.ClaimTask(t.Context(), "runtime")
+			if err != nil {
+				t.Fatal(err)
 			}
-			_ = json.NewDecoder(r.Body).Decode(&batch)
-			results <- batch.Messages[0]
-			_, _ = w.Write([]byte(`{}`))
-		default:
-			t.Errorf("agent API called: %s", r.URL.Path)
-			w.WriteHeader(500)
-		}
-	}))
-	defer server.Close()
-	d.client, d.cfg.ServerBaseURL = NewClient(server.URL), server.URL
-	d.handleHeartbeatActions(t.Context(), "runtime", &HeartbeatResponse{})
-	select {
-	case result := <-results:
-		if result.CallID != "request" || result.Type != "tool_result" || result.Input["exit_code"] != float64(7) || !strings.Contains(result.Output, request.WorkDir) || !strings.Contains(result.Output, "stderr text") {
-			t.Fatalf("result=%+v", result)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("remote result missing")
+			d.handleTask(t.Context(), *claimed, 0)
+			if calls[0] != "/api/daemon/runtimes/runtime/tasks/claim" || calls[1] != "/api/daemon/tasks/task/start" || calls[len(calls)-1] != "/api/daemon/tasks/task/"+terminal {
+				t.Fatalf("ordinary task lifecycle: %v", calls)
+			}
+		})
 	}
 }
 
@@ -158,7 +159,7 @@ func TestRemoteSOPQuestionnaireCleanup(t *testing.T) {
 				issue = "recipient"
 			}
 			body, _ := json.Marshal(remoteSOPCommand{Args: args, QuestionCommentID: scenario.question})
-			err := d.cleanRemoteSOPAnswer(t.Context(), protocol.RemoteSOPRequest{ID: "answer", IssueID: issue, WorkspaceID: "workspace", AuthToken: "mat_scoped", Content: "/note !sop-remote inspect " + string(body)})
+			err := d.cleanRemoteSOPAnswer(t.Context(), Task{TriggerCommentID: "answer", IssueID: issue, WorkspaceID: "workspace", AuthToken: "mat_scoped", TriggerCommentContent: "!sop-remote inspect " + string(body)})
 			if (err != nil) != scenario.denied || !reflect.DeepEqual(calls, scenario.calls) {
 				t.Fatalf("calls=%v err=%v", calls, err)
 			}

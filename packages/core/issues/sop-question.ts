@@ -33,7 +33,7 @@ function commandWords(command: string): string[] | null {
 export function parseSOPComment(entry: TimelineEntry): SOPQuestion | SOPRemote | null {
   if (entry.type !== "comment" || entry.deleted_at) return null;
   const content = (entry.content ?? "").trim();
-  const remote = /^\/note !sop-remote (\S+) ([\s\S]+)$/.exec(content);
+  const remote = /^!sop-remote (\S+) ([\s\S]+)$/.exec(content);
   if (remote) {
     try {
       const payload = parseWithFallback<z.infer<typeof SOPRemoteSchema> | null>(JSON.parse(remote[2]!), SOPRemoteSchema, null, { endpoint: "SoP remote comment" });
@@ -67,7 +67,7 @@ export function sopParameters(option: SOPOption): string[] {
 
 export function sopAnswerContent(option: SOPOption, values: Record<string, string>, questionId: string): string {
   const args = option.argv.map((arg) => arg.replace(/<([^<>]+)>/g, (_, name: string) => values[name] ?? ""));
-  return `/note !sop-remote ${option.sop} ${JSON.stringify({ args, que_comment_id: questionId })}`;
+  return `!sop-remote ${option.sop} ${JSON.stringify({ args, que_comment_id: questionId })}`;
 }
 
 export function sopSelection(question: SOPQuestion): { index: number; values: Record<string, string> } | undefined {
