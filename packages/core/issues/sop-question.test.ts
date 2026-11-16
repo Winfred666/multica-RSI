@@ -39,21 +39,21 @@ it("fills placeholders and serializes JSON arguments linked to the question", ()
   expect(sopParameters(option)).toEqual(["summary"]);
   const summary = "It's done; $(echo no)\nnext line";
   const content = sopAnswerContent(option, { summary }, "question-id");
-  expect(content).toBe(`/note !sop-remote review ${JSON.stringify({ args: ["approve", "--summary", summary], que_comment_id: "question-id" })}`);
+  expect(content).toBe(`!sop-remote review ${JSON.stringify({ args: ["approve", "--summary", summary], que_comment_id: "question-id" })}`);
   expect(parseSOPComment(entry(content))).toMatchObject({ args: ["approve", "--summary", summary], que_comment_id: "question-id" });
-  expect(sopAnswerContent(option, { summary: "" }, "question-id")).toBe('/note !sop-remote review {"args":["approve","--summary",""],"que_comment_id":"question-id"}');
+  expect(sopAnswerContent(option, { summary: "" }, "question-id")).toBe('!sop-remote review {"args":["approve","--summary",""],"que_comment_id":"question-id"}');
   const quoted = question({ ...output, next_step: [{ instruction: "Run", command: `multica sop run review note 'it'"'"'s done' ''` }] });
   expect(quoted.next_step[0]?.argv).toEqual(["note", "it's done", ""]);
 });
 
 it("recognizes remote invocations without inventing execution status, leaving malformed and ordinary comments alone", () => {
   for (const args of [[], ["approve", "--summary", "Looks good"]]) {
-    const content = `/note !sop-remote review ${JSON.stringify({ args })}`;
+    const content = `!sop-remote review ${JSON.stringify({ args })}`;
     expect(parseSOPComment(entry(content))).toEqual({ kind: "remote", sop: "review", args });
     expect(parseSOPComment(entry(content, { deleted_at: "now" }))).toBeNull();
   }
-  for (const content of ["/note !sop review []", "/note !sop-remote", "/note !sop-remote review", "/note !sop-remote review approve --summary 'Looks good'",
-    '/note !sop-remote review {"args":[1]}', '/note !sop-remote review {"args":[],"que_comment_id":1}', '/note !sop-remote review {}', '/note !sop-remote review {broken']) {
+  for (const content of ['/note !sop-remote review {"args":[]}', "/note !sop review []", "!sop-remote", "!sop-remote review", "!sop-remote review approve --summary 'Looks good'",
+    '!sop-remote review {"args":[1]}', '!sop-remote review {"args":[],"que_comment_id":1}', '!sop-remote review {}', '!sop-remote review {broken']) {
     expect(parseSOPComment(entry(content))).toBeNull();
   }
 });

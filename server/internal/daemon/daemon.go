@@ -7854,7 +7854,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	if task.WorkspaceID == "" {
 		return TaskResult{}, fmt.Errorf("refusing to spawn agent: task has no workspace_id (task_id=%s)", task.ID)
 	}
-	if strings.HasPrefix(task.TriggerCommentContent, "/note !sop-remote ") {
+	if first, _, _ := strings.Cut(strings.TrimSpace(task.TriggerCommentContent), " "); first == "!sop-remote" {
 		return d.executeRemoteSOP(ctx, task)
 	}
 

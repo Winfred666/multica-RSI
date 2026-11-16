@@ -12,8 +12,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 func TestRemoteSOPTaskDeliveryRunsTargetCLI(t *testing.T) {
@@ -37,7 +35,7 @@ print('stderr text', file=sys.stderr)
 sys.exit(7 if os.environ['FIXTURE_TERMINAL'] == 'fail' else 0)
 `))
 			task := Task{ID: "task", AgentID: "assignee", RuntimeID: "runtime", IssueID: "issue", WorkspaceID: "workspace", PriorWorkDir: t.TempDir(), AuthToken: "mat_scoped", Agent: &AgentData{ID: "assignee"},
-				TriggerCommentID: "answer", TriggerCommentContent: `/note !sop-remote inspect {"args":["--help","two words","","$(literal)"]}`}
+				TriggerCommentID: "answer", TriggerCommentContent: `!sop-remote inspect {"args":["--help","two words","","$(literal)"]}`}
 			var calls []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls = append(calls, r.URL.Path)
@@ -161,7 +159,7 @@ func TestRemoteSOPQuestionnaireCleanup(t *testing.T) {
 				issue = "recipient"
 			}
 			body, _ := json.Marshal(remoteSOPCommand{Args: args, QuestionCommentID: scenario.question})
-			err := d.cleanRemoteSOPAnswer(t.Context(), protocol.RemoteSOPRequest{ID: "answer", IssueID: issue, WorkspaceID: "workspace", AuthToken: "mat_scoped", Content: "/note !sop-remote inspect " + string(body)})
+			err := d.cleanRemoteSOPAnswer(t.Context(), Task{TriggerCommentID: "answer", IssueID: issue, WorkspaceID: "workspace", AuthToken: "mat_scoped", TriggerCommentContent: "!sop-remote inspect " + string(body)})
 			if (err != nil) != scenario.denied || !reflect.DeepEqual(calls, scenario.calls) {
 				t.Fatalf("calls=%v err=%v", calls, err)
 			}
