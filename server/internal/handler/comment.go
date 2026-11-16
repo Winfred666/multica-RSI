@@ -3450,7 +3450,7 @@ func (h *Handler) UpdateComment(w http.ResponseWriter, r *http.Request) {
 			issueRevision = updated.IssueRevision
 		}
 		if err == nil && oldContent != req.Content && strictContentEdit {
-			cancelled, err = qtx.CancelAgentTasksByTriggerComment(r.Context(), db.CancelAgentTasksByTriggerCommentParams{TriggerCommentID: existing.ID})
+			cancelled, err = qtx.CancelAgentTasksByTriggerComment(r.Context(), existing.ID)
 			if err == nil {
 				err = service.SettleTerminalTaskState(r.Context(), qtx, cancelled...)
 			}
@@ -3612,13 +3612,7 @@ func (h *Handler) DeleteComment(w http.ResponseWriter, r *http.Request) {
 	// agent does not run with the now-deleted content already embedded. Must
 	// run before the delete: a removed row would nullify trigger_comment_id
 	// through ON DELETE SET NULL and orphan those tasks in queued.
-	// An executing command consumes its own source after successful CLI work.
-	// Other edits/deletions retain ordinary stale-input cancellation.
-	var consumedBy pgtype.UUID
-	if task, ok := h.taskFromRequestHeader(r); ok && task.Status == "running" && task.TriggerCommentID == comment.ID && service.IsRemoteSOPTask(task) {
-		consumedBy = task.ID
-	}
-	cancelled, cancelErr := h.TaskService.CancelTasksByTriggerComment(r.Context(), comment.ID, consumedBy)
+	cancelled, cancelErr := h.TaskService.CancelTasksByTriggerComment(r.Context(), comment.ID)
 	if cancelErr != nil {
 		slog.Warn("cancel tasks for deleted trigger comment failed", append(logger.RequestAttrs(r), "error", cancelErr, "comment_id", commentId)...)
 	}

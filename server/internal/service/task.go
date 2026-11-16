@@ -2760,15 +2760,11 @@ func (s *TaskService) CancelTasksForAgent(ctx context.Context, agentID pgtype.UU
 // contains the given edited/deleted comment. The historical method name is
 // retained for call-site stability. It must run before deletion clears the
 // trigger FK; the returned rows let the handler re-route every surviving input.
-func (s *TaskService) CancelTasksByTriggerComment(ctx context.Context, commentID pgtype.UUID, consumedBy ...pgtype.UUID) ([]db.AgentTaskQueue, error) {
-	params := db.CancelAgentTasksByTriggerCommentParams{TriggerCommentID: commentID}
-	if len(consumedBy) > 0 {
-		params.ConsumedBy = consumedBy[0]
-	}
+func (s *TaskService) CancelTasksByTriggerComment(ctx context.Context, commentID pgtype.UUID) ([]db.AgentTaskQueue, error) {
 	var cancelled []db.AgentTaskQueue
 	if err := s.runInTx(ctx, func(qtx *db.Queries) error {
 		var err error
-		cancelled, err = qtx.CancelAgentTasksByTriggerComment(ctx, params)
+		cancelled, err = qtx.CancelAgentTasksByTriggerComment(ctx, commentID)
 		if err != nil {
 			return err
 		}

@@ -693,8 +693,7 @@ UPDATE agent_task_queue
 SET status = 'cancelled', completed_at = now(), prepare_lease_expires_at = NULL,
     cancelled_by_type = 'system', cancelled_by_id = NULL, cancelled_by_name = NULL,
     context = COALESCE(context, '{}'::jsonb) || jsonb_build_object('comment_change_cancelled_task_id', id::text)
-WHERE (trigger_comment_id = @trigger_comment_id OR @trigger_comment_id = ANY(coalesced_comment_ids))
-  AND id IS DISTINCT FROM sqlc.narg('consumed_by')::uuid
+WHERE (trigger_comment_id = $1 OR $1 = ANY(coalesced_comment_ids))
   AND status IN ('queued', 'dispatched', 'running', 'waiting_local_directory', 'deferred')
 RETURNING *;
 
@@ -2741,9 +2740,3 @@ RETURNING *;
 
 -- name: GetCommentThreadRootID :one
 SELECT comment_thread_root_id(@comment_id::uuid)::uuid AS id;
-
--- name: GetLastIssueWorkDir :one
-SELECT work_dir FROM agent_task_queue
-WHERE runtime_id = $1 AND agent_id = $2 AND issue_id = $3
-  AND work_dir IS NOT NULL AND work_dir <> ''
-ORDER BY created_at DESC LIMIT 1;

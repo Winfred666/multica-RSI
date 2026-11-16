@@ -910,22 +910,16 @@ SET status = 'cancelled', completed_at = now(), prepare_lease_expires_at = NULL,
     cancelled_by_type = 'system', cancelled_by_id = NULL, cancelled_by_name = NULL,
     context = COALESCE(context, '{}'::jsonb) || jsonb_build_object('comment_change_cancelled_task_id', id::text)
 WHERE (trigger_comment_id = $1 OR $1 = ANY(coalesced_comment_ids))
-  AND id IS DISTINCT FROM $2::uuid
   AND status IN ('queued', 'dispatched', 'running', 'waiting_local_directory', 'deferred')
 RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, autopilot_run_id, attempt, max_attempts, parent_task_id, failure_reason, trigger_summary, force_fresh_session, is_leader_task, wait_reason, initiator_user_id, handoff_note, prepare_lease_expires_at, squad_id, runtime_mcp_overlay, escalation_for_task_id, fire_at, originator_user_id, runtime_connected_apps, coalesced_comment_ids, delivered_comment_ids, chat_input_task_id, chat_finalize_deferred_at, originator_source, delegated_from_task_id, retry_of_task_id, rerun_of_task_id, rule_version_id, trigger_evidence_kind, trigger_evidence_ref_id, accountable_user_id, session_rollout_missing, retired_session_id, quick_actions_disabled, regenerate_quick_actions_for, branch_name, durable_work_dir, channel_context_revision, comment_thread_id, cancelled_by_type, cancelled_by_id, cancelled_by_name, issue_snapshot, workflow_step
 `
-
-type CancelAgentTasksByTriggerCommentParams struct {
-	TriggerCommentID pgtype.UUID `json:"trigger_comment_id"`
-	ConsumedBy       pgtype.UUID `json:"consumed_by"`
-}
 
 // Cancels active tasks whose planned batch contains the edited/deleted comment.
 // The body may already have been embedded as either the primary trigger or a
 // coalesced input; cancellation prevents an agent from acting on a stale or
 // deleted version. Must run before deletion clears trigger_comment_id.
-func (q *Queries) CancelAgentTasksByTriggerComment(ctx context.Context, arg CancelAgentTasksByTriggerCommentParams) ([]AgentTaskQueue, error) {
-	rows, err := q.db.Query(ctx, cancelAgentTasksByTriggerComment, arg.TriggerCommentID, arg.ConsumedBy)
+func (q *Queries) CancelAgentTasksByTriggerComment(ctx context.Context, triggerCommentID pgtype.UUID) ([]AgentTaskQueue, error) {
+	rows, err := q.db.Query(ctx, cancelAgentTasksByTriggerComment, triggerCommentID)
 	if err != nil {
 		return nil, err
 	}
@@ -4314,26 +4308,6 @@ func (q *Queries) GetCommentThreadRootID(ctx context.Context, commentID pgtype.U
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
-}
-
-const getLastIssueWorkDir = `-- name: GetLastIssueWorkDir :one
-SELECT work_dir FROM agent_task_queue
-WHERE runtime_id = $1 AND agent_id = $2 AND issue_id = $3
-  AND work_dir IS NOT NULL AND work_dir <> ''
-ORDER BY created_at DESC LIMIT 1
-`
-
-type GetLastIssueWorkDirParams struct {
-	RuntimeID pgtype.UUID `json:"runtime_id"`
-	AgentID   pgtype.UUID `json:"agent_id"`
-	IssueID   pgtype.UUID `json:"issue_id"`
-}
-
-func (q *Queries) GetLastIssueWorkDir(ctx context.Context, arg GetLastIssueWorkDirParams) (pgtype.Text, error) {
-	row := q.db.QueryRow(ctx, getLastIssueWorkDir, arg.RuntimeID, arg.AgentID, arg.IssueID)
-	var work_dir pgtype.Text
-	err := row.Scan(&work_dir)
-	return work_dir, err
 }
 
 const getLastTaskSession = `-- name: GetLastTaskSession :one

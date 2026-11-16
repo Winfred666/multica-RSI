@@ -14,8 +14,7 @@ func TestRemoteSOPUsesOrdinaryTaskDelivery(t *testing.T) {
 		t.Skip("database not available")
 	}
 	f := newSupplementFixture(t, "claude", "running", true)
-	cwd := t.TempDir()
-	dbfx.Exec(t, `UPDATE agent_task_queue SET work_dir=$2,session_id=NULL,status='completed',completed_at=now() WHERE id=$1`, f.taskID, cwd)
+	dbfx.Exec(t, `UPDATE agent_task_queue SET session_id=NULL,status='completed',completed_at=now() WHERE id=$1`, f.taskID)
 	dbfx.Exec(t, `UPDATE issue SET assignee_type='agent',assignee_id=$2 WHERE id=$1`, f.issueID, f.agentID)
 	question := dbfx.Comment(t, f.issueID, "/note !sop-render inspect {}\n{\"args\":[]}")
 	peer := createHandlerTestAgent(t, "Not a command recipient", nil)
@@ -39,23 +38,26 @@ func TestRemoteSOPUsesOrdinaryTaskDelivery(t *testing.T) {
 	if n := countQueuedCommentTriggerTasks(t, f.issueID, peer); n != 0 {
 		t.Fatal("command also admitted a mentioned model")
 	}
-	for _, comment := range comments {
+	for i, comment := range comments {
 		var response struct {
 			Task *AgentTaskResponse `json:"task"`
 		}
 		req := withURLParam(newOwnerDaemonRequest(http.MethodPost, "/tasks/claim", nil), "runtimeId", f.runtimeID)
 		testutil.Call(t, testHandler.ClaimTaskByRuntime, req).Want(http.StatusOK).JSON(&response)
 		task := response.Task
-		if task == nil || task.TriggerCommentID == nil || *task.TriggerCommentID != comment.ID || task.TriggerCommentContent != comment.Content || task.AuthToken == "" || task.PriorWorkDir != cwd {
+		if task == nil || task.TriggerCommentID == nil || *task.TriggerCommentID != comment.ID || task.TriggerCommentContent != comment.Content || task.AuthToken == "" {
 			t.Fatalf("command delivery=%+v", task)
 		}
 		testutil.Call(t, testHandler.StartTask, withURLParam(newOwnerDaemonRequest(http.MethodPost, "/tasks/"+task.ID+"/start", map[string]any{}), "taskId", task.ID)).Want(http.StatusOK)
-		authedDelete := middleware.Auth(testHandler.Queries, nil, nil, nil)(http.HandlerFunc(testHandler.DeleteComment))
-		cleanup := withURLParam(newRequest(http.MethodDelete, "/comments/"+comment.ID+"/keep-replies", nil), "commentId", comment.ID)
-		cleanup.Header.Set("Authorization", "Bearer "+task.AuthToken)
-		testutil.Call(t, authedDelete.ServeHTTP, cleanup).Want(http.StatusNoContent)
-		if n := dbfx.Count(t, `SELECT count(*) FROM agent_task_queue WHERE id=$1 AND status='running'`, task.ID); n != 1 {
-			t.Fatal("source consumption cancelled its executing command")
+		if i == 1 {
+			authedDelete := middleware.Auth(testHandler.Queries, nil, nil, nil)(http.HandlerFunc(testHandler.DeleteComment))
+			remove := withURLParam(newRequest(http.MethodDelete, "/comments/"+comment.ID+"/keep-replies", nil), "commentId", comment.ID)
+			remove.Header.Set("Authorization", "Bearer "+task.AuthToken)
+			testutil.Call(t, authedDelete.ServeHTTP, remove).Want(http.StatusNoContent)
+			if n := dbfx.Count(t, `SELECT count(*) FROM agent_task_queue WHERE id=$1 AND status='cancelled'`, task.ID); n != 1 {
+				t.Fatal("deleting a command did not cancel it normally")
+			}
+			continue
 		}
 		authedUpdate := middleware.Auth(testHandler.Queries, nil, nil, nil)(http.HandlerFunc(testHandler.UpdateComment))
 		update := withURLParam(newRequest(http.MethodPut, "/comments/"+question, map[string]any{"content": "/note !sop-render inspect {}\n{\"args\":[\"accepted\"]}"}), "commentId", question)
@@ -64,6 +66,9 @@ func TestRemoteSOPUsesOrdinaryTaskDelivery(t *testing.T) {
 		testutil.Call(t, testHandler.CompleteTask, withURLParam(newOwnerDaemonRequest(http.MethodPost, "/tasks/"+task.ID+"/complete", map[string]any{"output": ""}), "taskId", task.ID)).Want(http.StatusOK)
 		if n := dbfx.Count(t, `SELECT count(*) FROM agent_task_queue WHERE id=$1 AND status='completed' AND started_at IS NOT NULL`, task.ID); n != 1 {
 			t.Fatal("command did not use ordinary completion")
+		}
+		if n := dbfx.Count(t, `SELECT count(*) FROM comment WHERE id=$1 AND deleted_at IS NULL`, comment.ID); n != 1 {
+			t.Fatal("completion removed the command comment")
 		}
 	}
 }

@@ -34,6 +34,7 @@ print(os.getcwd())
 print('stderr text', file=sys.stderr)
 sys.exit(7 if os.environ['FIXTURE_TERMINAL'] == 'fail' else 0)
 `))
+			cwd := t.TempDir()
 			task := Task{ID: "task", AgentID: "assignee", RuntimeID: "runtime", IssueID: "issue", WorkspaceID: "workspace", PriorWorkDir: t.TempDir(), AuthToken: "mat_scoped", Agent: &AgentData{ID: "assignee"},
 				TriggerCommentID: "answer", TriggerCommentContent: `!sop-remote inspect {"args":["--help","two words","","$(literal)"]}`}
 			var calls []string
@@ -42,12 +43,16 @@ sys.exit(7 if os.environ['FIXTURE_TERMINAL'] == 'fail' else 0)
 				switch r.URL.Path {
 				case "/api/daemon/runtimes/runtime/tasks/claim":
 					_ = json.NewEncoder(w).Encode(map[string]any{"task": task})
+				case "/api/issues/issue":
+					state, _ := json.Marshal(map[string]string{"workdir": cwd})
+					_ = json.NewEncoder(w).Encode(map[string]any{"metadata": map[string]string{"sop.inspect": string(state)}})
+					return
 				case "/api/daemon/tasks/task/messages":
 					var batch struct {
 						Messages []TaskMessageData `json:"messages"`
 					}
 					_ = json.NewDecoder(r.Body).Decode(&batch)
-					if len(batch.Messages) != 2 || batch.Messages[0].Seq != 1 || batch.Messages[1].CallID != "answer" || !strings.Contains(batch.Messages[1].Output, task.PriorWorkDir) || !strings.Contains(batch.Messages[1].Output, "stderr text") {
+					if len(batch.Messages) != 2 || batch.Messages[0].Seq != 1 || batch.Messages[1].CallID != "answer" || !strings.Contains(batch.Messages[1].Output, cwd) || !strings.Contains(batch.Messages[1].Output, "stderr text") {
 						t.Errorf("messages=%+v", batch.Messages)
 					}
 				case "/api/daemon/tasks/task/start", "/api/daemon/tasks/task/progress", "/api/daemon/tasks/task/" + terminal, "/api/daemon/tasks/task/status":
@@ -72,7 +77,7 @@ sys.exit(7 if os.environ['FIXTURE_TERMINAL'] == 'fail' else 0)
 	}
 }
 
-func TestRemoteSOPQuestionnaireCleanup(t *testing.T) {
+func TestRemoteSOPQuestionnaireUpdate(t *testing.T) {
 	for _, scenario := range []struct {
 		name, question  string
 		forward, denied bool
@@ -80,11 +85,11 @@ func TestRemoteSOPQuestionnaireCleanup(t *testing.T) {
 	}{
 		{"no-reference", "", false, false, nil},
 		{"missing-question", "missing", false, false, []string{"GET"}},
-		{"answered", "question", false, false, []string{"GET", "DELETE", "PUT"}},
-		{"edit-denied", "question", false, true, []string{"GET", "DELETE", "PUT"}},
-		{"forward-source", "question", true, false, []string{"GET", "DELETE", "PUT", "GET", "PUT"}},
-		{"forward-recipient", "question", true, false, []string{"GET", "DELETE", "PUT", "GET", "PUT"}},
-		{"forward-denied", "question", true, true, []string{"GET", "DELETE", "PUT", "GET", "PUT"}},
+		{"answered", "question", false, false, []string{"GET", "PUT"}},
+		{"edit-denied", "question", false, true, []string{"GET", "PUT"}},
+		{"forward-source", "question", true, false, []string{"GET", "PUT", "GET", "PUT"}},
+		{"forward-recipient", "question", true, false, []string{"GET", "PUT", "GET", "PUT"}},
+		{"forward-denied", "question", true, true, []string{"GET", "PUT", "GET", "PUT"}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			var calls []string
@@ -117,11 +122,6 @@ func TestRemoteSOPQuestionnaireCleanup(t *testing.T) {
 						t.Error(r.URL.String())
 					}
 					_ = json.NewEncoder(w).Encode([]map[string]any{{"id": id, "revision": 3, "content": content}})
-				case "DELETE":
-					if r.URL.Path != "/api/comments/answer/keep-replies" {
-						t.Error(r.URL.Path)
-					}
-					w.WriteHeader(http.StatusNoContent)
 				case "PUT":
 					var update map[string]json.RawMessage
 					_ = json.NewDecoder(r.Body).Decode(&update)
@@ -159,7 +159,7 @@ func TestRemoteSOPQuestionnaireCleanup(t *testing.T) {
 				issue = "recipient"
 			}
 			body, _ := json.Marshal(remoteSOPCommand{Args: args, QuestionCommentID: scenario.question})
-			err := d.cleanRemoteSOPAnswer(t.Context(), Task{TriggerCommentID: "answer", IssueID: issue, WorkspaceID: "workspace", AuthToken: "mat_scoped", TriggerCommentContent: "!sop-remote inspect " + string(body)})
+			err := d.updateRemoteSOPQuestion(t.Context(), Task{TriggerCommentID: "answer", IssueID: issue, WorkspaceID: "workspace", AuthToken: "mat_scoped", TriggerCommentContent: "!sop-remote inspect " + string(body)})
 			if (err != nil) != scenario.denied || !reflect.DeepEqual(calls, scenario.calls) {
 				t.Fatalf("calls=%v err=%v", calls, err)
 			}
