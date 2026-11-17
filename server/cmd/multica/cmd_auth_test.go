@@ -28,6 +28,20 @@ func TestMain(m *testing.M) {
 		os.Unsetenv(key)
 	}
 
+	// Keep temporary workdirs in this checkout, outside daemon-owned ancestors
+	// of the system temp directory that can supply ambient task markers.
+	tempRoot, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "resolve CLI test temp root: %v\n", err)
+		os.Exit(1)
+	}
+	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+		if err := os.Setenv(key, tempRoot); err != nil {
+			fmt.Fprintf(os.Stderr, "set CLI test %s: %v\n", key, err)
+			os.Exit(1)
+		}
+	}
+
 	// Redirect both home environment variables to one scratch directory for the
 	// whole binary. On Windows os.UserHomeDir reads USERPROFILE, not HOME, so a
 	// test that redirects only HOME still resolves ~/.multica against the real

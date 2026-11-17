@@ -314,11 +314,6 @@ func GetBrewPrefix() string {
 	return strings.TrimSpace(string(out))
 }
 
-// UpdateViaBrew directs Homebrew installations to the fork's binary installer.
-func UpdateViaBrew() (string, error) {
-	return "", fmt.Errorf("install Multica-RSI with: curl -fsSL https://raw.githubusercontent.com/Winfred666/multica-RSI/main/scripts/install.sh | bash")
-}
-
 func updateDownloadTimeoutOrDefault(timeout time.Duration) time.Duration {
 	if timeout <= 0 {
 		return DefaultUpdateDownloadTimeout

@@ -364,6 +364,9 @@ func TestRunWorkspaceSwitchFailsClosedInTaskContext(t *testing.T) {
 
 func TestFetchWorkspacesExplainsPortOnlyFailClosedContext(t *testing.T) {
 	t.Chdir(t.TempDir())
+	if marker := daemonTaskContextMarkerPath(); marker != "" {
+		t.Fatalf("port-only fixture inherited daemon task marker %s", marker)
+	}
 	redirectTestHome(t, t.TempDir())
 	t.Setenv("MULTICA_AGENT_ID", "")
 	t.Setenv("MULTICA_TASK_ID", "")

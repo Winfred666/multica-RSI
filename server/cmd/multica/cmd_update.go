@@ -44,19 +44,6 @@ func runUpdate(_ *cobra.Command, _ []string) error {
 		fmt.Fprintf(os.Stderr, "Latest version:  %s\n\n", latest.TagName)
 	}
 
-	// Detect installation method and update accordingly.
-	if cli.IsBrewInstall() {
-		fmt.Fprintln(os.Stderr, "Updating via Homebrew...")
-		output, err := cli.UpdateViaBrew()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s\n", output)
-			return fmt.Errorf("update failed: %w", err)
-		}
-		fmt.Fprintln(os.Stderr, "Update complete.")
-		return nil
-	}
-
-	// Not installed via brew — download the binary from the configured release source.
 	if latest == nil {
 		return fmt.Errorf("could not determine latest version; check the configured release source")
 	}
