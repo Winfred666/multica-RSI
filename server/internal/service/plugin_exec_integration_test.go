@@ -61,9 +61,9 @@ func publishHostedPlugin(t *testing.T, s *service.PluginService, f *testutil.Fix
 	t.Helper()
 	manifest := fmt.Sprintf(`{
 		"manifest_version":1,"key":"com.example.hosted","name":"Hosted test",
-		"version":%q,"author":{"name":"test"},"scopes":["host:exec"],
+		"version":%q,"author":{"name":"test"},"scopes":["host:exec","tasks:read"],
 		"contributes":{"hooks":[{"key":"check","name":"Check","description":"Check state",
-		"triggers":["manual","schedule"],"schedule":{"cron":"*/5 * * * *","timezone":"UTC"},
+		"triggers":["manual","schedule","event"],"events":["task.completed"],"schedule":{"cron":"*/5 * * * *","timezone":"UTC"},
 		"transport":{"type":"exec","entry":"hooks/check.sh"}}]}
 	}`, version)
 	var buf bytes.Buffer
@@ -95,7 +95,7 @@ func publishHostedPlugin(t *testing.T, s *service.PluginService, f *testutil.Fix
 
 func installHostedPlugin(t *testing.T, s *service.PluginService, f *testutil.Fixture, version string) db.PluginInstallation {
 	t.Helper()
-	i, err := s.InstallPlugin(context.Background(), mustParseUUID(t, f.WorkspaceID), mustParseUUID(t, f.UserID), version, []string{"host:exec"})
+	i, err := s.InstallPlugin(context.Background(), mustParseUUID(t, f.WorkspaceID), mustParseUUID(t, f.UserID), version, []string{"host:exec", "tasks:read"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,6 +158,9 @@ printf '{"input":%s,"token":"%s","workspace":"%s","server":"%s"}' "$payload" "$M
 	if err != nil || bytes.Contains(stored.Ciphertext, []byte(token)) || stored.PatID != mustParseUUID(t, patID) {
 		t.Fatal("credential not encrypted/bound", err)
 	}
+	t.Setenv("PORT", "18417")
+	s.Callbacks = service.NewCallbackTokens()
+	s.CallbackBaseURL = "https://plugins.example.com/v1"
 	result, err := invokeHostedPlugin(s, i)
 	if err != nil {
 		t.Fatal(err)
@@ -169,8 +172,26 @@ printf '{"input":%s,"token":"%s","workspace":"%s","server":"%s"}' "$payload" "$M
 	if err := json.Unmarshal(result.Output, &output); err != nil {
 		t.Fatal(err)
 	}
-	if output.Token != "[REDACTED]" || output.Workspace != f.WorkspaceID || output.Server != s.ServerURL || output.Input["trigger"] != "manual" || bytes.Contains(result.Output, []byte(token)) {
+	if output.Token != "[REDACTED]" || output.Workspace != f.WorkspaceID || output.Server != s.ServerURL || output.Input["trigger"] != "manual" || output.Input["callback_url"] != s.CallbackBaseURL || bytes.Contains(result.Output, []byte(token)) {
 		t.Fatal("hook environment/payload leaked or incorrect")
+	}
+
+	hook, err := service.FindHook(i, "check")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = s.InvokeHook(ctx, service.HookInvocation{
+		Installation: i, Hook: hook, Trigger: plugincontract.TriggerEvent,
+		Actor: service.HookActor{Type: "plugin", ID: i.ID},
+	}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(result.Output, &output); err != nil {
+		t.Fatal(err)
+	}
+	if output.Server != "http://127.0.0.1:18417" || output.Input["callback_url"] != "http://127.0.0.1:18417/v1" {
+		t.Fatalf("event server=%q callback=%v", output.Server, output.Input["callback_url"])
 	}
 
 	if err := s.DeletePluginExecution(ctx, wsID); err != nil {

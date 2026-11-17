@@ -4,6 +4,7 @@ package service
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/plugincontract"
+	publicapiv1 "github.com/multica-ai/multica/server/pkg/publicapi/v1"
 )
 
 func (s *PluginService) callHookExecutable(ctx context.Context, invocation HookInvocation) (json.RawMessage, error) {
@@ -58,6 +60,11 @@ func (s *PluginService) callHookExecutable(ctx context.Context, invocation HookI
 	if s.Callbacks != nil && body.CallbackToken != "" {
 		defer s.Callbacks.Revoke(body.CallbackToken)
 	}
+	serverURL := s.ServerURL
+	if invocation.Trigger == plugincontract.TriggerEvent {
+		serverURL = "http://127.0.0.1:" + cmp.Or(os.Getenv("PORT"), "8080")
+		body.CallbackURL = serverURL + publicapiv1.BasePath
+	}
 	input, err := json.Marshal(body)
 	if err != nil {
 		return nil, &PluginError{Kind: PluginErrorInvalid, Message: "encode hook request", Err: err}
@@ -71,7 +78,7 @@ func (s *PluginService) callHookExecutable(ctx context.Context, invocation HookI
 	output, err := runPluginExecutable(callCtx, file.Content, input, []string{
 		"MULTICA_TOKEN=" + token,
 		"MULTICA_WORKSPACE_ID=" + uuidString(installation.WorkspaceID),
-		"MULTICA_SERVER_URL=" + s.ServerURL,
+		"MULTICA_SERVER_URL=" + serverURL,
 	})
 	// A script accidentally echoing its environment must not return its PAT to a surface.
 	output = bytes.ReplaceAll(output, []byte(token), []byte("[REDACTED]"))
