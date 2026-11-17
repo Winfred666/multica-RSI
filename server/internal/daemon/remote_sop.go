@@ -44,8 +44,7 @@ func (d *Daemon) reportRemoteSOPError(ctx context.Context, task Task, output str
 }
 
 type remoteSOPCommand struct {
-	Args              []string `json:"args"`
-	QuestionCommentID string   `json:"que_comment_id,omitempty"`
+	Args []string `json:"args"`
 }
 
 // TODO: Stage 4: SoP as first-class member: use a special ACP command executor inside the daemon.
@@ -102,88 +101,6 @@ func remoteSOPIssue(task Task, command remoteSOPCommand) string {
 
 // TODO: Stage 4: SoP as first-class member: use a special ACP command executor inside the daemon.
 func (d *Daemon) cleanRemoteSOPAnswer(ctx context.Context, task Task) error {
-	name, payload, _ := strings.Cut(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(task.TriggerCommentContent), "!sop-remote")), " ")
-	var command remoteSOPCommand
-	if err := json.Unmarshal([]byte(payload), &command); err != nil {
-		return err
-	}
-	if command.QuestionCommentID == "" {
-		return nil
-	}
 	client := cli.NewAPIClient(d.cfg.ServerBaseURL, task.WorkspaceID, d.client.token)
-	type comment struct {
-		ID       string `json:"id"`
-		Content  string `json:"content"`
-		Revision int64  `json:"revision"`
-	}
-	var comments []comment
-	if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(remoteSOPIssue(task, command))+"/comments?thread="+url.QueryEscape(command.QuestionCommentID), &comments); err != nil {
-		return err
-	}
-	for _, question := range comments {
-		if question.ID != command.QuestionCommentID {
-			continue
-		}
-		header, body, _ := strings.Cut(question.Content, "\n")
-		if !strings.Contains(header, "!sop-render "+name+" ") {
-			return nil
-		}
-		var rendered map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(body), &rendered); err != nil {
-			return err
-		}
-		if rendered == nil {
-			return fmt.Errorf("questionnaire must contain a JSON object")
-		}
-		rendered["args"], _ = json.Marshal(append([]string{}, command.Args...))
-		updated, err := json.Marshal(rendered)
-		if err != nil {
-			return err
-		}
-		content := header + "\n" + string(updated)
-		if err := client.PutJSON(ctx, "/api/comments/"+url.PathEscape(question.ID), map[string]any{
-			"content": content, "expected_revision": question.Revision,
-		}, nil); err != nil {
-			return err
-		}
-		var forwardID string
-		if raw := rendered["forwarded_comment_id"]; raw != nil {
-			if err := json.Unmarshal(raw, &forwardID); err != nil {
-				return err
-			}
-		}
-		if forwardID == "" {
-			return client.DeleteJSON(ctx, "/api/comments/"+url.PathEscape(task.TriggerCommentID)+"/keep-replies")
-		}
-		_, destination, _ := strings.Cut(header, "!sop-render "+name+" ")
-		var target struct {
-			IssueID string `json:"issue_id"`
-		}
-		if err := json.Unmarshal([]byte(destination), &target); err != nil {
-			return err
-		}
-		var forwards []comment
-		if err := client.GetJSON(ctx, "/api/issues/"+url.PathEscape(target.IssueID)+"/comments?thread="+url.QueryEscape(forwardID), &forwards); err != nil {
-			return err
-		}
-		for _, forward := range forwards {
-			if forward.ID != forwardID {
-				continue
-			}
-			lines := strings.Split(forward.Content, "\n")
-			for i, line := range lines {
-				if link, ok := strings.CutPrefix(line, "[Question]("); ok {
-					lines[i] = strings.TrimSuffix(link, ")")
-				}
-			}
-			if err := client.PutJSON(ctx, "/api/comments/"+url.PathEscape(forward.ID), map[string]any{
-				"content": strings.Join(lines, "\n") + "\n\n" + content, "expected_revision": forward.Revision,
-			}, nil); err != nil {
-				return err
-			}
-			return client.DeleteJSON(ctx, "/api/comments/"+url.PathEscape(task.TriggerCommentID)+"/keep-replies")
-		}
-		return fmt.Errorf("forwarding comment %s is missing", forwardID)
-	}
-	return nil
+	return client.DeleteJSON(ctx, "/api/comments/"+url.PathEscape(task.TriggerCommentID)+"/keep-replies")
 }

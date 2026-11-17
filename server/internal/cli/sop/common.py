@@ -43,6 +43,16 @@ def request(path, data=None, content_type=None):
         return json.load(response)
 
 
+def comment(issue_id, content, parent=None, attachment_ids=()):
+    body = {'content': content}
+    if parent:
+        body['parent_id'] = parent
+    if attachment_ids:
+        body['attachment_ids'] = list(attachment_ids)
+    return request('/api/issues/' + issue_id + '/comments',
+                   json.dumps(body, allow_nan=False).encode(), 'application/json')
+
+
 def attachment(reference):
     if reference.get('attachment_id'):
         return request('/api/attachments/' + reference['attachment_id'])
@@ -72,10 +82,10 @@ def write_config(reference, config, parent=None, message=' '):
                            'application/json', parent, message)
 
 
-def _write_resource(reference, content, content_type, parent, message):
-    """Upload a file, retain its returned identity, and announce a non-owning link."""
-    fields = {}
-    if reference.get('attachment_id'):
+def _write_resource(reference, content, content_type, parent, message, *, independent=True):
+    """Upload a file and publish its link or comment attachment."""
+    fields = {} if independent else {'issue_id': reference['issue_id']}
+    if independent and reference.get('attachment_id'):
         fields['attachment_id'] = reference['attachment_id']
     boundary = 'sop-' + uuid.uuid4().hex
     body = b''.join((f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n').encode()
@@ -84,35 +94,23 @@ def _write_resource(reference, content, content_type, parent, message):
              f'Content-Type: {content_type}\r\n\r\n').encode()
     body += content.encode() + f'\r\n--{boundary}--\r\n'.encode()
     row = request('/api/upload-file', body, 'multipart/form-data; boundary=' + boundary)
-    reference['attachment_id'] = row['id']
+    if independent:
+        reference['attachment_id'] = row['id']
     # Config callers persist this reference before other issues resume reading it.
     try:
         if not parent:
             roots = cli('issue', 'comment', 'list', reference['issue_id'], '--roots-only', '--summary')
             parent = roots[-1]['id'] if roots else None
-        words = ['issue', 'comment', 'add', reference['issue_id'], '--content',
-                 message + '\n\n!file[' + reference['filename'] + '](' + row['markdown_url'] + ')']
-        if parent:
-            words += ['--parent', parent]
-        return cli(*words)
+        if independent:
+            message += '\n\n!file[' + reference['filename'] + '](' + row['markdown_url'] + ')'
+        return comment(reference['issue_id'], message, parent, () if independent else (row['id'],))
     except Exception as error:
         raise ValueError('Resource uploaded as ' + row['id'] +
                          '; reconcile the reference before retrying announcement: ' + str(error)) from error
 
 
 def write_artifact(reference, content, parent=None, message=' ', *, independent=False):
-    if independent:
-        return _write_resource(reference, content, 'text/html', parent, message)
-    if not parent:
-        roots = cli('issue', 'comment', 'list', reference['issue_id'], '--roots-only', '--summary')
-        parent = roots[-1]['id'] if roots else None
-    with tempfile.TemporaryDirectory(prefix='.sop-', dir=Path.cwd()) as directory:
-        path = Path(directory) / reference['filename']
-        path.write_text(content)
-        words = ['issue', 'comment', 'add', reference['issue_id'], '--content', message, '--attachment', str(path)]
-        if parent:
-            words += ['--parent', parent]
-        return cli(*words)
+    return _write_resource(reference, content, 'text/html', parent, message, independent=independent)
 
 
 def publish_shared_artifact(reference, content):

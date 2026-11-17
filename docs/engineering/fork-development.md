@@ -156,25 +156,18 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   Bare `!sop-remote <name> <JSON payload>` delegates unchanged text to the
   assignee's daemon without starting a model; `/note` remains inert. The
   daemon/CLI owns parsing, saved SoP working directories and execution.
-  Payloads use `{"args":[],"que_comment_id":"optional-question-comment-id"}`.
-  Successful calls with a matching questionnaire add its `args` to that
-  questionnaire and consume the answer after task completion.
-  After questionnaire publication, cross-issue owners
-  receive a Markdown source link in their declared thread; the source question
-  records `que_comment_id` and `forwarded_comment_id`. Same-issue questions do
-  not forward. Rendered choices carry `--issue` so recipient answers still use
-  the source issue's state and questionnaire. On the web frontend, pending standalone
+  Payloads use `{"args":[]}`. The engine keeps questionnaire/forward IDs in issue
+  metadata. Recall retries missing publication; `--help` replaces the pair; leaving
+  the outer State deletes both. Phase/results survive publication failures without
+  replaying actions. The daemon consumes only successful answers after completion.
+  Publication uses the task-scoped API: the current run's triggering comment on
+  its own issue, and the declared destination thread for forwards. This temporary
+  hotfix awaits [Stage 4 execution-track input/output](https://github.com/Winfred666/multica-RSI/issues/77).
+  Same-issue questions do not forward. Rendered choices carry `--issue` so recipient
+  answers use the source issue's state. On the web frontend, pending standalone
   question permalinks mirror the source thread in a nested window sized to the
   question and initially scrolled to it. The source title/link and raw content
-  remain accessible, and mirrored questions use the existing renderer. The
-  engine owns completion delivery: after recording the accepted answer, the
-  daemon edits that exact forward to retain owner prose and a plain HTTP(S)
-  source URL, then append the accepted static `!sop-render` block. Only content
-  and revision are updated. Failures use ordinary publication/daemon error
-  reporting, with no mirror recovery state or progression gate. The URL-plus-block
-  layout still requires frontend alignment: the bare URL must stop being a live
-  reference, and the static block follows prose rather than starting the comment.
-  See [forwarded question links #69](https://github.com/Winfred666/multica-RSI/issues/69).
+  remain accessible, and mirrored questions use the existing renderer.
   The obsolete `remote-sop` CLI command and wrapper-presence resolver are removed.
 
 - **SoP developer kit.** `multica sop docs` is the canonical authoring guide;
@@ -241,8 +234,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   Rendered markers omit `/note`; `content` retains agent mentions. Only the three destination
   IDs are encoded, and the execution assignee is unchanged.
   Rendered JSON adds frontend-ignored `how_to_step` text with the ordinary comment-post
-  command for `!sop-remote <skill-name>` and a questionnaire-comment-ID placeholder;
-  the renderer does not post/read back to discover its ID.
+  command for `!sop-remote <skill-name> {"args":[...]}`; no comment IDs or
+  comment-JSON write-back are needed.
   Controller validation checks that the final action on a declared normal-agent
   to addressed-state path returns `this_round_reply_guidance`. Stage 3 owns forwarding
   and rendering; this adds no state/question schema or remote-call dispatch.

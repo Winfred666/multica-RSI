@@ -12,10 +12,9 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tempfile
 from types import SimpleNamespace
 
-from common import cli, publish_shared_artifact, write_artifact
+from common import cli, comment, publish_shared_artifact, request, write_artifact
 import sop
 import monitor
 
@@ -143,11 +142,12 @@ def load_controller():
 
 
 def multica(*args, resource='issue'):
-    command = ["multica", resource, *args, "--output", "json"]
+    output = [] if args[:2] == ("comment", "delete") else ["--output", "json"]
+    command = ["multica", resource, *args, *output]
     result = subprocess.run(command, capture_output=True, text=True, timeout=30)
     if result.returncode:
         raise SOPError("cli_error", f"{shlex.join(command)}: {result.stderr.strip() or result.stdout.strip()}")
-    return json.loads(result.stdout)
+    return json.loads(result.stdout) if result.stdout.strip() else None
 
 
 def state_key(context):
@@ -192,6 +192,7 @@ def save_state(context, state):
 
 
 def delete_state(context):
+    clean_questionnaire(context)
     try:
         multica('metadata', 'delete', context['issue_id'], '--key', state_key(context))
     except Exception as error:
@@ -202,9 +203,13 @@ def delete_state(context):
 
 
 def help_output(context):
+    context['help'] = True
     state = read_state(context)
     if state:
-        return json.dumps(redact(agent_decision(state.get('output', state))), allow_nan=False)
+        context['state'] = state
+        output = state.get('output', state)
+        render_addressed_state(context, output, refresh=True)
+        return json.dumps(redact(agent_decision(output)), allow_nan=False)
     return (ROOT / 'SKILL.md').read_text(encoding='utf-8').split('---', 2)[2].strip()
 
 
@@ -275,11 +280,14 @@ def transition(args, context, controller):
     from sop import Completed
     workflow = controller.workflow
     phases = set(workflow.states)
-    state = read_state(context, phases | {'error', 'blocked'})
+    state = read_state(context, phases | {'error', 'blocked', workflow.FINISHED})
     context['state'] = state
     before = state.get('status')
     context['prior_status'] = before
     phase = before or workflow.initial
+    if phase not in {'error', 'blocked'} and workflow.is_finished(phase):
+        return {'ok': True, 'status': phase, 'finished': True, 'state_changed': False,
+                'next_step': callback(finished_instruction(controller))}
     receipt = None
     if phase in {'error', 'blocked'}:
         receipt = state['recovery']
@@ -386,11 +394,13 @@ def transition(args, context, controller):
     result.update(ok=invalid is None, status=status, finished=finished,
                   state_changed=changed, error=invalid)
     json.dumps(result, allow_nan=False)
-    if finished:
-        delete_state(context)
-    elif changed:
+    if owner and 'issue_id' in owner and not finished:
+        state['owner'] = owner
+    else:
+        state.pop('owner', None)
+    if changed:
         state.pop('recovery', None)
-        state['status'] = status
+    state['status'] = status
     return result
 
 
@@ -612,6 +622,14 @@ def state_artifact(context, controller, result):
             '</script></html>')
 
 
+def reply_parent(context):
+    # TODO: SoP as first class member Stage 4: temporary comment-transport hotfix.
+    # https://github.com/Winfred666/multica-RSI/issues/77
+    if context['issue_id'] == context.get('native_issue_id') and context.get('native_comment_id'):
+        return context['native_comment_id']
+    return getattr(context.get('args'), 'thread', None) or context.get('state', {}).get('reply_parent')
+
+
 def publish_artifacts(context, controller, result):
     if not controller:
         return
@@ -631,57 +649,64 @@ def publish_artifacts(context, controller, result):
                                     state_artifact(context, controller, result))
         if not result.get('error') and hasattr(controller, 'artifacts'):
             artifacts.update(controller.artifacts({**context, 'cli': multica, 'error': SOPError}))
-        parent = getattr(context.get('args'), 'thread', None) or context.get('state', {}).get('reply_parent')
-        # FUTURE TODO: temp bypass agent as middel-layer, would be elegant when treat SoP sys as first class member role to speak in an issue
+        parent = reply_parent(context)
         for filename, content in artifacts.items():
             write_artifact({'issue_id': context['issue_id'], 'filename': filename}, content, parent)
     except Exception as error:
         print(redact('Live artifact update failed: ' + str(error)), file=sys.stderr)
 
 
-def render_addressed_state(context, controller, result, rendered):
-    """Publish the ordinary state projection after the option chain and persistence."""
-    if not result['ok'] or not result.get('state_changed'):
+def clean_questionnaire(context):
+    state = context['state']
+    publication = state.get('questionnaire', {})
+    for key in ('forwarded_comment_id', 'que_comment_id'):
+        if publication.get(key):
+            context['external_write_attempted'] = True
+            multica('comment', 'delete', publication[key])
+            publication.pop(key)
+            save_state(context, state)
+    state.pop('questionnaire', None)
+
+
+def render_addressed_state(context, rendered, *, refresh=False):
+    """Retry publication from saved state without replaying the entering action."""
+    state = context['state']
+    publication = state.get('questionnaire', {})
+    if publication and (refresh or publication['status'] != state['status']):
+        clean_questionnaire(context)
+        save_state(context, state)
+    owner = state.get('owner')
+    if not owner:
         return
-    owner = state_owner(controller.workflow, result['status'], context)
-    if not owner or 'issue_id' not in owner:
-        return
+    publication = state.setdefault('questionnaire', {'status': state['status']})
     destination = {key: owner[key] for key in ('issue_id', 'thread', 'id')}
-    answer = '!sop-remote ' + controller.SOP_NAME + ' {"que_comment_id":"<this-comment-id>","args":[...]}'
+    answer = '!sop-remote ' + context['skill'] + ' {"args":[...]}'
     command = shlex.join(['multica', 'issue', 'comment', 'add', context['issue_id'],
-                          '--parent', '<this-comment-id>', '--content-file', '<answer-file>'])
+                          '--content-file', '<answer-file>'])
     rendered = {**rendered, 'next_step': [
         {**step, 'command': step['command'] + ' --issue ' + shlex.quote(context['issue_id'])}
         for step in rendered.get('next_step', [])], 'how_to_step': (
         'Save ' + answer + ' in a UTF-8 file, then post it with: ' + command + '. '
-        'Replace <this-comment-id> with the ID of this questionnaire comment and <answer-file> with the file path. '
-        'Replace [...] with the chosen next_step command arguments after multica sop run ' + controller.SOP_NAME +
+        'Replace [...] with the chosen next_step command arguments after multica sop run ' + context['skill'] +
         ', including --issue ' + context['issue_id'] +
         ' and filling its placeholders; args must be a JSON array of strings.')}
-    with tempfile.TemporaryDirectory(prefix='.sop-', dir=Path.cwd()) as directory:
-        body = Path(directory) / 'handoff.md'
+    if not publication.get('que_comment_id'):
         prefix = '' if owner['issue_id'] != context['issue_id'] else owner['content'].removeprefix('/note').strip()
-        header = (prefix + ' !sop-render ' + controller.SOP_NAME + ' ' + json.dumps(destination)).lstrip()
-        body.write_text(header + '\n' + json.dumps(rendered, allow_nan=False))
-        words = ['comment', 'add', context['issue_id'], '--content-file', str(body)]
-        parent = getattr(context.get('args'), 'thread', None) or context['state'].get('reply_parent')
-        if parent:
-            words += ['--parent', parent]
+        header = (prefix + ' !sop-render ' + context['skill'] + ' ' + json.dumps(destination)).lstrip()
         context['external_write_attempted'] = True
-        question = multica(*words)
-        rendered['que_comment_id'] = question['id']
-        if owner['issue_id'] != context['issue_id']:
-            app_url = os.environ.get('MULTICA_APP_URL', '').rstrip('/')
-            if not app_url.startswith(('http://', 'https://')):
-                raise SOPError('missing_app_url', 'Set app_url to the frontend HTTP(S) URL before forwarding questionnaires')
-            workspace = multica('get', context['workspace_id'], resource='workspace')
-            link = app_url + '/' + workspace['slug'] + '/issues/' + context['issue_id'] + '#comment-' + question['id']
-            body.write_text(owner['content'] + '\n\n[Question](' + link + ')')
-            forward = multica('comment', 'add', owner['issue_id'], '--parent', owner['thread'], '--content-file', str(body))
-            rendered['forwarded_comment_id'] = forward['id']
-        body.write_text(header + '\n' + json.dumps(rendered, allow_nan=False))
-        multica('comment', 'update', question['id'], '--expected-revision', str(question['revision']),
-                '--content-file', str(body))
+        publication['que_comment_id'] = comment(context['issue_id'],
+            header + '\n' + json.dumps(rendered, allow_nan=False), reply_parent(context))['id']
+        save_state(context, state)
+    if owner['issue_id'] != context['issue_id'] and not publication.get('forwarded_comment_id'):
+        app_url = os.environ.get('MULTICA_APP_URL', '').rstrip('/')
+        if not app_url.startswith(('http://', 'https://')):
+            raise SOPError('missing_app_url', 'Set app_url to the frontend HTTP(S) URL before forwarding questionnaires')
+        workspace = request('/api/workspaces/' + context['workspace_id'])
+        link = app_url + '/' + workspace['slug'] + '/issues/' + context['issue_id'] + '#comment-' + publication['que_comment_id']
+        context['external_write_attempted'] = True
+        publication['forwarded_comment_id'] = comment(owner['issue_id'],
+            owner['content'] + '\n\n[Question](' + link + ')', owner['thread'])['id']
+        save_state(context, state)
 
 
 def main(argv=None):
@@ -697,6 +722,8 @@ def main(argv=None):
             return 1
     context = {"agent_id": os.environ.get("MULTICA_AGENT_ID"),
                "issue_id": os.environ.get("MULTICA_ISSUE_ID"),
+               "native_issue_id": os.environ.get("MULTICA_ISSUE_ID"),
+               "native_comment_id": os.environ.get("MULTICA_COMMENT_ID"),
                "workspace_id": os.environ.get("MULTICA_WORKSPACE_ID"),
                "argv": argv, "sop_dir": ROOT, "state_dir": STATE_DIR}
     controller = None
@@ -729,15 +756,16 @@ def main(argv=None):
     output = redact(response(result))
     rendered = redact(response(result, reply_guidance=False))
     try:
-        if controller and context.get('state'):
+        if controller and context.get('state') and not context.get('help'):
             state = context['state']
             state['output'] = rendered
-            if not getattr(controller, 'CACHE_VIEW', True):
-                state['output'] = {'status': state.get('status'), 'instruction': controller.workflow.states.get(
-                    state.get('status'), controller.workflow.states[controller.workflow.initial]).description}
             if not context.get('state_deleted') and not context.get('state_write_failed'):
                 save_state(context, state)
-        render_addressed_state(context, controller, result, rendered)
+                if result['ok']:
+                    if result.get('finished'):
+                        delete_state(context)
+                    else:
+                        render_addressed_state(context, rendered)
     except Exception as error:
         result = exception_result(error, context)
         output = redact(response(result))

@@ -1,5 +1,6 @@
 """Shared Python engine protocol tests using CLI-owned semantic examples."""
 import importlib.util
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
 import json
 import os
@@ -8,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from threading import Thread
 import unittest
 from unittest.mock import patch
 
@@ -45,6 +47,14 @@ if os.environ.get('SOP_TEST_CLI_FAIL'):
     sys.exit('Metadata service unavailable')
 if args[:2] == ['issue', 'get']:
     print(json.dumps({'id': args[2], 'metadata': store.get(args[2], {})}))
+elif args[:3] == ['issue', 'comment', 'delete']:
+    assert '--output' not in args
+    if os.environ.get('SOP_TEST_DELETE_FAIL'):
+        sys.exit('Deletion unavailable')
+    comments = path.with_name('comments')
+    rows = json.loads(comments.read_text())
+    rows[int(args[3])]['deleted'] = True
+    comments.write_text(json.dumps(rows))
 elif args[:2] == ['issue', 'assign']:
     print('{}')
 else:
@@ -69,6 +79,7 @@ else:
                     'SOP_TEST_METADATA': str(self.metadata), 'PATH': str(binary) + os.pathsep + os.environ['PATH'],
                     'PYTHONDONTWRITEBYTECODE': '1'}
         self.env.pop('MULTICA_TOKEN', None)
+        self.env.pop('MULTICA_COMMENT_ID', None)
 
     def skill_name(self):
         import re
@@ -395,51 +406,120 @@ workflow = Workflow(
         self.assertFalse(self.metadata.exists())
         self.assertFalse((self.root / 'calls').exists())
 
-    def test_addressed_questionnaire_linkage(self):
-        spec = importlib.util.spec_from_file_location('protocol_wrapper', self.engine / 'wrapper.py')
-        wrapper = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(wrapper)
-        wrapper.ROOT, wrapper.STATE_DIR, wrapper.SOP_NAME = self.package, self.state_dir, self.skill_name()
-        controller = wrapper.load_controller()
-        for destination in ('source', 'destination'):
+    def test_addressed_questionnaire_lifecycle(self):
+        fixture = self
+
+        class API(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"slug":"fixture"}')
+
+            def do_POST(self):
+                fixture.assertEqual(self.headers['Authorization'], 'Bearer fixture-token')
+                fixture.assertEqual(self.headers['X-Workspace-ID'], 'fixture-workspace')
+                issue = self.path.split('/')[3]
+                body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                if fixture.env.get('SOP_TEST_COMMENT_FAIL') == issue:
+                    self.send_error(503, 'Publication unavailable')
+                    return
+                if issue == fixture.env.get('SOP_TEST_TASK_ISSUE'):
+                    fixture.assertEqual(body.get('parent_id'), fixture.env['MULTICA_COMMENT_ID'])
+                comments = fixture.root / 'comments'
+                rows = json.loads(comments.read_text()) if comments.exists() else []
+                row = {'id': str(len(rows)), 'issue_id': issue, **body}
+                rows.append(row)
+                comments.write_text(json.dumps(rows))
+                self.send_response(201)
+                self.end_headers()
+                self.wfile.write(json.dumps(row).encode())
+
+        api = ThreadingHTTPServer(('127.0.0.1', 0), API)
+        self.addCleanup(api.server_close)
+        self.addCleanup(api.shutdown)
+        Thread(target=api.serve_forever, daemon=True).start()
+        self.env.update(MULTICA_TOKEN='fixture-token',
+                        MULTICA_SERVER_URL='http://127.0.0.1:' + str(api.server_port))
+        for destination in ('fixture-issue', 'recipient'):
             with self.subTest(destination=destination):
-                owner = {'issue_id': destination, 'thread': 'target-thread', 'id': 'reader', 'content': '/note'}
-                context = {'issue_id': 'source', 'workspace_id': 'workspace-uuid', 'state': {'reply_parent': 'source-thread'}}
-                rendered = {'status': 'review', 'instruction': 'Choose.', 'next_step': [
-                    {'instruction': 'Accept.', 'command': 'multica sop run fixture-sop accept'}]}
-                writes = []
-                workspace_reads = []
-
-                def post(*words, resource='issue'):
-                    if resource == 'workspace':
-                        workspace_reads.append(words)
-                        return {'id': 'workspace-uuid', 'slug': 'acme'}
-                    writes.append((words, Path(words[words.index('--content-file') + 1]).read_text()))
-                    return {'id': 'question' if len(writes) == 1 else 'forward', 'revision': 1}
-
-                with patch.object(wrapper, 'state_owner', return_value=owner), \
-                     patch.object(wrapper, 'multica', side_effect=post), \
-                     patch.dict(os.environ, MULTICA_APP_URL='https://multica.example'):
-                    wrapper.render_addressed_state(context, controller,
-                                                   {'ok': True, 'state_changed': True, 'status': 'review'}, rendered)
-                self.assertEqual(writes[0][0][:3], ('comment', 'add', 'source'))
-                self.assertEqual(writes[0][0][-2:], ('--parent', 'source-thread'))
-                self.assertEqual(writes[-1][0][:5], ('comment', 'update', 'question', '--expected-revision', '1'))
-                self.assertTrue(writes[-1][1].startswith('!sop-render '))
-                question = json.loads(writes[-1][1].split('\n', 1)[1])
-                self.assertEqual(question['que_comment_id'], 'question')
-                self.assertTrue(question['next_step'][0]['command'].endswith('--issue source'))
-                self.assertIn("multica issue comment add source --parent '<this-comment-id>'", question['how_to_step'])
-                self.assertIn('Save !sop-remote ', question['how_to_step'])
-                self.assertNotIn('how_to_step', rendered)
-                self.assertEqual(len(writes), 2 if destination == 'source' else 3)
-                self.assertEqual(workspace_reads, [] if destination == 'source' else [('get', 'workspace-uuid')])
-                if destination != 'source':
-                    self.assertEqual(question['forwarded_comment_id'], 'forward')
-                    self.assertEqual(writes[1][0][:5], ('comment', 'add', destination, '--parent', 'target-thread'))
-                    self.assertEqual(writes[1][1], '/note\n\n[Question](https://multica.example/acme/issues/source#comment-question)')
-                else:
-                    self.assertNotIn('forwarded_comment_id', question)
+                (self.package / 'controller.py').write_text("""from sop import FINISHED, Option, State, Workflow
+from pathlib import Path
+def submit(args, context):
+    p = Path('actions')
+    p.write_text(p.read_text() + 'x' if p.exists() else 'x')
+    context['state'].update(summary='Retained result', reply_parent='stale-parent')
+    return {'this_round_reply_guidance': 'End this turn.'}
+workflow = Workflow(
+    State('dev', 'Develop.', initial=True),
+    Option('submit', 'Submit.', submit),
+    State('review', 'Review.', owner=OWNER),
+    Option('revise', 'Revise.', submit),
+    Option('accept', 'Accept.', submit),
+    edges=(('dev','submit'), ('submit','review'), ('review','revise'),
+           ('revise','dev'), ('review','accept'), ('accept',FINISHED)))
+""".replace('OWNER', repr({'issue_id': destination, 'thread': 'target-thread', 'id': None, 'content': '/note'})))
+                self.env.update(MULTICA_APP_URL='https://multica.example',
+                                MULTICA_COMMENT_ID='native-trigger', SOP_TEST_TASK_ISSUE='fixture-issue')
+                self.run_sop()
+                self.env['SOP_TEST_COMMENT_FAIL'] = 'fixture-issue'
+                self.assertEqual(self.run_sop('submit', valid=False)['error']['code'], 'controller_failure')
+                self.assertEqual(self.state()['status'], 'review')
+                self.assertEqual(self.state()['summary'], 'Retained result')
+                self.env.pop('SOP_TEST_COMMENT_FAIL')
+                if destination == 'recipient':
+                    self.env['SOP_TEST_COMMENT_FAIL'] = destination
+                    self.run_sop(valid=False)
+                    self.assertIn('que_comment_id', self.state()['questionnaire'])
+                    self.assertNotIn('forwarded_comment_id', self.state()['questionnaire'])
+                    self.env.pop('SOP_TEST_COMMENT_FAIL')
+                self.run_sop()
+                pair = self.state()['questionnaire'].copy()
+                self.run_sop()
+                self.assertEqual(self.state()['questionnaire'], pair)
+                refreshed = self.run_sop('--help', '--issue', 'fixture-issue')
+                publication = self.state()['questionnaire']
+                self.assertNotEqual(pair['que_comment_id'], publication['que_comment_id'])
+                rows = json.loads((self.root / 'comments').read_text())
+                for key in ('que_comment_id', 'forwarded_comment_id'):
+                    if key in pair:
+                        self.assertTrue(rows[int(pair[key])]['deleted'])
+                question = rows[int(publication['que_comment_id'])]
+                self.assertEqual(question['parent_id'], 'native-trigger')
+                self.assertTrue(question['content'].startswith('!sop-render '))
+                rendered = json.loads(question['content'].split('\n', 1)[1])
+                self.assertNotIn('que_comment_id', rendered)
+                self.assertNotIn('forwarded_comment_id', rendered)
+                self.assertIn('{"args":[...]}', rendered['how_to_step'])
+                self.assertNotIn('<this-comment-id>', rendered['how_to_step'])
+                self.assertEqual(refreshed, self.state()['output'])
+                if destination == 'recipient':
+                    forward = rows[int(publication['forwarded_comment_id'])]
+                    self.assertEqual(forward['parent_id'], 'target-thread')
+                    self.assertIn('#comment-' + question['id'], forward['content'])
+                self.env.update(MULTICA_ISSUE_ID='other-task-issue', MULTICA_COMMENT_ID='foreign-trigger',
+                                SOP_TEST_TASK_ISSUE='other-task-issue')
+                self.run_sop('--help', '--issue', 'fixture-issue')
+                self.env['MULTICA_ISSUE_ID'] = 'fixture-issue'
+                publication = self.state()['questionnaire']
+                rows = json.loads((self.root / 'comments').read_text())
+                self.assertEqual(rows[int(publication['que_comment_id'])]['parent_id'], 'stale-parent')
+                self.env.update(MULTICA_COMMENT_ID='native-trigger', SOP_TEST_TASK_ISSUE='fixture-issue')
+                before = (self.root / 'actions').read_text()
+                self.env['SOP_TEST_DELETE_FAIL'] = '1'
+                event = 'accept' if destination == 'recipient' else 'revise'
+                self.run_sop(event, valid=False)
+                self.assertEqual((self.root / 'actions').read_text(), before + 'x')
+                self.env.pop('SOP_TEST_DELETE_FAIL')
+                self.run_sop()
+                self.assertEqual((self.root / 'actions').read_text(), before + 'x')
+                self.assertNotIn('questionnaire', self.state())
+                self.assertTrue(all(row.get('deleted') for row in json.loads((self.root / 'comments').read_text())))
+                if destination != 'recipient':
+                    self.assertEqual(self.state()['summary'], 'Retained result')
+                    self.run_sop('quit', valid=False)
 
     def test_rejected_choice_does_not_report_remote_success(self):
         (self.package / 'controller.py').write_text("""from sop import Option, State, Workflow
@@ -499,9 +579,12 @@ workflow = Workflow(
     def test_config_payload_is_uploaded_and_returned_id_is_shared(self):
         import common
         reference = {'issue_id': 'installer', 'filename': 'master.json'}
-        uploads = []
+        uploads, posts = [], []
 
         def request(path, body, content_type):
+            if path.endswith('/comments'):
+                posts.append(json.loads(body))
+                return {'id': 'comment'}
             uploads.append(body)
             return {'id': 'first' if len(uploads) == 1 else 'replacement', 'markdown_url': '/stable'}
 
@@ -510,7 +593,8 @@ workflow = Workflow(
             self.assertEqual(reference['attachment_id'], 'first')
             common.write_config(reference, {'setting': 2}, 'thread')
             self.assertEqual(reference['attachment_id'], 'replacement')
-            self.assertNotIn('--attachment', cli.call_args.args)
+            self.assertFalse(cli.called)
+            self.assertEqual(posts[-1]['parent_id'], 'thread')
             common.link_config('MAIN', reference)
             common.link_config('developer', reference, common.DELEGATION_KEY)
             common.link_config('reviewer', reference, common.DELEGATION_KEY)
@@ -523,9 +607,15 @@ workflow = Workflow(
             with self.assertRaisesRegex(ValueError, 'Resource uploaded as replacement'):
                 common.write_config(failed, {'setting': 3})
             self.assertEqual(failed['attachment_id'], 'replacement')
+            cli.side_effect = None
+            regular = {'issue_id': 'installer', 'filename': 'report.html'}
+            common.write_artifact(regular, '<p>Result</p>', 'thread')
+            self.assertEqual(posts[-1], {'content': ' ', 'parent_id': 'thread', 'attachment_ids': ['replacement']})
+            self.assertNotIn('attachment_id', regular)
+            self.assertIn(b'name="issue_id"\r\n\r\ninstaller', uploads[-1])
         self.assertNotIn(b'name="attachment_id"', uploads[0])
         self.assertIn(b'name="attachment_id"\r\n\r\nfirst', uploads[1])
-        for body in uploads:
+        for body in uploads[:-1]:
             self.assertIn(b'Content-Type: application/json', body)
             for name in ('independent', 'issue_id', 'comment_id', 'task_id'):
                 self.assertNotIn(('name="' + name + '"').encode(), body)

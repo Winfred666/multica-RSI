@@ -45,7 +45,8 @@ State guidance instead of handing off.
 - Save procedure data in `context['state']`. A State's `view(context)` returns
   its live `instruction`; its `owner` names the human/agent who acts next.
 - `FINISHED` or `State(..., final=True)` completes the procedure and clears its
-  issue metadata. `--help` recalls saved guidance without executing actions.
+  issue metadata. `--help` recalls guidance and refreshes the current questionnaire
+  without executing actions.
 
 ## Declare preview text beside the node
 
@@ -73,9 +74,9 @@ Do not use this field for ordinary same-agent progress; keep normal State guidan
 For an addressed outer State, its `owner` declares `issue_id`, `thread`, agent
 `id` and native comment `content`. Fill `id` and mention the agent in `content`
 only for automatic agent `sop-remote` replies; human gates use blank `id` and
-mention-free `content`. The engine posts/forwards its questionnaire; return
-explicit silence guidance from the final entering action. Do not publish
-a second questionnaire or execute the recipient's choice in the same turn.
+mention-free `content`. The engine handles publication, forwarding, retries and cleanup.
+Return explicit silence guidance from the final entering action. Controllers
+must not publish questionnaires, manage their comments or choose for recipients.
 
 Default `attachment upload FILE` requires the current issue and comment and belongs to both.
 For shared or frequently updated deliverables use `--independent`: the current issue is
