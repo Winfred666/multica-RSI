@@ -74,7 +74,13 @@ Do not use this field for ordinary same-agent progress; keep normal State guidan
 For an addressed outer State, its `owner` declares `issue_id`, `thread`, agent
 `id` and native comment `content`. Fill `id` and mention the agent in `content`
 only for automatic agent `sop-remote` replies; human gates use blank `id` and
-mention-free `content`. The engine handles publication, forwarding, retries and cleanup.
+mention-free `content`. The engine publishes in `--thread` or the invoking comment
+thread, never a new root. It handles forwarding and retries, merges accepted
+answer `args` into the existing question, and clears pending metadata IDs without
+deleting the question or its forward. On answer, a cross-issue forward becomes a
+compact source link and a separate static answered card is posted in the same
+target thread. Forward links are relative and do not require `app_url`. Help
+refreshes the existing pending card.
 Return explicit silence guidance from the final entering action. Controllers
 must not publish questionnaires, manage their comments or choose for recipients.
 

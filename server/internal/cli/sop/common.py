@@ -33,14 +33,15 @@ def link_config(issue_id, reference, key=CONFIG_KEY):
         '--value', json.dumps(reference), '--type', 'string')
 
 
-def request(path, data=None, content_type=None):
+def request(path, data=None, content_type=None, *, with_headers=False):
     headers = {'Authorization': 'Bearer ' + os.environ['MULTICA_TOKEN'],
                'X-Workspace-ID': os.environ['MULTICA_WORKSPACE_ID']}
     if content_type:
         headers['Content-Type'] = content_type
     with urlopen(Request(os.environ['MULTICA_SERVER_URL'].rstrip('/') + path,
                          data=data, headers=headers), timeout=30) as response:
-        return json.load(response)
+        body = json.load(response)
+        return (body, response.headers) if with_headers else body
 
 
 def comment(issue_id, content, parent=None, attachment_ids=()):

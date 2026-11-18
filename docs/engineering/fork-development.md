@@ -157,13 +157,17 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   assignee's daemon without starting a model; `/note` remains inert. The
   daemon/CLI owns parsing, saved SoP working directories and execution.
   Payloads use `{"args":[]}`. The engine keeps questionnaire/forward IDs in issue
-  metadata. Recall retries missing publication; `--help` replaces the pair; leaving
-  the outer State deletes both. Phase/results survive publication failures without
-  replaying actions. The daemon consumes only successful answers after completion.
-  Publication uses the task-scoped API: the current run's triggering comment on
-  its own issue, and the declared destination thread for forwards. This temporary
+  metadata. Recall retries missing publication; `--help` refreshes the existing card.
+  Accepted answers merge `args` into the retained question. The target thread
+  receives a static answered card; its original forward becomes a compact source
+  link instead of a scrollable preview. Pending publication IDs are then cleared.
+  Phase/results survive publication failures without replaying actions. The daemon consumes only successful answers after completion.
+  Publication requires an explicit `--thread` or the current run's triggering
+  comment on its own issue, and the declared destination thread for forwards.
+  Missing thread context fails publication instead of creating a root. This temporary
   hotfix awaits [Stage 4 execution-track input/output](https://github.com/Winfred666/multica-RSI/issues/77).
-  Same-issue questions do not forward. Rendered choices carry `--issue` so recipient
+  Cross-issue forwards use relative application permalinks, without requiring a
+  CLI `app_url`. Same-issue questions do not forward. Rendered choices carry `--issue` so recipient
   answers use the source issue's state. On the web frontend, pending standalone
   question permalinks mirror the source thread in a nested window sized to the
   question and initially scrolled to it. The source title/link and raw content
@@ -231,7 +235,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   `id` and native comment `content` is rendered after the option/action chain.
   The ordinary agent comment contains `!sop-render <skill-name> <owner JSON>`
   and the existing redacted, ordinary state JSON, not the masked invocation reply.
-  Rendered markers omit `/note`; `content` retains agent mentions. Only the three destination
+  Pending rendered markers omit `/note`; `content` retains agent mentions.
+  Static answered forwards use `/note` so they do not trigger recipients. Only the three destination
   IDs are encoded, and the execution assignee is unchanged.
   Rendered JSON adds frontend-ignored `how_to_step` text with the ordinary comment-post
   command for `!sop-remote <skill-name> {"args":[...]}`; no comment IDs or

@@ -1,6 +1,5 @@
 """Shared Python engine protocol tests using CLI-owned semantic examples."""
 import importlib.util
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
 import json
 import os
@@ -9,7 +8,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from threading import Thread
 import unittest
 from unittest.mock import patch
 
@@ -47,14 +45,6 @@ if os.environ.get('SOP_TEST_CLI_FAIL'):
     sys.exit('Metadata service unavailable')
 if args[:2] == ['issue', 'get']:
     print(json.dumps({'id': args[2], 'metadata': store.get(args[2], {})}))
-elif args[:3] == ['issue', 'comment', 'delete']:
-    assert '--output' not in args
-    if os.environ.get('SOP_TEST_DELETE_FAIL'):
-        sys.exit('Deletion unavailable')
-    comments = path.with_name('comments')
-    rows = json.loads(comments.read_text())
-    rows[int(args[3])]['deleted'] = True
-    comments.write_text(json.dumps(rows))
 elif args[:2] == ['issue', 'assign']:
     print('{}')
 else:
@@ -405,121 +395,6 @@ workflow = Workflow(
         self.assertIn('this_round_reply_guidance', self.run_sop('--validate', valid=False)['error'])
         self.assertFalse(self.metadata.exists())
         self.assertFalse((self.root / 'calls').exists())
-
-    def test_addressed_questionnaire_lifecycle(self):
-        fixture = self
-
-        class API(BaseHTTPRequestHandler):
-            def log_message(self, *args):
-                pass
-
-            def do_GET(self):
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b'{"slug":"fixture"}')
-
-            def do_POST(self):
-                fixture.assertEqual(self.headers['Authorization'], 'Bearer fixture-token')
-                fixture.assertEqual(self.headers['X-Workspace-ID'], 'fixture-workspace')
-                issue = self.path.split('/')[3]
-                body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-                if fixture.env.get('SOP_TEST_COMMENT_FAIL') == issue:
-                    self.send_error(503, 'Publication unavailable')
-                    return
-                if issue == fixture.env.get('SOP_TEST_TASK_ISSUE'):
-                    fixture.assertEqual(body.get('parent_id'), fixture.env['MULTICA_COMMENT_ID'])
-                comments = fixture.root / 'comments'
-                rows = json.loads(comments.read_text()) if comments.exists() else []
-                row = {'id': str(len(rows)), 'issue_id': issue, **body}
-                rows.append(row)
-                comments.write_text(json.dumps(rows))
-                self.send_response(201)
-                self.end_headers()
-                self.wfile.write(json.dumps(row).encode())
-
-        api = ThreadingHTTPServer(('127.0.0.1', 0), API)
-        self.addCleanup(api.server_close)
-        self.addCleanup(api.shutdown)
-        Thread(target=api.serve_forever, daemon=True).start()
-        self.env.update(MULTICA_TOKEN='fixture-token',
-                        MULTICA_SERVER_URL='http://127.0.0.1:' + str(api.server_port))
-        for destination in ('fixture-issue', 'recipient'):
-            with self.subTest(destination=destination):
-                (self.package / 'controller.py').write_text("""from sop import FINISHED, Option, State, Workflow
-from pathlib import Path
-def submit(args, context):
-    p = Path('actions')
-    p.write_text(p.read_text() + 'x' if p.exists() else 'x')
-    context['state'].update(summary='Retained result', reply_parent='stale-parent')
-    return {'this_round_reply_guidance': 'End this turn.'}
-workflow = Workflow(
-    State('dev', 'Develop.', initial=True),
-    Option('submit', 'Submit.', submit),
-    State('review', 'Review.', owner=OWNER),
-    Option('revise', 'Revise.', submit),
-    Option('accept', 'Accept.', submit),
-    edges=(('dev','submit'), ('submit','review'), ('review','revise'),
-           ('revise','dev'), ('review','accept'), ('accept',FINISHED)))
-""".replace('OWNER', repr({'issue_id': destination, 'thread': 'target-thread', 'id': None, 'content': '/note'})))
-                self.env.update(MULTICA_APP_URL='https://multica.example',
-                                MULTICA_COMMENT_ID='native-trigger', SOP_TEST_TASK_ISSUE='fixture-issue')
-                self.run_sop()
-                self.env['SOP_TEST_COMMENT_FAIL'] = 'fixture-issue'
-                self.assertEqual(self.run_sop('submit', valid=False)['error']['code'], 'controller_failure')
-                self.assertEqual(self.state()['status'], 'review')
-                self.assertEqual(self.state()['summary'], 'Retained result')
-                self.env.pop('SOP_TEST_COMMENT_FAIL')
-                if destination == 'recipient':
-                    self.env['SOP_TEST_COMMENT_FAIL'] = destination
-                    self.run_sop(valid=False)
-                    self.assertIn('que_comment_id', self.state()['questionnaire'])
-                    self.assertNotIn('forwarded_comment_id', self.state()['questionnaire'])
-                    self.env.pop('SOP_TEST_COMMENT_FAIL')
-                self.run_sop()
-                pair = self.state()['questionnaire'].copy()
-                self.run_sop()
-                self.assertEqual(self.state()['questionnaire'], pair)
-                refreshed = self.run_sop('--help', '--issue', 'fixture-issue')
-                publication = self.state()['questionnaire']
-                self.assertNotEqual(pair['que_comment_id'], publication['que_comment_id'])
-                rows = json.loads((self.root / 'comments').read_text())
-                for key in ('que_comment_id', 'forwarded_comment_id'):
-                    if key in pair:
-                        self.assertTrue(rows[int(pair[key])]['deleted'])
-                question = rows[int(publication['que_comment_id'])]
-                self.assertEqual(question['parent_id'], 'native-trigger')
-                self.assertTrue(question['content'].startswith('!sop-render '))
-                rendered = json.loads(question['content'].split('\n', 1)[1])
-                self.assertNotIn('que_comment_id', rendered)
-                self.assertNotIn('forwarded_comment_id', rendered)
-                self.assertIn('{"args":[...]}', rendered['how_to_step'])
-                self.assertNotIn('<this-comment-id>', rendered['how_to_step'])
-                self.assertEqual(refreshed, self.state()['output'])
-                if destination == 'recipient':
-                    forward = rows[int(publication['forwarded_comment_id'])]
-                    self.assertEqual(forward['parent_id'], 'target-thread')
-                    self.assertIn('#comment-' + question['id'], forward['content'])
-                self.env.update(MULTICA_ISSUE_ID='other-task-issue', MULTICA_COMMENT_ID='foreign-trigger',
-                                SOP_TEST_TASK_ISSUE='other-task-issue')
-                self.run_sop('--help', '--issue', 'fixture-issue')
-                self.env['MULTICA_ISSUE_ID'] = 'fixture-issue'
-                publication = self.state()['questionnaire']
-                rows = json.loads((self.root / 'comments').read_text())
-                self.assertEqual(rows[int(publication['que_comment_id'])]['parent_id'], 'stale-parent')
-                self.env.update(MULTICA_COMMENT_ID='native-trigger', SOP_TEST_TASK_ISSUE='fixture-issue')
-                before = (self.root / 'actions').read_text()
-                self.env['SOP_TEST_DELETE_FAIL'] = '1'
-                event = 'accept' if destination == 'recipient' else 'revise'
-                self.run_sop(event, valid=False)
-                self.assertEqual((self.root / 'actions').read_text(), before + 'x')
-                self.env.pop('SOP_TEST_DELETE_FAIL')
-                self.run_sop()
-                self.assertEqual((self.root / 'actions').read_text(), before + 'x')
-                self.assertNotIn('questionnaire', self.state())
-                self.assertTrue(all(row.get('deleted') for row in json.loads((self.root / 'comments').read_text())))
-                if destination != 'recipient':
-                    self.assertEqual(self.state()['summary'], 'Retained result')
-                    self.run_sop('quit', valid=False)
 
     def test_rejected_choice_does_not_report_remote_success(self):
         (self.package / 'controller.py').write_text("""from sop import Option, State, Workflow

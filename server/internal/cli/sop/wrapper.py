@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 from types import SimpleNamespace
+from urllib.parse import urlencode
 
 from common import cli, comment, publish_shared_artifact, request, write_artifact
 import sop
@@ -96,8 +97,9 @@ def arguments(argv, controller):
     action.add_argument("--error-file", type=Path)
     action.add_argument("--help", action="store_true")
     controller.workflow.configure(parser)
-    if '--issue' not in parser._option_string_actions:
-        parser.add_argument("--issue")
+    for flag in ('--issue', '--thread'):
+        if flag not in parser._option_string_actions:
+            parser.add_argument(flag)
     args, args_extra = parser.parse_known_args(argv)
     args.extra = args_extra
     return args
@@ -142,8 +144,7 @@ def load_controller():
 
 
 def multica(*args, resource='issue'):
-    output = [] if args[:2] == ("comment", "delete") else ["--output", "json"]
-    command = ["multica", resource, *args, *output]
+    command = ["multica", resource, *args, "--output", "json"]
     result = subprocess.run(command, capture_output=True, text=True, timeout=30)
     if result.returncode:
         raise SOPError("cli_error", f"{shlex.join(command)}: {result.stderr.strip() or result.stdout.strip()}")
@@ -401,6 +402,8 @@ def transition(args, context, controller):
     if changed:
         state.pop('recovery', None)
     state['status'] = status
+    if result['accepted'] and args.event != 'init' and state.get('questionnaire'):
+        state['questionnaire']['args'] = context['argv']
     return result
 
 
@@ -623,11 +626,11 @@ def state_artifact(context, controller, result):
 
 
 def reply_parent(context):
-    # TODO: SoP as first class member Stage 4: temporary comment-transport hotfix.
-    # https://github.com/Winfred666/multica-RSI/issues/77
-    if context['issue_id'] == context.get('native_issue_id') and context.get('native_comment_id'):
-        return context['native_comment_id']
-    return getattr(context.get('args'), 'thread', None) or context.get('state', {}).get('reply_parent')
+    explicit = getattr(context.get('args'), 'thread', None)
+    if explicit:
+        return explicit
+    if context['issue_id'] == context.get('native_issue_id'):
+        return context.get('native_comment_id')
 
 
 def publish_artifacts(context, controller, result):
@@ -656,33 +659,70 @@ def publish_artifacts(context, controller, result):
         print(redact('Live artifact update failed: ' + str(error)), file=sys.stderr)
 
 
+def read_comment(issue_id, identifier):
+    params = {'thread': identifier, 'tail': '30'}
+    while True:
+        rows, headers = request('/api/issues/' + issue_id + '/comments?' + urlencode(params),
+                                with_headers=True)
+        row = next((row for row in rows if row['id'] == identifier), None)
+        if row is not None:
+            return row
+        if not headers.get('X-Multica-Next-Before'):
+            raise SOPError('missing_questionnaire', 'Questionnaire comment not found in its thread')
+        params.update(before=headers['X-Multica-Next-Before'], before_id=headers['X-Multica-Next-Before-Id'])
+
+
+def update_comment(context, row, content):
+    if row['content'] != content:
+        context['external_write_attempted'] = True
+        cli('issue', 'comment', 'update', row['id'], '--expected-revision', str(row['revision']),
+            '--content-stdin', input=content)
+    return content
+
+
+def update_questionnaire(context, publication, content=None):
+    row = read_comment(context['issue_id'], publication['que_comment_id'])
+    if content is None:
+        header, output = row['content'].split('\n', 1)
+        content = header + '\n' + json.dumps({**json.loads(output), 'args': publication['args']}, allow_nan=False)
+    return update_comment(context, row, content)
+
+
 def clean_questionnaire(context):
-    state = context['state']
-    publication = state.get('questionnaire', {})
-    for key in ('forwarded_comment_id', 'que_comment_id'):
-        if publication.get(key):
-            context['external_write_attempted'] = True
-            multica('comment', 'delete', publication[key])
-            publication.pop(key)
-            save_state(context, state)
-    state.pop('questionnaire', None)
+    publication = context['state'].get('questionnaire', {})
+    if publication.get('que_comment_id') and 'args' in publication:
+        content = update_questionnaire(context, publication)
+        if publication.get('forwarded_comment_id'):
+            destination = json.loads(content.split('\n', 1)[0].split(' ', 2)[2])
+            forward = read_comment(destination['issue_id'], publication['forwarded_comment_id'])
+            if not publication.get('answered_comment_id'):
+                context['external_write_attempted'] = True
+                publication['answered_comment_id'] = comment(destination['issue_id'], '/note ' + content,
+                                                             destination['thread'])['id']
+                save_state(context, context['state'])
+            update_comment(context, forward, forward['content'].replace('\n\n[Question](', '\n\nAnswered: [Question](', 1))
+    context['state'].pop('questionnaire', None)
 
 
 def render_addressed_state(context, rendered, *, refresh=False):
     """Retry publication from saved state without replaying the entering action."""
     state = context['state']
     publication = state.get('questionnaire', {})
-    if publication and (refresh or publication['status'] != state['status']):
+    if publication and ('args' in publication or publication['status'] != state['status']):
         clean_questionnaire(context)
         save_state(context, state)
     owner = state.get('owner')
     if not owner:
         return
     publication = state.setdefault('questionnaire', {'status': state['status']})
+    parent = reply_parent(context)
+    if (not publication.get('que_comment_id') and not parent or
+            owner['issue_id'] != context['issue_id'] and not owner['thread']):
+        raise SOPError('missing_thread', 'Questionnaires require --thread or a triggering comment on the source issue')
     destination = {key: owner[key] for key in ('issue_id', 'thread', 'id')}
     answer = '!sop-remote ' + context['skill'] + ' {"args":[...]}'
     command = shlex.join(['multica', 'issue', 'comment', 'add', context['issue_id'],
-                          '--content-file', '<answer-file>'])
+                          '--parent', publication.get('que_comment_id', parent), '--content-file', '<answer-file>'])
     rendered = {**rendered, 'next_step': [
         {**step, 'command': step['command'] + ' --issue ' + shlex.quote(context['issue_id'])}
         for step in rendered.get('next_step', [])], 'how_to_step': (
@@ -690,19 +730,19 @@ def render_addressed_state(context, rendered, *, refresh=False):
         'Replace [...] with the chosen next_step command arguments after multica sop run ' + context['skill'] +
         ', including --issue ' + context['issue_id'] +
         ' and filling its placeholders; args must be a JSON array of strings.')}
-    if not publication.get('que_comment_id'):
+    if refresh or not publication.get('que_comment_id'):
         prefix = '' if owner['issue_id'] != context['issue_id'] else owner['content'].removeprefix('/note').strip()
         header = (prefix + ' !sop-render ' + context['skill'] + ' ' + json.dumps(destination)).lstrip()
-        context['external_write_attempted'] = True
-        publication['que_comment_id'] = comment(context['issue_id'],
-            header + '\n' + json.dumps(rendered, allow_nan=False), reply_parent(context))['id']
+        content = header + '\n' + json.dumps(rendered, allow_nan=False)
+        if publication.get('que_comment_id'):
+            update_questionnaire(context, publication, content)
+        else:
+            context['external_write_attempted'] = True
+            publication['que_comment_id'] = comment(context['issue_id'], content, parent)['id']
         save_state(context, state)
     if owner['issue_id'] != context['issue_id'] and not publication.get('forwarded_comment_id'):
-        app_url = os.environ.get('MULTICA_APP_URL', '').rstrip('/')
-        if not app_url.startswith(('http://', 'https://')):
-            raise SOPError('missing_app_url', 'Set app_url to the frontend HTTP(S) URL before forwarding questionnaires')
         workspace = request('/api/workspaces/' + context['workspace_id'])
-        link = app_url + '/' + workspace['slug'] + '/issues/' + context['issue_id'] + '#comment-' + publication['que_comment_id']
+        link = '/' + workspace['slug'] + '/issues/' + context['issue_id'] + '#comment-' + publication['que_comment_id']
         context['external_write_attempted'] = True
         publication['forwarded_comment_id'] = comment(owner['issue_id'],
             owner['content'] + '\n\n[Question](' + link + ')', owner['thread'])['id']
@@ -745,6 +785,7 @@ def main(argv=None):
                 context[key] = getattr(args, flag)
         os.environ['MULTICA_ISSUE_ID'] = context['issue_id']
         context['controller_rules'] = 'Follow controller.workflow options and state prechecks.'
+        context['args'] = args
         if args.help:
             print(help_output(context))
             return 0
