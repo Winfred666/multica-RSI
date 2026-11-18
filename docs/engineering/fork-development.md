@@ -235,8 +235,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   `id` and native comment `content` is rendered after the option/action chain.
   The ordinary agent comment contains `!sop-render <skill-name> <owner JSON>`
   and the existing redacted, ordinary state JSON, not the masked invocation reply.
-  Pending rendered markers omit `/note`; `content` retains agent mentions.
-  Static answered forwards use `/note` so they do not trigger recipients. Only the three destination
+  New pending rendered markers omit `/note`; `content` retains agent mentions.
+  Questionnaire and forward edits, plus static answered cards, use `/note` so they do not trigger recipients. Only the three destination
   IDs are encoded, and the execution assignee is unchanged.
   Rendered JSON adds frontend-ignored `how_to_step` text with the ordinary comment-post
   command for `!sop-remote <skill-name> {"args":[...]}`; no comment IDs or

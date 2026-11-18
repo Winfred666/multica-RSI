@@ -673,6 +673,7 @@ def read_comment(issue_id, identifier):
 
 
 def update_comment(context, row, content):
+    content = '/note ' + content.removeprefix('/note').lstrip()
     if row['content'] != content:
         context['external_write_attempted'] = True
         cli('issue', 'comment', 'update', row['id'], '--expected-revision', str(row['revision']),
@@ -693,11 +694,11 @@ def clean_questionnaire(context):
     if publication.get('que_comment_id') and 'args' in publication:
         content = update_questionnaire(context, publication)
         if publication.get('forwarded_comment_id'):
-            destination = json.loads(content.split('\n', 1)[0].split(' ', 2)[2])
+            destination = json.loads(content.removeprefix('/note').lstrip().split('\n', 1)[0].split(' ', 2)[2])
             forward = read_comment(destination['issue_id'], publication['forwarded_comment_id'])
             if not publication.get('answered_comment_id'):
                 context['external_write_attempted'] = True
-                publication['answered_comment_id'] = comment(destination['issue_id'], '/note ' + content,
+                publication['answered_comment_id'] = comment(destination['issue_id'], content,
                                                              destination['thread'])['id']
                 save_state(context, context['state'])
             update_comment(context, forward, forward['content'].replace('\n\n[Question](', '\n\nAnswered: [Question](', 1))
