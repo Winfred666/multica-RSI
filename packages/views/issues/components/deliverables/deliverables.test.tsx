@@ -41,6 +41,7 @@ vi.mock("../../../platform", () => ({ useImmersiveMode: () => {} }));
 
 import { DeliverablesSection } from "./deliverables-section";
 import { DeliverablesOverview } from "./deliverables-overview";
+import { TreeDeliverables } from "./tree-deliverables";
 import { useDeliverableDetails, type DeliverableOrigin } from "./deliverable-details";
 
 function attachment(over: Partial<Attachment> & { id: string }): Attachment {
@@ -118,6 +119,29 @@ function renderSection(files: ReadonlyArray<DeliverableFile>, onOpenOverview = v
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+describe("TreeDeliverables", () => {
+  it("lists filenames without loading previews and opens files only on click", () => {
+    const html = attachment({ id: "html", filename: "diagram.html", content_type: "text/html" });
+    const files = collectDeliverableFiles([...TIMELINE, comment("c-3", [html])]);
+    const qc = new QueryClient();
+    const { container } = renderWithI18n(
+      <QueryClientProvider client={qc}><TreeDeliverables files={files} /></QueryClientProvider>,
+    );
+
+    expect(container.querySelector("img, iframe")).toBeNull();
+    expect(qc.getQueryCache().getAll()).toHaveLength(0);
+    expect(openAtMock).not.toHaveBeenCalled();
+    for (const { latest, versions } of files) {
+      const button = screen.getByRole("button", { name: latest.filename });
+      expect(button).toHaveTextContent(latest.filename);
+      expect(button).toHaveAttribute("data-tree-artifact", latest.id);
+      expect(button).toHaveAttribute("data-attachment-ids", versions.map((file) => file.id).join(","));
+      fireEvent.click(button);
+      expect(openAtMock).toHaveBeenLastCalledWith(latest.id);
+    }
+  });
 });
 
 describe("DeliverablesSection", () => {

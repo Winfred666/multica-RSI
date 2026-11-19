@@ -80,7 +80,8 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
 - **Soft-linked deliverables.** The issue's `independent_artifacts` metadata is a
   JSON-string attachment ID list. Existing attachment reads resolve unique IDs;
   ownerless files appear before dependent deliverables in the tree and existing
-  Deliverables sidebar, using the same previews. Task provenance is not ownership;
+  Deliverables sidebar. Tree entries show filenames without fetching previews;
+  clicking opens the existing viewer. Task provenance is not ownership;
   issue, comment and private-chat owners exclude a soft target. Text links do not
   define this relationship. Independent IDs stay separate even with matching names;
   ordinary comment versions remain grouped as before.
@@ -92,10 +93,10 @@ See [SOP handoffs](../PLAN.md#sop-calls-and-cross-issue-handoffs).
   card heights; root trees wrap at the canvas width, captured on every load
   and issue creation/deletion, never restored from cache. Resizing preserves
   packing; new views start at 100%, and saved cameras stay within tree bounds.
-  Cards and artifact thumbnails share the bottom selection toolbar, with
+  Cards and artifact filename buttons share the bottom selection toolbar, with
   separate issue and deliverable counts and actions. Deleting deliverables
   removes all their versions without deleting comments. Uploaded HTML
-  deliverables render in tree cards and open in the artifact viewer. Shared HTML
+  deliverables open on demand in the artifact viewer. Shared HTML
   previews allow scripts and file downloads, but keep an opaque origin; parent
   access, forms, popups and top-level navigation remain sandboxed.
 - **Settings.** You can manage hosted plugin execution credentials and personal
