@@ -269,7 +269,7 @@ export function AuthInitializer({
       void qc.fetchQuery(workspaceListOptions()).catch((err: unknown) => {
         if (cancelled) return;
         if (err instanceof ApiError && err.status === 401) {
-          rejectSession();
+          if (!err.staleCredential && !err.unauthorizedHandled) rejectSession();
           return;
         }
         // Workspace consumers observe this query directly. React Query owns
@@ -300,7 +300,16 @@ export function AuthInitializer({
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError && err.status === 401) {
-          rejectSession();
+          if (err.staleCredential) {
+            retryAfterFlight = true;
+            return;
+          }
+          if (err.unauthorizedHandled) {
+            settled = true;
+            window.removeEventListener("online", retryNow);
+          } else {
+            rejectSession();
+          }
           return;
         }
 

@@ -3240,6 +3240,18 @@ describe("ApiClient shared credential across windows", () => {
     expect(authHeaderOf(fetchMock, 1)).toBe("Bearer token-v2");
   });
 
+  it.each(["mul_personal", "mat_task", "mcn_cloud"])(
+    "sends %s as an ordinary API bearer", async (token) => {
+      const client = new ApiClient("https://api.example.test");
+      client.setToken(token);
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
+      vi.stubGlobal("fetch", fetchMock);
+
+      await client.markOnboardingComplete();
+      expect(authHeaderOf(fetchMock, 0)).toBe(`Bearer ${token}`);
+    },
+  );
+
   // The other half: a request that went out with the previous credential can
   // 401 AFTER the renewal landed. Ending the session on that would tear down
   // one that is demonstrably alive.
@@ -3263,8 +3275,35 @@ describe("ApiClient shared credential across windows", () => {
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
-  // ...but a genuine expiry still ends the session: nothing replaced the
-  // credential, so the 401 is about the one still in use.
+  it("ignores a late 401 if a bearer session started after the request", async () => {
+    const onUnauthorized = vi.fn();
+    const client = new ApiClient("https://api.example.test", { onUnauthorized });
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      client.setToken("signed-in");
+      return jsonResponse({ error: "unauthorized" }, 401);
+    }));
+
+    await expect(client.markOnboardingComplete()).rejects.toMatchObject({ status: 401, staleCredential: true });
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(client.getToken()).toBe("signed-in");
+  });
+
+  it("ends the session when a CSRF retry uses the new credential and gets a 401", async () => {
+    const onUnauthorized = vi.fn();
+    const client = new ApiClient("https://api.example.test", { onUnauthorized });
+    client.setToken("old-token");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockImplementationOnce(async () => {
+        client.setToken("new-token");
+        return jsonResponse({ error: "CSRF validation failed" }, 403);
+      })
+      .mockResolvedValueOnce(jsonResponse({ error: "invalid token" }, 401)));
+
+    await expect(client.markOnboardingComplete()).rejects.toBeInstanceOf(ApiError);
+    expect(onUnauthorized).toHaveBeenCalledOnce();
+  });
+
+  // A genuine expiry still ends the session.
   it("still ends the session on a 401 for the credential in use", async () => {
     const storage = sharedStorage("token-v1");
     const onUnauthorized = vi.fn();

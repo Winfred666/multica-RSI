@@ -589,6 +589,8 @@ export class ApiError extends Error {
   // error fields like `code` so callers can branch on machine-readable
   // identifiers instead of pattern-matching the human-readable message.
   readonly body?: unknown;
+  staleCredential = false;
+  unauthorizedHandled = false;
 
   constructor(message: string, status: number, statusText: string, body?: unknown) {
     super(message);
@@ -903,11 +905,16 @@ export class ApiClient {
    * (MUL-7028). Comparing against the credential in use now is what tells the
    * two apart: a genuinely expired session still has the same token stored,
    * so the real case is unaffected.
+   *
+   * "Replaced" includes going from no credential to one. A flow that was
+   * already running at logout can still send a bearer-less request, and its
+   * 401 may land after the user has signed in again (#10190). Cookie mode is
+   * null on both sides, so its expiries still end the session.
    */
   private handleUnauthorized(credentialUsed: string | null) {
-    if (credentialUsed !== null && this.getToken() !== credentialUsed) {
+    if (this.getToken() !== credentialUsed) {
       this.logger.info("ignoring 401 for a credential that has since been replaced");
-      return;
+      return false;
     }
     this.token = null;
     // Workspace id is owned by the URL-driven workspace-storage singleton
@@ -915,6 +922,7 @@ export class ApiClient {
     // to /login which leaves the workspace route, and the next workspace
     // entry will overwrite the id. No clear needed here.
     this.options.onUnauthorized?.();
+    return true;
   }
 
   private async parseErrorMessage(res: Response, fallback: string): Promise<string> {
@@ -965,7 +973,7 @@ export class ApiClient {
 
     // Captured before the request so a late 401 can be matched against the
     // credential it actually used, not whatever is current when it lands.
-    const credentialUsed = this.getToken();
+    let credentialUsed = this.getToken();
 
     this.logger.info(`→ ${method} ${path}`, { rid });
 
@@ -996,16 +1004,20 @@ export class ApiClient {
       if (message === CSRF_REJECTED_ERROR) {
         this.csrfSessionValueRejected = this.readCookie(SESSION_CSRF_COOKIE);
         this.logger.info(`↻ ${method} ${path} (CSRF token rejected, retrying once)`, { rid });
+        credentialUsed = this.getToken();
         res = await send();
       }
     }
 
     if (!res.ok) {
-      if (res.status === 401) this.handleUnauthorized(credentialUsed);
+      const staleCredential = res.status === 401 && !this.handleUnauthorized(credentialUsed);
       const { message, body } = await this.parseErrorBody(res, `API error: ${res.status} ${res.statusText}`);
       const logLevel = res.status === 404 ? "warn" : "error";
       this.logger[logLevel](`← ${res.status} ${path}`, { rid, duration: `${Date.now() - start}ms`, error: message });
-      throw new ApiError(message, res.status, res.statusText, body);
+      const error = new ApiError(message, res.status, res.statusText, body);
+      error.staleCredential = staleCredential;
+      error.unauthorizedHandled = res.status === 401 && !staleCredential;
+      throw error;
     }
 
     this.logger.info(`← ${res.status} ${path}`, { rid, duration: `${Date.now() - start}ms` });

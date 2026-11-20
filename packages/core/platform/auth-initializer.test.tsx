@@ -136,6 +136,52 @@ afterEach(() => {
 });
 
 describe("AuthInitializer recovery", () => {
+  it("retries identity after a stale 401 instead of clearing a new credential", async () => {
+    const storage = makeStorage({ multica_token: "old-token" });
+    const stale = new ApiError("unauthorized", 401, "Unauthorized");
+    stale.staleCredential = true;
+    const api = makeApi({ getMe: vi.fn().mockImplementationOnce(async () => {
+      storage.setItem("multica_token", "new-token");
+      throw stale;
+    }).mockResolvedValue(fakeUser) });
+    renderInitializer({ api, storage });
+
+    await waitFor(() => expect(api.getMe).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(useAuthStore.getState().status).toBe("authenticated"));
+    expect(storage.snapshot().multica_token).toBe("new-token");
+  });
+
+  it("does not repeat a handled 401 teardown after a new sign-in", async () => {
+    const storage = makeStorage({ multica_token: "old-token" });
+    const handled = new ApiError("unauthorized", 401, "Unauthorized");
+    handled.unauthorizedHandled = true;
+    const api = makeApi({ getMe: vi.fn().mockImplementation(async () => {
+      storage.setItem("multica_token", "new-token");
+      throw handled;
+    }) });
+    const { onLogout } = renderInitializer({ api, storage });
+
+    await waitFor(() => expect(api.getMe).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+    expect(storage.snapshot().multica_token).toBe("new-token");
+    expect(onLogout).not.toHaveBeenCalled();
+  });
+
+  it("does not tear down a new credential when workspace bootstrap gets a stale 401", async () => {
+    const storage = makeStorage({ multica_token: "old-token" });
+    const stale = new ApiError("unauthorized", 401, "Unauthorized");
+    stale.staleCredential = true;
+    const api = makeApi({ listWorkspaces: vi.fn().mockImplementation(async () => {
+      storage.setItem("multica_token", "new-token");
+      throw stale;
+    }) });
+    renderInitializer({ api, storage });
+
+    await waitFor(() => expect(api.listWorkspaces).toHaveBeenCalled());
+    await waitFor(() => expect(useAuthStore.getState().status).toBe("authenticated"));
+    expect(storage.snapshot().multica_token).toBe("new-token");
+  });
+
   it("keeps self-host commands available when an older API omits the target", async () => {
     renderInitializer({ api: makeApiWithConfigResponse({
       daemon_server_url: " https://api.example.com/// ",
