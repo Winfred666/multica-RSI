@@ -132,3 +132,5 @@ Start with [self-hosting](SELF_HOSTING.md) or the [contributing setup](CONTRIBUT
 - **Self-Hosting & Contributing:** [`SELF_HOSTING.md`](SELF_HOSTING.md) · [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - **Agent Development Reference:** [Fork implementation differences](docs/engineering/fork-development.md)
 - **Upstream Attribution:** Built on [multica-ai/multica](https://github.com/multica-ai/multica). See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+
+感谢 [LINUX DO](https://linux.do/) 社区的支持。
